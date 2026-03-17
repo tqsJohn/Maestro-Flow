@@ -1,10 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
+import { useExecutionStore } from '@/client/store/execution-store.js';
+import { useIssueStore } from '@/client/store/issue-store.js';
 import { WS_EVENT_TYPES } from '@/shared/constants.js';
 import type { BoardState, PhaseCard } from '@/shared/types.js';
-import type { WsServerMessage, WsClientMessage } from '@/shared/ws-protocol.js';
+import type { WsServerMessage, WsClientMessage, ExecutionStartedPayload, ExecutionCompletedPayload, ExecutionFailedPayload } from '@/shared/ws-protocol.js';
 import type { AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from '@/shared/agent-types.js';
+import type { SupervisorStatus } from '@/shared/execution-types.js';
 
 // ---------------------------------------------------------------------------
 // useWebSocket — connect to /ws, dispatch to stores, auto-reconnect
@@ -42,6 +45,12 @@ export function useWebSocket(): void {
       addEntry,
       setApproval,
     } = useAgentStore.getState();
+    const {
+      addSlot,
+      removeSlot,
+      setSupervisorStatus,
+    } = useExecutionStore.getState();
+    const { fetchIssues } = useIssueStore.getState();
 
     function connect() {
       if (disposed) return;
@@ -139,6 +148,40 @@ export function useWebSocket(): void {
           case WS_EVENT_TYPES.AGENT_STOPPED: {
             const stoppedPayload = msg.data as AgentStoppedPayload;
             updateProcessStatus(stoppedPayload.processId, 'stopped');
+            break;
+          }
+
+          // --- Execution events ---
+          case WS_EVENT_TYPES.EXECUTION_STARTED: {
+            const started = msg.data as ExecutionStartedPayload;
+            addSlot({
+              issueId: started.issueId,
+              processId: started.processId,
+              executor: started.executor,
+              startedAt: new Date().toISOString(),
+              lastActivityAt: new Date().toISOString(),
+            });
+            void fetchIssues();
+            break;
+          }
+
+          case WS_EVENT_TYPES.EXECUTION_COMPLETED: {
+            const completed = msg.data as ExecutionCompletedPayload;
+            removeSlot(completed.processId);
+            void fetchIssues();
+            break;
+          }
+
+          case WS_EVENT_TYPES.EXECUTION_FAILED: {
+            const failed = msg.data as ExecutionFailedPayload;
+            removeSlot(failed.processId);
+            void fetchIssues();
+            break;
+          }
+
+          case WS_EVENT_TYPES.SUPERVISOR_STATUS: {
+            const status = msg.data as SupervisorStatus;
+            setSupervisorStatus(status);
             break;
           }
 

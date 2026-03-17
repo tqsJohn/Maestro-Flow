@@ -16,6 +16,12 @@ import type {
   AgentStatusPayload,
   AgentStoppedPayload,
 } from '../../shared/agent-types.js';
+import type { SupervisorStatus } from '../../shared/execution-types.js';
+import type {
+  ExecutionStartedPayload,
+  ExecutionCompletedPayload,
+  ExecutionFailedPayload,
+} from '../../shared/ws-protocol.js';
 
 // ---------------------------------------------------------------------------
 // All event types — single source of truth for onAny / offAny
@@ -35,6 +41,10 @@ const ALL_EVENT_TYPES: SSEEventType[] = [
   'agent:approval',
   'agent:status',
   'agent:stopped',
+  'execution:started',
+  'execution:completed',
+  'execution:failed',
+  'supervisor:status',
 ];
 
 // ---------------------------------------------------------------------------
@@ -56,6 +66,11 @@ export interface DashboardEventMap {
   'agent:approval': ApprovalRequest;
   'agent:status': AgentStatusPayload;
   'agent:stopped': AgentStoppedPayload;
+  // Execution events
+  'execution:started': ExecutionStartedPayload;
+  'execution:completed': ExecutionCompletedPayload;
+  'execution:failed': ExecutionFailedPayload;
+  'supervisor:status': SupervisorStatus;
 }
 
 // ---------------------------------------------------------------------------

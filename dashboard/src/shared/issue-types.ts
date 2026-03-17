@@ -2,6 +2,9 @@
 // Issue type system -- types for the Issue tracking feature
 // ---------------------------------------------------------------------------
 
+import type { AgentType } from './agent-types.js';
+import type { IssueExecution, PromptMode } from './execution-types.js';
+
 /** Issue classification */
 export type IssueType = 'bug' | 'feature' | 'improvement' | 'task';
 
@@ -23,6 +26,9 @@ export interface Issue {
   type: IssueType;
   priority: IssuePriority;
   status: IssueStatus;
+  executor?: AgentType;
+  promptMode?: PromptMode;
+  execution?: IssueExecution;
   source_entry_id?: string;
   source_process_id?: string;
   created_at: string;
@@ -35,6 +41,7 @@ export interface CreateIssueRequest {
   description: string;
   type?: IssueType;
   priority?: IssuePriority;
+  executor?: AgentType;
   source_entry_id?: string;
   source_process_id?: string;
 }
@@ -46,6 +53,8 @@ export interface UpdateIssueRequest {
   type?: IssueType;
   priority?: IssuePriority;
   status?: IssueStatus;
+  executor?: AgentType;
+  promptMode?: PromptMode;
 }
 
 // ---------------------------------------------------------------------------

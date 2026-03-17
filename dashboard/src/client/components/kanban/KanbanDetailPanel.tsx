@@ -18,6 +18,9 @@ export function KanbanDetailPanel({ selectedItem }: KanbanDetailPanelProps) {
   if (selectedItem.type === 'linearIssue') {
     return <LinearIssueDetail issue={selectedItem.issue} />;
   }
+  if (selectedItem.type === 'issue') {
+    return <IssueDetail issue={selectedItem.issue} />;
+  }
   return <PhaseDetail phaseId={selectedItem.phaseId} />;
 }
 
@@ -203,6 +206,155 @@ function PhaseDetail({ phaseId }: { phaseId: number }) {
               No activity yet
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LinearIssueDetail — detail view for a Linear issue
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// IssueDetail — detail view for a local issue
+// ---------------------------------------------------------------------------
+
+import type { Issue } from '@/shared/issue-types.js';
+
+const ISSUE_TYPE_COLORS: Record<string, string> = {
+  bug: '#C46555',
+  feature: '#5B8DB8',
+  improvement: '#9178B5',
+  task: '#A09D97',
+};
+
+const ISSUE_PRIORITY_COLORS: Record<string, string> = {
+  urgent: '#C46555',
+  high: '#B89540',
+  medium: '#5B8DB8',
+  low: '#A09D97',
+};
+
+const EXEC_STATUS_COLORS: Record<string, string> = {
+  idle: '#A09D97',
+  queued: '#5B8DB8',
+  running: '#B89540',
+  completed: '#5A9E78',
+  failed: '#C46555',
+  retrying: '#B89540',
+};
+
+function IssueDetail({ issue }: { issue: Issue }) {
+  const typeColor = ISSUE_TYPE_COLORS[issue.type] ?? '#A09D97';
+  const priorityColor = ISSUE_PRIORITY_COLORS[issue.priority] ?? '#A09D97';
+
+  return (
+    <div className="space-y-[var(--spacing-4)]">
+      {/* ID + Title */}
+      <div>
+        <span className="text-[length:var(--font-size-xs)] font-mono text-text-tertiary">
+          {issue.id}
+        </span>
+        <h3 className="text-[length:var(--font-size-lg)] font-[var(--font-weight-bold)] text-text-primary mt-[var(--spacing-1)]">
+          {issue.title}
+        </h3>
+      </div>
+
+      {/* Badges: type, priority, status */}
+      <div className="flex flex-wrap gap-[var(--spacing-2)]">
+        <span
+          className="text-[length:10px] font-[var(--font-weight-semibold)] px-[var(--spacing-2)] py-[2px] rounded-full"
+          style={{ backgroundColor: `${typeColor}20`, color: typeColor }}
+        >
+          {issue.type}
+        </span>
+        <span
+          className="text-[length:10px] font-[var(--font-weight-semibold)] px-[var(--spacing-2)] py-[2px] rounded-full"
+          style={{ backgroundColor: `${priorityColor}20`, color: priorityColor }}
+        >
+          {issue.priority}
+        </span>
+        <span
+          className="text-[length:10px] font-[var(--font-weight-semibold)] px-[var(--spacing-2)] py-[2px] rounded-full"
+          style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)' }}
+        >
+          {issue.status}
+        </span>
+      </div>
+
+      {/* Executor */}
+      {issue.executor && (
+        <div>
+          <div className="text-[length:10px] font-[var(--font-weight-semibold)] uppercase tracking-[0.06em] text-text-tertiary mb-[var(--spacing-2)]">
+            Executor
+          </div>
+          <span className="text-[length:var(--font-size-sm)] text-text-primary">
+            {issue.executor}
+          </span>
+        </div>
+      )}
+
+      {/* Execution status */}
+      {issue.execution && issue.execution.status !== 'idle' && (
+        <div>
+          <div className="text-[length:10px] font-[var(--font-weight-semibold)] uppercase tracking-[0.06em] text-text-tertiary mb-[var(--spacing-2)]">
+            Execution
+          </div>
+          <div className="space-y-[var(--spacing-1)]">
+            <div className="flex items-center gap-[var(--spacing-2)]">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: EXEC_STATUS_COLORS[issue.execution.status] ?? '#A09D97' }}
+              />
+              <span className="text-[length:var(--font-size-sm)] text-text-primary">
+                {issue.execution.status}
+              </span>
+              {issue.execution.retryCount > 0 && (
+                <span className="text-[length:var(--font-size-xs)] text-text-tertiary">
+                  (retry {issue.execution.retryCount})
+                </span>
+              )}
+            </div>
+            {issue.execution.startedAt && (
+              <div className="text-[length:var(--font-size-xs)] text-text-tertiary">
+                Started: {formatRelative(issue.execution.startedAt)}
+              </div>
+            )}
+            {issue.execution.completedAt && (
+              <div className="text-[length:var(--font-size-xs)] text-text-tertiary">
+                Completed: {formatRelative(issue.execution.completedAt)}
+              </div>
+            )}
+            {issue.execution.lastError && (
+              <div className="text-[length:var(--font-size-xs)] text-[#C46555] bg-[#C4655508] rounded px-2 py-1">
+                {issue.execution.lastError}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Description */}
+      {issue.description && (
+        <div>
+          <div className="text-[length:10px] font-[var(--font-weight-semibold)] uppercase tracking-[0.06em] text-text-tertiary mb-[var(--spacing-2)]">
+            Description
+          </div>
+          <p className="text-[length:var(--font-size-sm)] text-text-secondary leading-[1.6] whitespace-pre-wrap">
+            {issue.description}
+          </p>
+        </div>
+      )}
+
+      {/* Timestamps */}
+      <div>
+        <div className="text-[length:10px] font-[var(--font-weight-semibold)] uppercase tracking-[0.06em] text-text-tertiary mb-[var(--spacing-2)]">
+          Activity
+        </div>
+        <div className="text-[length:var(--font-size-xs)] text-text-secondary space-y-[var(--spacing-1)]">
+          <div>Created: {formatRelative(issue.created_at)}</div>
+          <div>Updated: {formatRelative(issue.updated_at)}</div>
         </div>
       </div>
     </div>

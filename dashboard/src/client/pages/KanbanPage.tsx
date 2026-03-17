@@ -1,6 +1,8 @@
 import { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useLinearStore } from '@/client/store/linear-store.js';
+import { useIssueStore } from '@/client/store/issue-store.js';
+import { useExecutionStore } from '@/client/store/execution-store.js';
 import { ViewSwitcherContext } from '@/client/hooks/useViewSwitcher.js';
 import { FilterChipBar } from '@/client/components/common/FilterChipBar.js';
 import { DetailPanel } from '@/client/components/common/DetailPanel.js';
@@ -9,6 +11,9 @@ import { TimelineView } from '@/client/components/kanban/TimelineView.js';
 import { KanbanDetailPanel } from '@/client/components/kanban/KanbanDetailPanel.js';
 import { LinearImportDialog } from '@/client/components/kanban/LinearImportDialog.js';
 import { LinearExportDialog } from '@/client/components/kanban/LinearExportDialog.js';
+import { ExecutionCliPanel } from '@/client/components/kanban/ExecutionCliPanel.js';
+import { ExecutionToolbar } from '@/client/components/kanban/ExecutionToolbar.js';
+import { SupervisorStatusBar } from '@/client/components/kanban/SupervisorStatusBar.js';
 import type { SelectedKanbanItem } from '@/shared/types.js';
 import type { LinearIssue } from '@/shared/linear-types.js';
 import LayoutGrid from 'lucide-react/dist/esm/icons/layout-grid.js';
@@ -18,7 +23,7 @@ import Download from 'lucide-react/dist/esm/icons/download.js';
 import Upload from 'lucide-react/dist/esm/icons/upload.js';
 
 // ---------------------------------------------------------------------------
-// KanbanPage — Kanban + Timeline views with filter bar and detail panel
+// KanbanPage — Kanban + Timeline views with execution controls
 // ---------------------------------------------------------------------------
 
 const FILTER_CHIPS = ['All', 'Executing', 'Planning', 'Pending'] as const;
@@ -31,10 +36,25 @@ export function KanbanPage() {
   const [selectedItem, setSelectedItem] = useState<SelectedKanbanItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const [composingColumnId, setComposingColumnId] = useState<string | null>(null);
+
   const { register, unregister } = useContext(ViewSwitcherContext);
   const selectedPhase = useBoardStore((s) => s.selectedPhase);
   const setSelectedPhase = useBoardStore((s) => s.setSelectedPhase);
   const board = useBoardStore((s) => s.board);
+
+  // Issue store
+  const issues = useIssueStore((s) => s.issues);
+  const fetchIssues = useIssueStore((s) => s.fetchIssues);
+
+  // Execution store
+  const selectedIssueIds = useExecutionStore((s) => s.selectedIssueIds);
+  const toggleSelect = useExecutionStore((s) => s.toggleSelect);
+  const cliPanelIssueId = useExecutionStore((s) => s.cliPanelIssueId);
+  const supervisorStatus = useExecutionStore((s) => s.supervisorStatus);
+
+  const batchMode = selectedIssueIds.size > 0;
 
   // Linear integration
   const linearConfigured = useLinearStore((s) => s.configured);
@@ -47,11 +67,14 @@ export function KanbanPage() {
   const selectLinearTeam = useLinearStore((s) => s.selectTeam);
   const refreshLinear = useLinearStore((s) => s.refresh);
 
+  // Fetch issues on mount
+  useEffect(() => {
+    void fetchIssues();
+  }, [fetchIssues]);
+
   // Check Linear status on mount
   useEffect(() => {
-    void checkLinearStatus().then(() => {
-      // fetchTeams will auto-trigger in the store if configured
-    });
+    void checkLinearStatus();
   }, [checkLinearStatus]);
 
   // Fetch teams when configured
@@ -67,7 +90,7 @@ export function KanbanPage() {
     return linearBoard.columns.flatMap((col) => col.issues);
   }, [linearBoard]);
 
-  const detailOpen = selectedItem !== null;
+  const detailOpen = selectedItem !== null && !cliPanelIssueId;
 
   const handleViewSwitch = useCallback((index: number) => {
     setActiveView(index === 0 ? 'kanban' : 'timeline');
@@ -87,6 +110,21 @@ export function KanbanPage() {
   useEffect(() => {
     return () => unregister();
   }, [unregister]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Only when no input is focused
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+
+      if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
+        // 'C' to compose in backlog
+        setComposingColumnId('backlog');
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   function handleSelectPhase(id: number) {
     const isSame = selectedItem?.type === 'phase' && selectedItem.phaseId === id;
@@ -115,6 +153,16 @@ export function KanbanPage() {
     setSelectedPhase(null);
   }
 
+  function handleIssueCreated() {
+    void fetchIssues();
+  }
+
+  const detailTitle = selectedItem?.type === 'linearIssue'
+    ? 'Linear Issue'
+    : selectedItem?.type === 'issue'
+      ? 'Issue Detail'
+      : 'Phase Detail';
+
   if (!board) {
     return (
       <div className="flex items-center justify-center h-full text-text-secondary text-[length:var(--font-size-sm)]">
@@ -128,11 +176,31 @@ export function KanbanPage() {
       {/* Filter bar */}
       <div className="px-[var(--spacing-4)] py-[var(--spacing-2)] border-b border-border-divider shrink-0">
         <div className="flex items-center justify-between gap-[var(--spacing-3)]">
-          <FilterChipBar
-            chips={[...FILTER_CHIPS]}
-            active={activeFilter}
-            onSelect={setActiveFilter}
-          />
+          <div className="flex items-center gap-[var(--spacing-2)]">
+            <FilterChipBar
+              chips={[...FILTER_CHIPS]}
+              active={activeFilter}
+              onSelect={setActiveFilter}
+            />
+
+            {/* Show Done toggle */}
+            <button
+              type="button"
+              onClick={() => setShowDone(!showDone)}
+              className={[
+                'flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border text-[length:var(--font-size-xs)] transition-colors',
+                showDone
+                  ? 'border-accent-blue text-accent-blue bg-[var(--color-accent-blue-10,rgba(90,130,200,0.1))]'
+                  : 'border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              ].join(' ')}
+              title={showDone ? 'Hide Done column' : 'Show Done column'}
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Done
+            </button>
+          </div>
 
           {/* Linear controls */}
           {linearConfigured && (
@@ -187,7 +255,7 @@ export function KanbanPage() {
         </div>
       </div>
 
-      {/* Content + Detail */}
+      {/* Content + Detail + CLI Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
         <div className="flex-1 overflow-auto min-w-0">
@@ -195,25 +263,47 @@ export function KanbanPage() {
             <KanbanBoard
               onSelectPhase={handleSelectPhase}
               linearIssues={allLinearIssues}
+              localIssues={issues}
               selectedItem={selectedItem}
               onSelectItem={handleSelectItem}
+              composingColumnId={composingColumnId}
+              onStartCompose={setComposingColumnId}
+              onStopCompose={() => setComposingColumnId(null)}
+              onIssueCreated={handleIssueCreated}
+              showDone={showDone}
+              batchMode={batchMode}
+              selectedIssueIds={selectedIssueIds}
+              onToggleIssueCheck={toggleSelect}
             />
           ) : (
             <TimelineView onSelectPhase={handleSelectPhase} />
           )}
         </div>
 
+        {/* CLI Panel (takes priority over detail panel) */}
+        {cliPanelIssueId && (
+          <ExecutionCliPanel />
+        )}
+
         {/* Detail panel */}
-        <DetailPanel
-          open={detailOpen}
-          onClose={handleCloseDetail}
-          title={selectedItem?.type === 'linearIssue' ? 'Linear Issue' : 'Phase Detail'}
-        >
-          {selectedItem && (
-            <KanbanDetailPanel selectedItem={selectedItem} />
-          )}
-        </DetailPanel>
+        {!cliPanelIssueId && (
+          <DetailPanel
+            open={detailOpen}
+            onClose={handleCloseDetail}
+            title={detailTitle}
+          >
+            {selectedItem && (
+              <KanbanDetailPanel selectedItem={selectedItem} />
+            )}
+          </DetailPanel>
+        )}
       </div>
+
+      {/* Supervisor status bar */}
+      <SupervisorStatusBar />
+
+      {/* Batch execution toolbar (floating) */}
+      <ExecutionToolbar />
 
       {/* Import/Export dialogs */}
       {importOpen && (

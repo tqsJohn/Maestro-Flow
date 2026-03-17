@@ -4,6 +4,7 @@ import type { StateManager } from '../state/state-manager.js';
 import type { DashboardEventBus } from '../state/event-bus.js';
 import type { SSEHub } from '../sse/sse-hub.js';
 import type { AgentManager } from '../agents/agent-manager.js';
+import type { ExecutionScheduler } from '../execution/execution-scheduler.js';
 import { createHealthRoute } from './health.js';
 import { createBoardRoutes } from './board.js';
 import { createPhaseRoutes } from './phases.js';
@@ -13,6 +14,7 @@ import { createEventsRoute } from './events.js';
 import { createAgentRoutes } from './agents.js';
 import { createSettingsRoutes } from './settings.js';
 import { createIssueRoutes } from './issues.js';
+import { createExecutionRoutes } from './execution.js';
 import { createCliHistoryRoutes } from './cli-history.js';
 import { createMcpRoutes } from './mcp.js';
 import { createSpecsRoutes } from './specs.js';
@@ -32,6 +34,7 @@ export function createRoutes(
   eventBus: DashboardEventBus,
   sseHub: SSEHub,
   agentManager: AgentManager,
+  executionScheduler?: ExecutionScheduler,
 ): Hono {
   const routes = new Hono();
 
@@ -57,6 +60,11 @@ export function createRoutes(
 
   // Issue routes (depends on workflow root for JSONL storage)
   routes.route('/', createIssueRoutes(workflowRoot));
+
+  // Execution routes (depends on ExecutionScheduler)
+  if (executionScheduler) {
+    routes.route('/', createExecutionRoutes(executionScheduler));
+  }
 
   // CLI history routes (reads from ~/.maestro/cli-history/)
   routes.route('/', createCliHistoryRoutes());

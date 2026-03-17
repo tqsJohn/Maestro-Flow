@@ -19,6 +19,7 @@ import { ClaudeCodeAdapter } from './agents/claude-code-adapter.js';
 import { StreamJsonAdapter } from './agents/stream-json-adapter.js';
 import { CodexCliAdapter } from './agents/codex-cli-adapter.js';
 import { OpenCodeAdapter } from './agents/opencode-adapter.js';
+import { ExecutionScheduler } from './execution/execution-scheduler.js';
 import { createRoutes } from './routes/index.js';
 
 async function main(): Promise<void> {
@@ -59,9 +60,16 @@ async function main(): Promise<void> {
   agentManager.registerAdapter(new OpenCodeAdapter());
 
   // ---------------------------------------------------------------------------
+  // Execution Scheduler — orchestrates issue execution via agent processes
+  // ---------------------------------------------------------------------------
+  const { join } = await import('node:path');
+  const jsonlPath = join(workflowRoot, 'issues', 'issues.jsonl');
+  const executionScheduler = new ExecutionScheduler(agentManager, eventBus, jsonlPath);
+
+  // ---------------------------------------------------------------------------
   // WebSocket Manager — broadcasts EventBus events to connected WS clients
   // ---------------------------------------------------------------------------
-  const wsManager = new WebSocketManager(eventBus, agentManager);
+  const wsManager = new WebSocketManager(eventBus, agentManager, executionScheduler);
 
   // ---------------------------------------------------------------------------
   // Hono application
@@ -73,7 +81,7 @@ async function main(): Promise<void> {
   app.use('*', logger());
 
   // API routes
-  const routes = createRoutes(stateManager, workflowRoot, eventBus, sseHub, agentManager);
+  const routes = createRoutes(stateManager, workflowRoot, eventBus, sseHub, agentManager, executionScheduler);
   app.route('/', routes);
 
   // Resolve dashboard root relative to this file (works for both dev and npm install)
@@ -116,6 +124,7 @@ async function main(): Promise<void> {
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
+    await executionScheduler.destroy();
     await agentManager.stopAll();
     wsManager.destroy();
     sseHub.destroy();

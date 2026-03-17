@@ -6,6 +6,7 @@ import type { SSEEvent } from '../../shared/types.js';
 import type { WsServerMessage, WsClientMessage, WsEventType } from '../../shared/ws-protocol.js';
 import type { DashboardEventBus } from '../state/event-bus.js';
 import type { AgentManager } from '../agents/agent-manager.js';
+import type { ExecutionScheduler } from '../execution/execution-scheduler.js';
 
 // ---------------------------------------------------------------------------
 // WebSocketManager — manages WS clients, bridges EventBus to WS broadcast
@@ -19,6 +20,7 @@ export class WebSocketManager {
   constructor(
     private readonly eventBus: DashboardEventBus,
     private readonly agentManager: AgentManager,
+    private readonly executionScheduler?: ExecutionScheduler,
   ) {
     this.wss = new WebSocketServer({ noServer: true });
 
@@ -173,6 +175,40 @@ export class WebSocketManager {
       case 'cli:stopped':
         this.agentManager.updateCliProcessStatus(msg.processId, 'stopped');
         this.eventBus.emit('agent:stopped', { processId: msg.processId });
+        break;
+
+      // --- Execution actions -------------------------------------------------
+      case 'execute:issue':
+        if (this.executionScheduler) {
+          this.executionScheduler.executeIssue(msg.issueId, msg.executor)
+            .catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              this.sendError(ws, 'execute:issue', message);
+            });
+        }
+        break;
+
+      case 'execute:batch':
+        if (this.executionScheduler) {
+          this.executionScheduler.executeBatch(msg.issueIds, msg.executor, msg.maxConcurrency)
+            .catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              this.sendError(ws, 'execute:batch', message);
+            });
+        }
+        break;
+
+      case 'supervisor:toggle':
+        if (this.executionScheduler) {
+          if (msg.config) {
+            this.executionScheduler.updateConfig(msg.config);
+          }
+          if (msg.enabled) {
+            this.executionScheduler.startSupervisor();
+          } else {
+            this.executionScheduler.stopSupervisor();
+          }
+        }
         break;
 
       default:

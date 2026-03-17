@@ -202,6 +202,8 @@ export function createIssueRoutes(workflowRoot: string): Hono {
         if (body.type !== undefined) patch.type = body.type as IssueType;
         if (body.priority !== undefined) patch.priority = body.priority as IssuePriority;
         if (body.status !== undefined) patch.status = body.status as IssueStatus;
+        if (body.executor !== undefined) patch.executor = body.executor as UpdateIssueRequest['executor'];
+        if (body.promptMode !== undefined) patch.promptMode = body.promptMode as UpdateIssueRequest['promptMode'];
 
         issues[idx] = {
           ...issues[idx],

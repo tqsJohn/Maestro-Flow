@@ -30,16 +30,20 @@ export type ProjectStatus = 'planning' | 'executing' | 'verifying' | 'idle';
 // Kanban item selection — unified type for phases and Linear issues
 // ---------------------------------------------------------------------------
 import type { LinearIssue } from './linear-types.js';
+import type { Issue } from './issue-types.js';
 
 export type SelectedKanbanItem =
   | { type: 'phase'; phaseId: number }
-  | { type: 'linearIssue'; issue: LinearIssue };
+  | { type: 'linearIssue'; issue: LinearIssue }
+  | { type: 'issue'; issue: Issue };
 
 // ---------------------------------------------------------------------------
 // Re-export agent types for convenience
 // ---------------------------------------------------------------------------
 export type { AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from './agent-types.js';
 import type { AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from './agent-types.js';
+import type { SupervisorStatus } from './execution-types.js';
+import type { ExecutionStartedPayload, ExecutionCompletedPayload, ExecutionFailedPayload } from './ws-protocol.js';
 
 // ---------------------------------------------------------------------------
 // SSE event types
@@ -57,7 +61,11 @@ export type SSEEventType =
   | 'agent:entry'
   | 'agent:approval'
   | 'agent:status'
-  | 'agent:stopped';
+  | 'agent:stopped'
+  | 'execution:started'
+  | 'execution:completed'
+  | 'execution:failed'
+  | 'supervisor:status';
 
 // ---------------------------------------------------------------------------
 // Core interfaces — derived from fusion-design.md JSON schemas
@@ -218,6 +226,6 @@ export interface BoardState {
 /** SSE event envelope */
 export interface SSEEvent {
   type: SSEEventType;
-  data: BoardState | PhaseCard | TaskCard | ScratchCard | ProjectState | AgentProcess | NormalizedEntry | ApprovalRequest | AgentStatusPayload | AgentStoppedPayload | string | null;
+  data: BoardState | PhaseCard | TaskCard | ScratchCard | ProjectState | AgentProcess | NormalizedEntry | ApprovalRequest | AgentStatusPayload | AgentStoppedPayload | ExecutionStartedPayload | ExecutionCompletedPayload | ExecutionFailedPayload | SupervisorStatus | string | null;
   timestamp: string;
 }

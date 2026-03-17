@@ -126,6 +126,11 @@ export const WS_EVENT_TYPES: Record<string, WsEventType> = {
   AGENT_APPROVAL: 'agent:approval',
   AGENT_STATUS: 'agent:status',
   AGENT_STOPPED: 'agent:stopped',
+  // Execution events
+  EXECUTION_STARTED: 'execution:started',
+  EXECUTION_COMPLETED: 'execution:completed',
+  EXECUTION_FAILED: 'execution:failed',
+  SUPERVISOR_STATUS: 'supervisor:status',
   // Board events (shared with SSE)
   BOARD_FULL: 'board:full',
   PHASE_UPDATED: 'phase:updated',
@@ -157,6 +162,18 @@ export const AGENT_API_ENDPOINTS = {
 export const ISSUE_API_ENDPOINTS = {
   ISSUES: '/api/issues',
   ISSUE: '/api/issues/:id',
+} as const;
+
+// ---------------------------------------------------------------------------
+// Execution API endpoint paths
+// ---------------------------------------------------------------------------
+
+export const EXECUTION_API_ENDPOINTS = {
+  DISPATCH: '/api/execution/dispatch',
+  BATCH: '/api/execution/batch',
+  CANCEL: '/api/execution/cancel',
+  STATUS: '/api/execution/status',
+  SUPERVISOR: '/api/execution/supervisor',
 } as const;
 
 // ---------------------------------------------------------------------------

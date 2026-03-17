@@ -2,7 +2,8 @@
 // WebSocket protocol types — server/client message contracts
 // ---------------------------------------------------------------------------
 
-import type { AgentConfig, AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from './agent-types.js';
+import type { AgentConfig, AgentProcess, AgentType, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from './agent-types.js';
+import type { SupervisorConfig, SupervisorStatus } from './execution-types.js';
 
 // ---------------------------------------------------------------------------
 // WS event types — discriminator values for server messages
@@ -16,6 +17,11 @@ export type WsEventType =
   | 'agent:approval'
   | 'agent:status'
   | 'agent:stopped'
+  // Execution events
+  | 'execution:started'
+  | 'execution:completed'
+  | 'execution:failed'
+  | 'supervisor:status'
   // Board events (mirrored from SSE for WS clients)
   | 'board:full'
   | 'phase:updated'
@@ -56,7 +62,10 @@ export type WsClientMessage =
   | WsClientApproveMessage
   | WsClientCliBridgeSpawnMessage
   | WsClientCliBridgeEntryMessage
-  | WsClientCliBridgeStoppedMessage;
+  | WsClientCliBridgeStoppedMessage
+  | WsClientExecuteIssueMessage
+  | WsClientExecuteBatchMessage
+  | WsClientSupervisorToggleMessage;
 
 export interface WsClientSpawnMessage {
   action: 'spawn';
@@ -98,6 +107,50 @@ export interface WsClientCliBridgeEntryMessage {
 export interface WsClientCliBridgeStoppedMessage {
   action: 'cli:stopped';
   processId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Execution client messages
+// ---------------------------------------------------------------------------
+
+export interface WsClientExecuteIssueMessage {
+  action: 'execute:issue';
+  issueId: string;
+  executor?: AgentType;
+}
+
+export interface WsClientExecuteBatchMessage {
+  action: 'execute:batch';
+  issueIds: string[];
+  executor?: AgentType;
+  maxConcurrency?: number;
+}
+
+export interface WsClientSupervisorToggleMessage {
+  action: 'supervisor:toggle';
+  enabled: boolean;
+  config?: Partial<SupervisorConfig>;
+}
+
+// ---------------------------------------------------------------------------
+// Execution server event payloads
+// ---------------------------------------------------------------------------
+
+export interface ExecutionStartedPayload {
+  issueId: string;
+  processId: string;
+  executor: AgentType;
+}
+
+export interface ExecutionCompletedPayload {
+  issueId: string;
+  processId: string;
+}
+
+export interface ExecutionFailedPayload {
+  issueId: string;
+  processId: string;
+  error: string;
 }
 
 // ---------------------------------------------------------------------------
