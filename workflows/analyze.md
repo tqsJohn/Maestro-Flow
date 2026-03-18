@@ -273,6 +273,8 @@ CLI calls use `run_in_background: true`. Wait for results before continuing.
 - Multi-perspective: extract synthesis (convergent themes, conflicting views, unique contributions)
 - Write to `explorations.json` (single) or `perspectives.json` (multi)
 
+`explorations.json` includes `technical_solutions[]`: `{round, solution, problem, rationale, alternatives, status: proposed|validated|rejected, evidence_refs[], next_action}` — populated throughout Step 5 rounds.
+
 **Step 4.4: Update discussion.md — Round 1**
 
 Append Round 1 to discussion timeline:
@@ -316,6 +318,7 @@ Generate 1-2 sentence recap linking previous round conclusions to current starti
 
 **5.5: Update discussion.md** after each round:
 - **Append** Round N: user input, direction, Q&A, corrections, new insights
+- **Append Technical Solutions** — for every solution proposed, validated, or rejected this round, record immediately using Technical Solution Record Format in `#### Technical Solutions`
 - **Replace** `## Current Understanding` block with latest consolidated understanding
 - **Update** `## Table of Contents` with links to new sections
 
@@ -379,7 +382,7 @@ Gate: ❌ Missed items must be either (a) addressed in additional round or (b) c
 Compile from all phases:
 - Decision Trail from all rounds
 - Key conclusions with evidence + confidence (high/medium/low)
-- Recommendations with rationale + priority (high/medium/low) + actionable steps
+- Recommendations with rationale + priority (high/medium/low) + actionable steps — **merge validated `technical_solutions[]` from explorations.json as high-priority recommendations**
 - Open questions, follow-up suggestions
 - Write to `conclusions.json`
 
@@ -605,6 +608,7 @@ Record immediately when any occur:
 | User feedback | Input, rationale for adoption/adjustment |
 | Disagreement/trade-off | Conflicting views, trade-off basis, final choice |
 | Scope adjustment | Before/after scope, trigger reason |
+| **Technical solution proposed/validated/rejected** | Solution description, rationale, alternatives considered, status |
 
 **Decision Record Format**:
 ```
@@ -614,6 +618,17 @@ Record immediately when any occur:
 > - **Chosen**: [Approach] — **Reason**: [Rationale]
 > - **Rejected**: [Why other options were discarded]
 > - **Impact**: [Effect on analysis]
+```
+
+**Technical Solution Record Format**:
+```
+> **Solution**: [Description — what approach, pattern, or implementation]
+> - **Status**: [Proposed / Validated / Rejected]
+> - **Problem**: [What problem this solves]
+> - **Rationale**: [Why this approach]
+> - **Alternatives**: [Other options considered and why not chosen]
+> - **Evidence**: [file:line or code anchor references]
+> - **Next Action**: [Follow-up required or none]
 ```
 
 ## Discussion Timeline (discussion.md)
