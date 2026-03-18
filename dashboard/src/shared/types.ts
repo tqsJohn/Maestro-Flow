@@ -62,6 +62,7 @@ export type SSEEventType =
   | 'agent:approval'
   | 'agent:status'
   | 'agent:stopped'
+  | 'agent:turnCompleted'
   | 'execution:started'
   | 'execution:completed'
   | 'execution:failed'

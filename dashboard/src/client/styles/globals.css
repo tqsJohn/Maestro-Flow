@@ -100,6 +100,20 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(15, 15, 15, 0.03);
   --shadow-inner: inset 0 0 0 1px rgba(15, 15, 15, 0.05);
   --shadow-focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px rgba(35, 131, 226, 0.57);
+
+  /* Glass card */
+  --color-bg-card-glass: rgba(255, 255, 255, 0.94);
+  --blur-glass: blur(18px);
+  --shadow-dramatic: 0 20px 50px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 15, 15, 0.04);
+
+  /* Brand triplet */
+  --color-brand: #10a37f;
+  --color-brand-light: #e8faf4;
+  --color-brand-hover: #0f513f;
+
+  /* Message backgrounds */
+  --color-bg-user-message: rgba(55, 53, 47, 0.03);
+  --color-bg-assistant-message: #FFFFFF;
 }
 
 /* ===== DARK MODE ===== */
@@ -164,6 +178,20 @@
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
     --shadow-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
     --shadow-focus-ring: 0 0 0 2px #191919, 0 0 0 4px rgba(35, 131, 226, 0.57);
+
+    /* Glass card */
+    --color-bg-card-glass: rgba(37, 37, 37, 0.85);
+    --blur-glass: blur(18px);
+    --shadow-dramatic: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+
+    /* Brand triplet */
+    --color-brand: #10a37f;
+    --color-brand-light: #0f2b22;
+    --color-brand-hover: #14d4a0;
+
+    /* Message backgrounds */
+    --color-bg-user-message: rgba(255, 255, 255, 0.04);
+    --color-bg-assistant-message: #252525;
   }
 }
 
@@ -227,6 +255,20 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --shadow-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   --shadow-focus-ring: 0 0 0 2px #191919, 0 0 0 4px rgba(35, 131, 226, 0.57);
+
+  /* Glass card */
+  --color-bg-card-glass: rgba(37, 37, 37, 0.85);
+  --blur-glass: blur(18px);
+  --shadow-dramatic: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+
+  /* Brand triplet */
+  --color-brand: #10a37f;
+  --color-brand-light: #0f2b22;
+  --color-brand-hover: #14d4a0;
+
+  /* Message backgrounds */
+  --color-bg-user-message: rgba(255, 255, 255, 0.04);
+  --color-bg-assistant-message: #252525;
 }
 
 /* ===== STATIC TOKENS ===== */
@@ -398,6 +440,20 @@
   --shadow-inner: var(--shadow-inner);
   --shadow-focus-ring: var(--shadow-focus-ring);
 
+  /* Glass card */
+  --color-bg-card-glass: var(--color-bg-card-glass);
+  --blur-glass: var(--blur-glass);
+  --shadow-dramatic: var(--shadow-dramatic);
+
+  /* Brand */
+  --color-brand: var(--color-brand);
+  --color-brand-light: var(--color-brand-light);
+  --color-brand-hover: var(--color-brand-hover);
+
+  /* Message backgrounds */
+  --color-bg-user-message: var(--color-bg-user-message);
+  --color-bg-assistant-message: var(--color-bg-assistant-message);
+
   /* Border radius */
   --radius-none: var(--radius-none);
   --radius-sm: var(--radius-sm);
@@ -446,6 +502,7 @@ body {
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
   background-color: var(--color-bg-primary);
+  background-image: radial-gradient(circle at top, color-mix(in srgb, var(--color-brand) 4%, transparent), transparent);
   color: var(--color-text-primary);
   margin: 0;
   padding: 0;
@@ -576,12 +633,8 @@ body {
   100% { transform: scale(2.2); opacity: 0; }
 }
 
-/* DockRail floating panel — open state via class toggle */
-.dock-panel-open {
-  transform: translateX(0) !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
+/* DockRail floating panel open state is now driven by React state (isPanelOpen).
+   Conditional Tailwind classes: translate-x-0 opacity-100 pointer-events-auto */
 
 /* Reduced motion: disable all animations */
 @media (prefers-reduced-motion: reduce) {

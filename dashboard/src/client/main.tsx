@@ -1,3 +1,4 @@
+import '@/client/theme-init.js'; // Eager theme init -- must be first import
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { I18nProvider } from '@/client/i18n/index.js';

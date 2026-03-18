@@ -17,6 +17,9 @@ export type WsEventType =
   | 'agent:approval'
   | 'agent:status'
   | 'agent:stopped'
+  | 'agent:turnCompleted'
+  | 'agent:thought'
+  | 'agent:streaming'
   // Execution events
   | 'execution:started'
   | 'execution:completed'

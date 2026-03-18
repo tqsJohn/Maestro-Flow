@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 /** Supported agent CLI types */
-export type AgentType = 'claude-code' | 'codex' | 'gemini' | 'qwen' | 'opencode';
+export type AgentType = 'claude-code' | 'codex' | 'codex-server' | 'gemini' | 'qwen' | 'opencode';
 
 /** Agent process lifecycle status */
 export type AgentProcessStatus =
@@ -156,6 +156,24 @@ export type NormalizedEntry =
 // Agent event payload types (used in WS/SSE event envelopes)
 // ---------------------------------------------------------------------------
 
+/** Thought data from agent reasoning */
+export interface ThoughtData {
+  subject: string;
+  description: string;
+}
+
+/** Payload for agent:thought events */
+export interface AgentThoughtPayload {
+  processId: string;
+  thought: ThoughtData;
+}
+
+/** Payload for agent:streaming events */
+export interface AgentStreamingPayload {
+  processId: string;
+  streaming: boolean;
+}
+
 /** Payload for agent:status events */
 export interface AgentStatusPayload {
   processId: string;
@@ -167,6 +185,11 @@ export interface AgentStatusPayload {
 export interface AgentStoppedPayload {
   processId: string;
   reason?: string;
+}
+
+/** Payload for agent:turnCompleted events (codex-server multi-turn) */
+export interface AgentTurnCompletedPayload {
+  processId: string;
 }
 
 // ---------------------------------------------------------------------------

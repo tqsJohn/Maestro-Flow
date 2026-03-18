@@ -67,7 +67,7 @@ function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 const VALID_EXECUTORS = new Set<string>([
-  'claude-code', 'codex', 'gemini', 'qwen', 'opencode',
+  'claude-code', 'codex', 'codex-server', 'gemini', 'qwen', 'opencode',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -84,6 +84,7 @@ export class ExecutionScheduler {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt: string | null = null;
   private stats = { totalDispatched: 0, totalCompleted: 0, totalFailed: 0 };
+  private tokenUsage = { totalInputTokens: 0, totalOutputTokens: 0 };
 
   constructor(
     private readonly agentManager: AgentManager,
@@ -243,6 +244,7 @@ export class ExecutionScheduler {
       })),
       lastTickAt: this.lastTickAt,
       stats: { ...this.stats },
+      tokenUsage: { ...this.tokenUsage },
     };
   }
 
@@ -387,6 +389,8 @@ export class ExecutionScheduler {
       executor,
       startedAt: now,
       lastActivityAt: now,
+      turnNumber: 1,
+      maxTurns: this.config.maxTurnsPerIssue ?? 3,
     };
 
     this.runningSlots.set(proc.id, slot);
@@ -489,12 +493,25 @@ export class ExecutionScheduler {
       void this.handleAgentStopped(payload.processId, payload.reason);
     });
 
-    // Track activity for stall detection
+    // Multi-turn continuation: triggered by turn/completed notification in
+    // codex app-server mode. The process stays alive between turns.
+    this.eventBus.on('agent:turnCompleted', (event) => {
+      const payload = event.data as { processId: string };
+      void this.handleTurnCompleted(payload.processId);
+    });
+
+    // Track activity for stall detection + accumulate token usage
     this.eventBus.on('agent:entry', (event) => {
-      const entry = event.data as { processId: string };
+      const entry = event.data as { processId: string; type: string; inputTokens?: number; outputTokens?: number };
       const slot = this.runningSlots.get(entry.processId);
       if (slot) {
         slot.lastActivityAt = new Date().toISOString();
+      }
+
+      // Accumulate token usage from token_usage entries
+      if (entry.type === 'token_usage') {
+        this.tokenUsage.totalInputTokens += entry.inputTokens ?? 0;
+        this.tokenUsage.totalOutputTokens += entry.outputTokens ?? 0;
       }
     });
   }
@@ -502,8 +519,6 @@ export class ExecutionScheduler {
   private async handleAgentStopped(processId: string, reason?: string): Promise<void> {
     const slot = this.runningSlots.get(processId);
     if (!slot) return;
-
-    this.runningSlots.delete(processId);
 
     // Check entries for success/failure
     const entries = this.agentManager.getEntries(processId);
@@ -513,13 +528,41 @@ export class ExecutionScheduler {
     );
 
     if (hasError || reason === 'error') {
+      this.runningSlots.delete(processId);
       const errorMsg = reason ?? 'Agent stopped with error';
       await this.handleFailure(slot.issueId, errorMsg);
-    } else {
-      await this.handleCompletion(slot.issueId, processId);
+      await this.dispatchNext();
+      return;
     }
 
-    // Dispatch next from queue
+    // Process exited normally — treat as completion.
+    // Multi-turn continuation is handled by handleTurnCompleted (triggered by
+    // turn/completed notification while the process is still alive).
+    this.runningSlots.delete(processId);
+    await this.handleCompletion(slot.issueId, processId);
+    await this.dispatchNext();
+  }
+
+  /**
+   * Handle turn/completed notification from a codex-server agent.
+   * The process is still alive — attempt continuation or complete.
+   */
+  private async handleTurnCompleted(processId: string): Promise<void> {
+    const slot = this.runningSlots.get(processId);
+    if (!slot) return;
+
+    if (await this.attemptContinuation(slot, processId)) {
+      return; // Continuation started, slot stays in runningSlots
+    }
+
+    // No more turns — complete the execution.
+    // Stop the still-alive process since we're done with it.
+    await this.agentManager.stop(processId).catch((err: unknown) => {
+      console.warn(`[Execution] Failed to stop completed agent ${processId}:`, err);
+    });
+
+    this.runningSlots.delete(processId);
+    await this.handleCompletion(slot.issueId, processId);
     await this.dispatchNext();
   }
 
@@ -637,27 +680,135 @@ export class ExecutionScheduler {
   }
 
   // -------------------------------------------------------------------------
+  // Private: Multi-turn continuation (codex-server only)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Attempt to continue a codex-server agent for another turn.
+   * Returns true if continuation was initiated; false if normal completion should proceed.
+   */
+  private async attemptContinuation(slot: ExecutionSlot, processId: string): Promise<boolean> {
+    // Only codex-server supports interactive follow-up messages
+    if (slot.executor !== 'codex-server') return false;
+
+    // Check turn budget
+    if (slot.turnNumber >= slot.maxTurns) return false;
+
+    // Re-read issue from JSONL to check current status
+    let issue: Issue | null;
+    try {
+      issue = await this.findIssue(slot.issueId);
+    } catch {
+      // IO failure — don't continue, fall through to normal completion
+      return false;
+    }
+    if (!issue) return false;
+
+    // If issue is already resolved or closed, no need to continue
+    if (issue.status === 'resolved' || issue.status === 'closed') return false;
+
+    // Check that the agent process is still registered in agentManager
+    // (sendMessage will throw if process is gone)
+    const continuationPrompt = this.buildContinuationPrompt(
+      slot.turnNumber + 1,
+      slot.maxTurns,
+    );
+
+    try {
+      await this.agentManager.sendMessage(processId, continuationPrompt);
+    } catch {
+      // Process already exited — fall through to normal completion
+      return false;
+    }
+
+    // Update slot for next turn
+    slot.turnNumber++;
+    slot.lastActivityAt = new Date().toISOString();
+    // Slot remains in runningSlots (not deleted)
+
+    console.log(
+      `[Execution] Continuation turn ${slot.turnNumber}/${slot.maxTurns} for issue ${slot.issueId} (process ${processId})`,
+    );
+
+    return true;
+  }
+
+  /** Build a continuation prompt for multi-turn execution */
+  private buildContinuationPrompt(turnNumber: number, maxTurns: number): string {
+    return [
+      `Continuation turn #${turnNumber} of ${maxTurns}.`,
+      '',
+      'Continuation guidance:',
+      '- The previous turn completed normally, but the issue is still in an active state.',
+      '- Resume from the current workspace and workpad state instead of restarting from scratch.',
+      '- Review what was accomplished in the previous turn and continue from where it left off.',
+    ].join('\n');
+  }
+
+  // -------------------------------------------------------------------------
   // Private: Supervisor tick
   // -------------------------------------------------------------------------
 
   private async tick(): Promise<void> {
     this.lastTickAt = new Date().toISOString();
 
-    // 1. Stall detection
+    // 1. Reconcile running issues (detect externally resolved/closed)
+    await this.reconcileRunningIssues();
+
+    // 2. Stall detection
     await this.detectStalls();
 
-    // 2. Process retry queue
+    // 3. Process retry queue
     this.processRetries();
 
-    // 3. Auto-dispatch from backlog
+    // 4. Auto-dispatch from backlog
     if (this.config.strategy === 'priority') {
       await this.autoDispatchByPriority();
     } else if (this.config.strategy === 'smart') {
       await this.autoDispatchSmart();
     }
 
-    // 4. Emit status
+    // 5. Emit status
     this.emitStatus();
+  }
+
+  /**
+   * Reconcile running slots against persisted issue state.
+   * If an issue was externally resolved or closed, stop its agent.
+   */
+  private async reconcileRunningIssues(): Promise<void> {
+    for (const [processId, slot] of this.runningSlots) {
+      const issue = await this.findIssue(slot.issueId);
+      if (!issue) continue;
+
+      if (issue.status === 'resolved' || issue.status === 'closed') {
+        console.log(
+          `[Execution] Reconcile: issue ${slot.issueId} is ${issue.status}, stopping agent ${processId}`,
+        );
+
+        await this.agentManager.stop(processId).catch((err: unknown) => {
+          console.warn(`[Execution] Failed to stop reconciled agent ${processId}:`, err);
+        });
+
+        // Update JSONL status before removing the slot
+        await this.updateIssueFields(slot.issueId, {
+          status: 'resolved',
+          execution: {
+            status: 'completed',
+            completedAt: new Date().toISOString(),
+          },
+        });
+
+        this.runningSlots.delete(processId);
+        this.claimed.delete(slot.issueId);
+        this.stats.totalCompleted++;
+
+        this.eventBus.emit('execution:completed', {
+          issueId: slot.issueId,
+          processId,
+        });
+      }
+    }
   }
 
   private async detectStalls(): Promise<void> {

@@ -1,5 +1,6 @@
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { MarkdownRenderer } from '@/client/components/artifacts/MarkdownRenderer.js';
+import { CollapsibleContent } from '@/client/components/CollapsibleContent.js';
 import type { AssistantMessageEntry, AgentType } from '@/shared/agent-types.js';
 
 // ---------------------------------------------------------------------------
@@ -9,6 +10,7 @@ import type { AssistantMessageEntry, AgentType } from '@/shared/agent-types.js';
 const AVATAR_CONFIG: Record<AgentType, { label: string; color: string; className: string }> = {
   'claude-code': { label: 'C', color: 'var(--color-accent-purple)', className: 'claude' },
   codex:         { label: 'Cx', color: 'var(--color-accent-green)', className: 'codex' },
+  'codex-server': { label: 'Cs', color: 'var(--color-accent-green)', className: 'codex' },
   gemini:        { label: 'G', color: 'var(--color-accent-blue)', className: 'gemini' },
   qwen:          { label: 'Q', color: 'var(--color-accent-orange)', className: 'qwen' },
   opencode:      { label: 'O', color: 'var(--color-text-tertiary)', className: 'opencode' },
@@ -54,7 +56,9 @@ export function AssistantMessage({ entry }: { entry: AssistantMessageEntry }) {
             />
           </div>
         ) : (
-          <MarkdownRenderer content={entry.content} />
+          <CollapsibleContent maxHeight={300}>
+            <MarkdownRenderer content={entry.content} />
+          </CollapsibleContent>
         )}
       </div>
     </div>

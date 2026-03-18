@@ -6,6 +6,31 @@ import type { ApprovalRequestEntry } from '@/shared/agent-types.js';
 // ApprovalCard -- interactive approval card with Allow/Deny buttons
 // ---------------------------------------------------------------------------
 
+function KbdBadge({ label, light }: { label: string; light?: boolean }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 18,
+        height: 16,
+        padding: '0 4px',
+        borderRadius: 3,
+        fontSize: 10,
+        fontFamily: 'monospace',
+        fontWeight: 600,
+        lineHeight: 1,
+        backgroundColor: light ? 'rgba(255,255,255,0.2)' : 'var(--color-bg-hover)',
+        color: light ? 'rgba(255,255,255,0.8)' : 'var(--color-text-tertiary)',
+        border: light ? 'none' : '1px solid var(--color-border-divider)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function ApprovalCard({ entry }: { entry: ApprovalRequestEntry }) {
   function handleDecision(allow: boolean) {
     sendWsMessage({
@@ -61,18 +86,19 @@ export function ApprovalCard({ entry }: { entry: ApprovalRequestEntry }) {
         <button
           type="button"
           onClick={() => handleDecision(true)}
-          className="rounded-[var(--radius-md)] px-[var(--spacing-4)] py-[5px] text-[12px] font-semibold transition-all hover:opacity-90"
+          className="rounded-[var(--radius-md)] px-[var(--spacing-4)] py-[5px] text-[12px] font-semibold transition-all hover:opacity-90 flex items-center gap-[6px]"
           style={{
             backgroundColor: 'var(--color-accent-green)',
             color: '#fff',
           }}
         >
           Allow
+          <KbdBadge label="Y" light />
         </button>
         <button
           type="button"
           onClick={() => handleDecision(false)}
-          className="rounded-[var(--radius-md)] px-[var(--spacing-4)] py-[5px] text-[12px] font-semibold border transition-all"
+          className="rounded-[var(--radius-md)] px-[var(--spacing-4)] py-[5px] text-[12px] font-semibold border transition-all flex items-center gap-[6px]"
           style={{
             borderColor: 'var(--color-border)',
             backgroundColor: 'var(--color-bg-card)',
@@ -90,7 +116,11 @@ export function ApprovalCard({ entry }: { entry: ApprovalRequestEntry }) {
           }}
         >
           Deny
+          <KbdBadge label="Esc" />
         </button>
+        <span className="ml-auto text-[10px]" style={{ color: 'var(--color-text-placeholder)' }}>
+          <KbdBadge label="A" /> Always
+        </span>
       </div>
     </div>
   );

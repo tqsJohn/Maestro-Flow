@@ -1,5 +1,6 @@
 import type { PhaseStatus, TaskStatus, SSEEventType } from './types.js';
 import type { WsEventType } from './ws-protocol.js';
+import type { AgentType } from './agent-types.js';
 
 // ---------------------------------------------------------------------------
 // Status enums
@@ -126,6 +127,8 @@ export const WS_EVENT_TYPES: Record<string, WsEventType> = {
   AGENT_APPROVAL: 'agent:approval',
   AGENT_STATUS: 'agent:status',
   AGENT_STOPPED: 'agent:stopped',
+  AGENT_THOUGHT: 'agent:thought',
+  AGENT_STREAMING: 'agent:streaming',
   // Execution events
   EXECUTION_STARTED: 'execution:started',
   EXECUTION_COMPLETED: 'execution:completed',
@@ -219,4 +222,26 @@ export const STATUS_COLORS: Record<PhaseStatus, string> = {
   testing: '#5B8DB8',
   completed: '#5A9E78',
   blocked: '#C46555',
+} as const;
+
+// ---------------------------------------------------------------------------
+// Agent display constants (dot colors & labels)
+// ---------------------------------------------------------------------------
+
+export const AGENT_DOT_COLORS: Record<AgentType, string> = {
+  'claude-code': 'var(--color-accent-purple)',
+  'codex': 'var(--color-accent-green)',
+  'codex-server': 'var(--color-accent-green)',
+  'gemini': 'var(--color-accent-blue)',
+  'qwen': 'var(--color-accent-orange)',
+  'opencode': 'var(--color-text-tertiary)',
+} as const;
+
+export const AGENT_LABELS: Record<AgentType, string> = {
+  'claude-code': 'Claude Code',
+  'codex': 'Codex',
+  'codex-server': 'Codex Server',
+  'gemini': 'Gemini',
+  'qwen': 'Qwen',
+  'opencode': 'OpenCode',
 } as const;

@@ -6,7 +6,7 @@ import { useIssueStore } from '@/client/store/issue-store.js';
 import { WS_EVENT_TYPES } from '@/shared/constants.js';
 import type { BoardState, PhaseCard } from '@/shared/types.js';
 import type { WsServerMessage, WsClientMessage, ExecutionStartedPayload, ExecutionCompletedPayload, ExecutionFailedPayload } from '@/shared/ws-protocol.js';
-import type { AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload } from '@/shared/agent-types.js';
+import type { AgentProcess, NormalizedEntry, ApprovalRequest, AgentStatusPayload, AgentStoppedPayload, AgentThoughtPayload, AgentStreamingPayload, TokenUsageEntry } from '@/shared/agent-types.js';
 import type { SupervisorStatus } from '@/shared/execution-types.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,9 @@ export function useWebSocket(): void {
       updateProcessStatus,
       addEntry,
       setApproval,
+      setProcessThought,
+      setProcessStreaming,
+      updateProcessTokenUsage,
     } = useAgentStore.getState();
     const {
       addSlot,
@@ -132,6 +135,17 @@ export function useWebSocket(): void {
           case WS_EVENT_TYPES.AGENT_ENTRY: {
             const entry = msg.data as NormalizedEntry;
             addEntry(entry.processId, entry);
+            // Accumulate token usage from token_usage entries
+            if (entry.type === 'token_usage') {
+              const tu = entry as TokenUsageEntry;
+              updateProcessTokenUsage(
+                tu.processId,
+                tu.inputTokens,
+                tu.outputTokens,
+                tu.cacheReadTokens ?? 0,
+                tu.cacheWriteTokens ?? 0,
+              );
+            }
             break;
           }
 
@@ -151,6 +165,18 @@ export function useWebSocket(): void {
             break;
           }
 
+          case WS_EVENT_TYPES.AGENT_THOUGHT: {
+            const thoughtPayload = msg.data as AgentThoughtPayload;
+            setProcessThought(thoughtPayload.processId, thoughtPayload.thought);
+            break;
+          }
+
+          case WS_EVENT_TYPES.AGENT_STREAMING: {
+            const streamingPayload = msg.data as AgentStreamingPayload;
+            setProcessStreaming(streamingPayload.processId, streamingPayload.streaming);
+            break;
+          }
+
           // --- Execution events ---
           case WS_EVENT_TYPES.EXECUTION_STARTED: {
             const started = msg.data as ExecutionStartedPayload;
@@ -160,6 +186,8 @@ export function useWebSocket(): void {
               executor: started.executor,
               startedAt: new Date().toISOString(),
               lastActivityAt: new Date().toISOString(),
+              turnNumber: 1,
+              maxTurns: 3,
             });
             void fetchIssues();
             break;

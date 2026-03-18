@@ -18,6 +18,7 @@ import { AgentManager } from './agents/agent-manager.js';
 import { ClaudeCodeAdapter } from './agents/claude-code-adapter.js';
 import { StreamJsonAdapter } from './agents/stream-json-adapter.js';
 import { CodexCliAdapter } from './agents/codex-cli-adapter.js';
+import { CodexAppServerAdapter } from './agents/codex-app-server-adapter.js';
 import { OpenCodeAdapter } from './agents/opencode-adapter.js';
 import { ExecutionScheduler } from './execution/execution-scheduler.js';
 import { createRoutes } from './routes/index.js';
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   agentManager.registerAdapter(new StreamJsonAdapter('npx -y @google/gemini-cli', 'gemini'));
   agentManager.registerAdapter(new StreamJsonAdapter('qwen', 'qwen'));
   agentManager.registerAdapter(new CodexCliAdapter());
+  agentManager.registerAdapter(new CodexAppServerAdapter());
   agentManager.registerAdapter(new OpenCodeAdapter());
 
   // ---------------------------------------------------------------------------

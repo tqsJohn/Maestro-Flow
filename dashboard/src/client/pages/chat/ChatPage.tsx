@@ -1,28 +1,17 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { Columns2, Plus, X } from 'lucide-react';
 import { useAgentStore } from '@/client/store/agent-store.js';
+import { useResizableSplit } from '@/client/hooks/useResizableSplit.js';
+import { useApprovalKeyboard } from '@/client/hooks/useApprovalKeyboard.js';
 import { MessageArea } from './MessageArea.js';
 import { ChatInput } from './ChatInput.js';
+import { ThoughtDisplay } from './ThoughtDisplay.js';
+import { AGENT_DOT_COLORS, AGENT_LABELS } from '@/shared/constants.js';
 import type { AgentProcess, AgentType } from '@/shared/agent-types.js';
 
 // ---------------------------------------------------------------------------
 // ChatPage -- tab bar + split-pane chat layout (matches design-chat-v1a)
 // ---------------------------------------------------------------------------
-
-const AGENT_DOT_COLORS: Record<AgentType, string> = {
-  'claude-code': 'var(--color-accent-purple)',
-  codex: 'var(--color-accent-green)',
-  gemini: 'var(--color-accent-blue)',
-  qwen: 'var(--color-accent-orange)',
-  opencode: 'var(--color-text-tertiary)',
-};
-
-const AGENT_LABELS: Record<AgentType, string> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  gemini: 'Gemini',
-  qwen: 'Qwen',
-  opencode: 'OpenCode',
-};
 
 export function ChatPage() {
   const processes = useAgentStore((s) => s.processes);
@@ -31,9 +20,7 @@ export function ChatPage() {
 
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitProcessId, setSplitProcessId] = useState<string | null>(null);
-  const [splitRatio, setSplitRatio] = useState(50);
-  const draggingRef = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { ratio: splitRatio, setRatio: setSplitRatio, handleMouseDown: handleDividerMouseDown, containerRef } = useResizableSplit({ defaultRatio: 50, minRatio: 25, maxRatio: 75 });
 
   const sortedProcesses = useMemo(() => {
     return Object.values(processes).sort(
@@ -51,6 +38,9 @@ export function ChatPage() {
   const activeProcess = activeProcessId ? processes[activeProcessId] : null;
   const splitProcess = splitProcessId ? processes[splitProcessId] : null;
 
+  // Keyboard shortcuts for pending approvals on the active process
+  useApprovalKeyboard(activeProcessId);
+
   const toggleSplit = useCallback(() => {
     if (splitOpen) {
       setSplitOpen(false);
@@ -64,29 +54,7 @@ export function ChatPage() {
         setSplitRatio(50);
       }
     }
-  }, [splitOpen, sortedProcesses, activeProcessId]);
-
-  // Drag handler for split divider
-  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
-    draggingRef.current = true;
-    e.preventDefault();
-  }, []);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      setSplitRatio(Math.max(25, Math.min(75, pct)));
-    };
-    const onUp = () => { draggingRef.current = false; };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    return () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-  }, []);
+  }, [splitOpen, sortedProcesses, activeProcessId, setSplitRatio]);
 
   return (
     <div className="h-full flex flex-col min-w-0 overflow-hidden">
@@ -133,10 +101,7 @@ export function ChatPage() {
                 }}
                 aria-label="Toggle split view"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <line x1="12" y1="3" x2="12" y2="21" />
-                </svg>
+                <Columns2 size={14} strokeWidth={1.8} />
               </button>
             </>
           )}
@@ -155,10 +120,7 @@ export function ChatPage() {
             }}
             aria-label="New session"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+            <Plus size={14} strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -168,6 +130,7 @@ export function ChatPage() {
         {/* Pane 1 (primary) */}
         <div className="flex flex-col min-w-0 overflow-hidden" style={{ flex: splitOpen ? `0 0 ${splitRatio}%` : '1' }}>
           <MessageArea processId={activeProcessId} />
+          <ThoughtDisplay processId={activeProcessId} />
           <ChatInput />
         </div>
 
@@ -273,10 +236,7 @@ function SplitPaneLabel({ process, onClose }: { process: AgentProcess; onClose: 
         }}
         aria-label="Close split pane"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <X size={12} strokeWidth={2} />
       </button>
     </div>
   );

@@ -85,7 +85,7 @@ const DEFAULT_APP_CONFIG: Required<CodexAppServerConfig> = {
 // ---------------------------------------------------------------------------
 
 export class CodexAppServerAdapter extends BaseAgentAdapter {
-  readonly agentType = 'codex' as const;
+  readonly agentType = 'codex-server' as const;
 
   private readonly sessions = new Map<string, AppServerSession>();
   private readonly appConfig: Required<CodexAppServerConfig>;
@@ -187,7 +187,7 @@ export class CodexAppServerAdapter extends BaseAgentAdapter {
 
     return {
       id: processId,
-      type: 'codex',
+      type: 'codex-server',
       status: 'running',
       config,
       startedAt: new Date().toISOString(),
@@ -238,9 +238,19 @@ export class CodexAppServerAdapter extends BaseAgentAdapter {
     await this.startTurn(processId, session, content, workDir);
   }
 
-  protected async doRespondApproval(_decision: ApprovalDecision): Promise<void> {
-    // App-server with approvalPolicy='never' auto-approves.
-    // If approval policy is changed, implement approval response here.
+  protected async doRespondApproval(decision: ApprovalDecision): Promise<void> {
+    const rpcId = Number(decision.id);
+    if (Number.isNaN(rpcId)) return;
+
+    const result = decision.allow
+      ? { decision: 'acceptForSession' }
+      : { decision: 'reject' };
+
+    this.sendRpcResponse(decision.processId, rpcId, result);
+    this.emitEntry(
+      decision.processId,
+      EntryNormalizer.approvalResponse(decision.processId, decision.id, decision.allow),
+    );
   }
 
   // --- Turn management -----------------------------------------------------
@@ -311,6 +321,21 @@ export class CodexAppServerAdapter extends BaseAgentAdapter {
     }
   }
 
+  /** Send a JSON-RPC 2.0 response to a server-initiated request (e.g. approval) */
+  private sendRpcResponse(
+    processId: string,
+    id: number,
+    result: Record<string, unknown>,
+  ): void {
+    const session = this.sessions.get(processId);
+    if (!session) return;
+
+    const response: JsonRpcResponse = { id, result };
+    if (session.child.stdin?.writable) {
+      session.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...response }) + '\n');
+    }
+  }
+
   // --- Line processing -----------------------------------------------------
 
   private handleLine(
@@ -342,23 +367,29 @@ export class CodexAppServerAdapter extends BaseAgentAdapter {
       return;
     }
 
-    // JSON-RPC notification (method-based events)
+    // JSON-RPC notification or server-initiated request (method-based events)
     const method = msg.method as string | undefined;
     if (!method) return;
 
-    this.handleNotification(processId, method, msg.params as Record<string, unknown> ?? {});
+    // Server-initiated requests have an id field — needed for approval responses
+    const rpcId = typeof msg.id === 'number' ? msg.id : undefined;
+    this.handleNotification(processId, method, msg.params as Record<string, unknown> ?? {}, rpcId);
   }
 
   private handleNotification(
     processId: string,
     method: string,
     params: Record<string, unknown>,
+    rpcId?: number,
   ): void {
     switch (method) {
       case 'turn/completed':
+        // Emit 'paused' (not 'stopped') — the process stays alive between turns.
+        // AgentManager detects this and emits 'agent:turnCompleted' so the
+        // scheduler can trigger multi-turn continuation without process cleanup.
         this.emitEntry(
           processId,
-          EntryNormalizer.statusChange(processId, 'stopped', 'Turn completed'),
+          EntryNormalizer.statusChange(processId, 'paused', 'Turn completed'),
         );
         break;
 
@@ -395,6 +426,86 @@ export class CodexAppServerAdapter extends BaseAgentAdapter {
             ),
           );
         }
+        break;
+      }
+
+      // --- Approval requests (server-initiated JSON-RPC requests) ---
+      // Auto-approve to prevent blocking in non-interactive sessions.
+
+      case 'item/commandExecution/requestApproval': {
+        if (rpcId == null) break;
+        const requestId = String(rpcId);
+        this.emitApproval(processId, {
+          id: requestId,
+          processId,
+          toolName: 'commandExecution',
+          toolInput: params,
+          timestamp: new Date().toISOString(),
+        });
+        this.sendRpcResponse(processId, rpcId, { decision: 'acceptForSession' });
+        this.emitEntry(processId, EntryNormalizer.approvalResponse(processId, requestId, true));
+        break;
+      }
+
+      case 'execCommandApproval': {
+        if (rpcId == null) break;
+        const requestId = String(rpcId);
+        this.emitApproval(processId, {
+          id: requestId,
+          processId,
+          toolName: 'execCommand',
+          toolInput: params,
+          timestamp: new Date().toISOString(),
+        });
+        this.sendRpcResponse(processId, rpcId, { decision: 'approved_for_session' });
+        this.emitEntry(processId, EntryNormalizer.approvalResponse(processId, requestId, true));
+        break;
+      }
+
+      case 'applyPatchApproval': {
+        if (rpcId == null) break;
+        const requestId = String(rpcId);
+        this.emitApproval(processId, {
+          id: requestId,
+          processId,
+          toolName: 'applyPatch',
+          toolInput: params,
+          timestamp: new Date().toISOString(),
+        });
+        this.sendRpcResponse(processId, rpcId, { decision: 'approved_for_session' });
+        this.emitEntry(processId, EntryNormalizer.approvalResponse(processId, requestId, true));
+        break;
+      }
+
+      case 'item/fileChange/requestApproval': {
+        if (rpcId == null) break;
+        const requestId = String(rpcId);
+        this.emitApproval(processId, {
+          id: requestId,
+          processId,
+          toolName: 'fileChange',
+          toolInput: params,
+          timestamp: new Date().toISOString(),
+        });
+        this.sendRpcResponse(processId, rpcId, { decision: 'acceptForSession' });
+        this.emitEntry(processId, EntryNormalizer.approvalResponse(processId, requestId, true));
+        break;
+      }
+
+      case 'item/tool/requestUserInput': {
+        if (rpcId == null) break;
+        const requestId = String(rpcId);
+        this.emitApproval(processId, {
+          id: requestId,
+          processId,
+          toolName: 'userInput',
+          toolInput: params,
+          timestamp: new Date().toISOString(),
+        });
+        this.sendRpcResponse(processId, rpcId, {
+          message: 'Non-interactive session. Unable to provide user input.',
+        });
+        this.emitEntry(processId, EntryNormalizer.approvalResponse(processId, requestId, false));
         break;
       }
 

@@ -14,6 +14,10 @@ export interface ExecutionSlot {
   executor: AgentType;
   startedAt: string;
   lastActivityAt: string;
+  /** Current turn number (1-based) for multi-turn continuation */
+  turnNumber: number;
+  /** Maximum turns allowed for this execution */
+  maxTurns: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +78,8 @@ export interface SupervisorConfig {
   defaultPromptMode: PromptMode;
   defaultExecutor: AgentType;
   workspace: WorkspacePolicy;
+  /** Maximum continuation turns per issue for codex-server (default 3) */
+  maxTurnsPerIssue?: number;
 }
 
 export const DEFAULT_SUPERVISOR_CONFIG: SupervisorConfig = {
@@ -108,5 +114,9 @@ export interface SupervisorStatus {
     totalDispatched: number;
     totalCompleted: number;
     totalFailed: number;
+  };
+  tokenUsage?: {
+    totalInputTokens: number;
+    totalOutputTokens: number;
   };
 }

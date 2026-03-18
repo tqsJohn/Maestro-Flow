@@ -1,5 +1,16 @@
 import { create } from 'zustand';
-import type { AgentProcess, AgentProcessStatus, NormalizedEntry, ApprovalRequest } from '@/shared/agent-types.js';
+import type { AgentProcess, AgentProcessStatus, NormalizedEntry, ApprovalRequest, ThoughtData } from '@/shared/agent-types.js';
+
+// ---------------------------------------------------------------------------
+// Token usage accumulator (per-process)
+// ---------------------------------------------------------------------------
+
+export interface TokenUsageAccumulator {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
 
 // ---------------------------------------------------------------------------
 // Agent store — global state for agent processes, entries, and approvals
@@ -10,6 +21,9 @@ export interface AgentStore {
   entries: Record<string, NormalizedEntry[]>;
   pendingApprovals: Record<string, ApprovalRequest>;
   activeProcessId: string | null;
+  processThoughts: Record<string, ThoughtData>;
+  processStreaming: Record<string, boolean>;
+  processTokenUsage: Record<string, TokenUsageAccumulator>;
 
   addProcess: (process: AgentProcess) => void;
   removeProcess: (processId: string) => void;
@@ -18,6 +32,9 @@ export interface AgentStore {
   setApproval: (approval: ApprovalRequest) => void;
   clearApproval: (approvalId: string) => void;
   setActiveProcessId: (processId: string | null) => void;
+  setProcessThought: (processId: string, thought: ThoughtData) => void;
+  setProcessStreaming: (processId: string, streaming: boolean) => void;
+  updateProcessTokenUsage: (processId: string, input: number, output: number, cacheRead: number, cacheWrite: number) => void;
   clearAll: () => void;
 }
 
@@ -26,6 +43,9 @@ export const useAgentStore = create<AgentStore>((set) => ({
   entries: {},
   pendingApprovals: {},
   activeProcessId: null,
+  processThoughts: {},
+  processStreaming: {},
+  processTokenUsage: {},
 
   addProcess: (process) =>
     set((state) => ({
@@ -69,5 +89,39 @@ export const useAgentStore = create<AgentStore>((set) => ({
 
   setActiveProcessId: (processId) => set({ activeProcessId: processId }),
 
-  clearAll: () => set({ processes: {}, entries: {}, pendingApprovals: {}, activeProcessId: null }),
+  setProcessThought: (processId, thought) =>
+    set((state) => ({
+      processThoughts: { ...state.processThoughts, [processId]: thought },
+    })),
+
+  setProcessStreaming: (processId, streaming) =>
+    set((state) => ({
+      processStreaming: { ...state.processStreaming, [processId]: streaming },
+    })),
+
+  updateProcessTokenUsage: (processId, input, output, cacheRead, cacheWrite) =>
+    set((state) => {
+      const existing = state.processTokenUsage[processId] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+      return {
+        processTokenUsage: {
+          ...state.processTokenUsage,
+          [processId]: {
+            input: existing.input + input,
+            output: existing.output + output,
+            cacheRead: existing.cacheRead + cacheRead,
+            cacheWrite: existing.cacheWrite + cacheWrite,
+          },
+        },
+      };
+    }),
+
+  clearAll: () => set({
+    processes: {},
+    entries: {},
+    pendingApprovals: {},
+    activeProcessId: null,
+    processThoughts: {},
+    processStreaming: {},
+    processTokenUsage: {},
+  }),
 }));

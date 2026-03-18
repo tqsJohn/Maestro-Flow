@@ -15,6 +15,7 @@ import type {
   ApprovalRequest,
   AgentStatusPayload,
   AgentStoppedPayload,
+  AgentTurnCompletedPayload,
 } from '../../shared/agent-types.js';
 import type { SupervisorStatus } from '../../shared/execution-types.js';
 import type {
@@ -41,6 +42,7 @@ const ALL_EVENT_TYPES: SSEEventType[] = [
   'agent:approval',
   'agent:status',
   'agent:stopped',
+  'agent:turnCompleted',
   'execution:started',
   'execution:completed',
   'execution:failed',
@@ -66,6 +68,7 @@ export interface DashboardEventMap {
   'agent:approval': ApprovalRequest;
   'agent:status': AgentStatusPayload;
   'agent:stopped': AgentStoppedPayload;
+  'agent:turnCompleted': AgentTurnCompletedPayload;
   // Execution events
   'execution:started': ExecutionStartedPayload;
   'execution:completed': ExecutionCompletedPayload;

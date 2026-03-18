@@ -1,22 +1,33 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
+import { Virtuoso } from 'react-virtuoso';
 import { useAgentStore } from '@/client/store/agent-store.js';
+import { useAutoScroll } from '@/client/hooks/useAutoScroll.js';
 import { EntryRenderer } from './entries/index.js';
 import { EntryContextMenu } from './entries/EntryContextMenu.js';
 import { CreateIssueDialog } from '@/client/components/issues/CreateIssueDialog.js';
+import type { NormalizedEntry } from '@/shared/agent-types.js';
 import type { CreateIssueRequest } from '@/shared/issue-types.js';
 
 // Stable empty array to avoid infinite re-render from Zustand selector
-const EMPTY_ENTRIES: never[] = [];
+const EMPTY_ENTRIES: NormalizedEntry[] = [];
 
 // ---------------------------------------------------------------------------
-// MessageArea -- scrollable message list for a given process
+// MessageArea -- virtualized scrollable message list for a given process
 // ---------------------------------------------------------------------------
 
 export function MessageArea({ processId }: { processId: string | null }) {
   const entries = useAgentStore((s) =>
     processId ? (s.entries[processId] ?? EMPTY_ENTRIES) : EMPTY_ENTRIES,
   );
-  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const {
+    virtuosoRef,
+    handleScroll,
+    handleFollowOutput,
+    handleAtBottomStateChange,
+    showScrollButton,
+    scrollToBottom,
+  } = useAutoScroll({ entries, itemCount: entries.length });
 
   // Issue creation state
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
@@ -26,11 +37,6 @@ export function MessageArea({ processId }: { processId: string | null }) {
     setIssuePrefill(prefill);
     setIssueDialogOpen(true);
   }, []);
-
-  // Auto-scroll to bottom when new entries arrive
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [entries.length]);
 
   if (!processId) {
     return (
@@ -50,16 +56,66 @@ export function MessageArea({ processId }: { processId: string | null }) {
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto px-6 py-3 pb-6">
-        <div className="max-w-[780px] mx-auto flex flex-col gap-[4px]">
-          {entries.map((entry) => (
-            <EntryContextMenu key={entry.id} entry={entry} onCreateIssue={handleCreateIssue}>
-              <EntryRenderer entry={entry} />
-            </EntryContextMenu>
-          ))}
-          <div ref={bottomRef} />
-        </div>
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
+        <Virtuoso
+          ref={virtuosoRef}
+          data={entries}
+          followOutput={handleFollowOutput}
+          atBottomStateChange={handleAtBottomStateChange}
+          onScroll={handleScroll}
+          atBottomThreshold={60}
+          className="h-full"
+          style={{ height: '100%' }}
+          itemContent={(_index, entry) => (
+            <div className="max-w-[780px] mx-auto px-6">
+              <EntryContextMenu entry={entry} onCreateIssue={handleCreateIssue}>
+                <EntryRenderer entry={entry} />
+              </EntryContextMenu>
+            </div>
+          )}
+        />
+
+        {/* Floating scroll-to-bottom button */}
+        {showScrollButton && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom('smooth')}
+            style={{
+              position: 'absolute',
+              bottom: '16px',
+              right: '16px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-secondary)',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              transition: 'opacity 150ms ease',
+              zIndex: 10,
+            }}
+            aria-label="Scroll to bottom"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 3v10M4 9l4 4 4-4" />
+            </svg>
+          </button>
+        )}
       </div>
+
       <CreateIssueDialog
         open={issueDialogOpen}
         onOpenChange={setIssueDialogOpen}

@@ -52,11 +52,13 @@ export class AgentManager {
       this.eventBus.emit('agent:entry', entry);
 
       // --- Lifecycle bridge: Detect agent completion from entries ---
-      if (
-        entry.type === 'status_change' &&
-        (entry.status === 'stopped' || entry.status === 'error')
-      ) {
-        this.handleAutoStop(process.id, entry.reason);
+      if (entry.type === 'status_change') {
+        if (entry.status === 'stopped' || entry.status === 'error') {
+          this.handleAutoStop(process.id, entry.reason);
+        } else if (entry.status === 'paused') {
+          // Turn completed in app-server mode — process still alive
+          this.eventBus.emit('agent:turnCompleted', { processId: process.id });
+        }
       }
     });
     unsubs.push(unsubEntry);

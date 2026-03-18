@@ -1,8 +1,9 @@
-import { useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { LayoutGrid, FileText, MessageSquare, Clock, Layers, BookOpen, PanelLeft, Plus } from 'lucide-react';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
-import { STATUS_COLORS } from '@/shared/constants.js';
+import { STATUS_COLORS, AGENT_DOT_COLORS } from '@/shared/constants.js';
 import type { PhaseCard } from '@/shared/types.js';
 import type { AgentProcess, AgentType } from '@/shared/agent-types.js';
 import { useI18n } from '@/client/i18n/index.js';
@@ -30,15 +31,6 @@ const NAV_ITEMS: DockNavItem[] = [
   { labelKey: 'nav.specs', tooltipKey: 'dock.specs_tooltip', path: '/specs', icon: 'specs', shortcut: 'S' },
 ];
 
-// Agent type → dot color mapping (matches design)
-const AGENT_DOT_COLORS: Record<AgentType, string> = {
-  'claude-code': 'var(--color-accent-purple)',
-  'codex': 'var(--color-accent-green)',
-  'gemini': 'var(--color-accent-blue)',
-  'qwen': 'var(--color-accent-orange)',
-  'opencode': 'var(--color-text-tertiary)',
-};
-
 // ---------------------------------------------------------------------------
 // DockRail — public component
 // ---------------------------------------------------------------------------
@@ -60,32 +52,33 @@ export function DockRail({ isPinned, onTogglePin }: DockRailProps) {
 
   const railRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const processList = Object.values(processes);
 
   // Open panel on rail hover (if not pinned)
   const handleRailEnter = useCallback(() => {
-    if (!isPinned) panelRef.current?.classList.add('dock-panel-open');
+    if (!isPinned) setIsPanelOpen(true);
   }, [isPinned]);
 
   // Close panel when leaving rail — unless mouse moved to panel
   const handleRailLeave = useCallback((e: React.MouseEvent) => {
     if (!isPinned && !panelRef.current?.contains(e.relatedTarget as Node)) {
-      panelRef.current?.classList.remove('dock-panel-open');
+      setIsPanelOpen(false);
     }
   }, [isPinned]);
 
   // Close panel when leaving panel — unless mouse moved to rail
   const handlePanelLeave = useCallback((e: React.MouseEvent) => {
     if (!isPinned && !railRef.current?.contains(e.relatedTarget as Node)) {
-      panelRef.current?.classList.remove('dock-panel-open');
+      setIsPanelOpen(false);
     }
   }, [isPinned]);
 
   // Nav button click: navigate only, close panel
   const handleNavClick = useCallback((path: string) => {
     navigate(path);
-    panelRef.current?.classList.remove('dock-panel-open');
+    setIsPanelOpen(false);
   }, [navigate]);
 
   return (
@@ -147,10 +140,7 @@ export function DockRail({ isPinned, onTogglePin }: DockRailProps) {
               : 'text-text-tertiary hover:bg-bg-hover hover:text-text-primary',
           ].join(' ')}
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
+          <PanelLeft size={16} strokeWidth={1.8} />
         </button>
       </nav>
 
@@ -165,8 +155,9 @@ export function DockRail({ isPinned, onTogglePin }: DockRailProps) {
           'bg-bg-secondary border-r border-border overflow-y-auto z-40',
           'shadow-[4px_0_16px_rgba(0,0,0,0.06)]',
           'transition-[transform,opacity] duration-[200ms] ease-[var(--ease-spring)]',
-          '-translate-x-full opacity-0 pointer-events-none',
-          isPinned ? 'dock-panel-open' : '',
+          isPinned || isPanelOpen
+            ? 'translate-x-0 opacity-100 pointer-events-auto'
+            : '-translate-x-full opacity-0 pointer-events-none',
         ].join(' ')}
         onMouseLeave={handlePanelLeave}
       >
@@ -197,9 +188,7 @@ export function DockRail({ isPinned, onTogglePin }: DockRailProps) {
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-placeholder)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                 aria-label="New session"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+                <Plus size={12} strokeWidth={2} />
               </button>
             </div>
             <nav className="flex flex-col gap-0.5">
@@ -282,66 +271,21 @@ function RailButton({
 }
 
 // ---------------------------------------------------------------------------
-// NavIcon — inline SVG icons
+// NavIcon — lucide-react icons
 // ---------------------------------------------------------------------------
 
-function NavIcon({ icon }: { icon: DockNavItem['icon'] }) {
-  const shared = {
-    className: 'w-[18px] h-[18px]',
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: '1.8',
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  };
+const NAV_ICON_MAP = {
+  kanban: LayoutGrid,
+  artifacts: FileText,
+  chat: MessageSquare,
+  workflow: Clock,
+  mcp: Layers,
+  specs: BookOpen,
+} as const;
 
-  switch (icon) {
-    case 'kanban':
-      return (
-        <svg {...shared}>
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
-        </svg>
-      );
-    case 'artifacts':
-      return (
-        <svg {...shared}>
-          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-      );
-    case 'chat':
-      return (
-        <svg {...shared}>
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      );
-    case 'workflow':
-      return (
-        <svg {...shared}>
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
-      );
-    case 'mcp':
-      return (
-        <svg {...shared}>
-          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
-        </svg>
-      );
-    case 'specs':
-      return (
-        <svg {...shared}>
-          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-        </svg>
-      );
-  }
+function NavIcon({ icon }: { icon: DockNavItem['icon'] }) {
+  const Icon = NAV_ICON_MAP[icon];
+  return <Icon size={18} strokeWidth={1.8} />;
 }
 
 // ---------------------------------------------------------------------------
