@@ -9,7 +9,9 @@
     "build": "vite build && tsc -p tsconfig.node.json",
     "preview": "vite preview",
     "server": "tsx src/server/index.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.77",
@@ -47,6 +49,7 @@
     "tailwindcss": "^4.1.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^4.1.0"
   }
 }
