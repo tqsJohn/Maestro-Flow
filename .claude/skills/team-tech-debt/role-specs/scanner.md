@@ -59,7 +59,7 @@ Multi-dimension tech debt scanner. Scan codebase across 5 dimensions (code, arch
 - Classify findings into dimensions
 
 **Medium/High Complexity** (Fan-out):
-- Fan-out A: CLI exploration (structure, patterns, dependencies angles) via `ccw cli --tool gemini --mode analysis`
+- Fan-out A: CLI exploration (structure, patterns, dependencies angles) via `maestro cli --tool gemini --mode analysis`
 - Fan-out B: CLI dimension analysis (parallel gemini per dimension -- code, architecture, testing, dependency, documentation)
 - Fan-out C (High only): Multi-perspective Gemini analysis (security, performance, code-quality, architecture)
 - Fan-in: Merge results, cross-deduplicate by file:line, boost severity for multi-source findings

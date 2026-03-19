@@ -52,7 +52,7 @@ Parse `$ARGUMENTS`:
 - **Session prefix**: `QA`
 - **Session path**: `.workflow/.team/QA-<slug>-<date>/`
 - **Team name**: `quality-assurance`
-- **CLI tools**: `ccw cli --mode analysis` (read-only), `ccw cli --mode write` (modifications)
+- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
 - **Message bus**: `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)`
 
 ## Worker Spawn Template

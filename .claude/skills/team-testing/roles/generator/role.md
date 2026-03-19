@@ -63,7 +63,7 @@ For revision mode:
 
 ```
 Bash({
-  command: `ccw cli -p "PURPOSE: Generate <layer> tests using <framework> to achieve coverage target; success = all priority files covered with quality tests
+  command: `maestro cli -p "PURPOSE: Generate <layer> tests using <framework> to achieve coverage target; success = all priority files covered with quality tests
 TASK: • Analyze source files • Generate test cases (happy path, edge cases, errors) • Write test files with proper structure • Ensure import resolution
 MODE: write
 CONTEXT: @<source-files> @<session>/strategy/test-strategy.md | Memory: Framework: <framework>, Layer: <layer>, Round: <round>

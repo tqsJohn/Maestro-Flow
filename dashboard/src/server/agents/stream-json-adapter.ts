@@ -67,6 +67,7 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
   private readonly childProcesses = new Map<string, ChildProcess>();
   private readonly readlineInterfaces = new Map<string, ReadlineInterface>();
   private readonly lastContentLength = new Map<string, number>();
+  private readonly stoppedEmitted = new Set<string>();
 
   constructor(executable: string, agentType: AgentType) {
     super();
@@ -112,6 +113,15 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
       if (text.length > 0) {
         this.emitEntry(processId, EntryNormalizer.error(processId, text, 'stderr'));
       }
+    });
+
+    // Last-resort fallback: if stdout closes but neither 'exit' nor 'close'
+    // fire on the child (Windows shell: true + npx process tree edge case),
+    // emit stopped after a short delay to let the primary handlers run first.
+    rl.on('close', () => {
+      setTimeout(() => {
+        this.emitStopped(processId, 'stdout closed (readline fallback)');
+      }, 500);
     });
 
     // Process exit handling
@@ -294,24 +304,39 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
     return args;
   }
 
+  private emitStopped(processId: string, reason: string): void {
+    if (this.stoppedEmitted.has(processId)) return;
+    this.stoppedEmitted.add(processId);
+
+    this.emitEntry(
+      processId,
+      EntryNormalizer.statusChange(processId, 'stopped', reason),
+    );
+
+    const proc = this.getProcess(processId);
+    if (proc) {
+      proc.status = 'stopped';
+    }
+
+    this.cleanup(processId);
+    this.removeProcess(processId);
+  }
+
   private setupProcessListeners(child: ChildProcess, processId: string): void {
     child.on('exit', (code: number | null, signal: string | null) => {
       const reason = signal
         ? `Terminated by signal: ${signal}`
         : `Exited with code: ${code ?? 'unknown'}`;
+      this.emitStopped(processId, reason);
+    });
 
-      this.emitEntry(
-        processId,
-        EntryNormalizer.statusChange(processId, 'stopped', reason),
-      );
-
-      const proc = this.getProcess(processId);
-      if (proc) {
-        proc.status = 'stopped';
-      }
-
-      this.cleanup(processId);
-      this.removeProcess(processId);
+    // Fallback: 'close' fires after exit + stdio close — covers edge cases
+    // where 'exit' is missed on Windows process trees (shell: true + npx).
+    child.on('close', (code: number | null, signal: string | null) => {
+      const reason = signal
+        ? `Terminated by signal: ${signal}`
+        : `Exited with code: ${code ?? 'unknown'}`;
+      this.emitStopped(processId, reason);
     });
 
     child.on('error', (err: Error) => {
@@ -335,5 +360,7 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
     }
     this.childProcesses.delete(processId);
     this.lastContentLength.delete(processId);
+    // Note: stoppedEmitted is intentionally NOT cleared here — it must persist
+    // to guard against the readline close fallback timer firing after cleanup.
   }
 }

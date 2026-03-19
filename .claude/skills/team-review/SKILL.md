@@ -50,7 +50,7 @@ Parse `$ARGUMENTS`:
 - **Session prefix**: `RV`
 - **Session path**: `.workflow/.team/RV-<slug>-<date>/`
 - **Team name**: `review`
-- **CLI tools**: `ccw cli --mode analysis` (read-only), `ccw cli --mode write` (modifications)
+- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
 - **Message bus**: `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)`
 
 ## Worker Spawn Template

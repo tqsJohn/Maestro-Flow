@@ -15,7 +15,7 @@ allowed-tools:
 Execute a planned solution for a specific issue. Supports dual-mode dispatch:
 
 - **Server UP**: POST to `/api/execution/dispatch` for orchestrated execution
-- **Server DOWN**: Direct execution via `ccw cli` with the solution prompt
+- **Server DOWN**: Direct execution via `maestro cli` with the solution prompt
 
 Options:
 - **--executor**: Agent to execute the solution (default: claude-code)
