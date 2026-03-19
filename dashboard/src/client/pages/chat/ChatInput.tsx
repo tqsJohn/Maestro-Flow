@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
-import { Paperclip, Image, Zap, Send } from 'lucide-react';
+import Paperclip from 'lucide-react/dist/esm/icons/paperclip.js';
+import Image from 'lucide-react/dist/esm/icons/image.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Send from 'lucide-react/dist/esm/icons/send.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
 import { useCompositionInput } from '@/client/hooks/useCompositionInput.js';

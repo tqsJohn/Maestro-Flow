@@ -1,4 +1,5 @@
 import type { ToolRegistry } from '../core/tool-registry.js';
+import type { Tool, ToolResult } from '../types/index.js';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -13,44 +14,45 @@ import {
   WARNING_THRESHOLD,
   CRITICAL_THRESHOLD,
 } from '../hooks/constants.js';
+import { ccwResultToMcp } from '../types/tool-schema.js';
+
+// CCW-style tool modules (schema + handler exports)
+import * as editFileTool from './edit-file.js';
+import * as writeFileTool from './write-file.js';
+import * as readFileTool from './read-file.js';
+import * as readManyFilesTool from './read-many-files.js';
+import * as teamMsgTool from './team-msg.js';
+import * as coreMemoryTool from './core-memory.js';
+
+/**
+ * Register a CCW-style tool (with schema + handler exports) into the maestro registry.
+ * Adapts CCW's { success, result, error } format to maestro's { content, isError } format.
+ */
+function registerCcwTool(
+  registry: ToolRegistry,
+  mod: { schema: { name: string; description: string; inputSchema: Record<string, unknown> }; handler: (params: Record<string, unknown>) => Promise<any> },
+): void {
+  registry.register({
+    name: mod.schema.name,
+    description: mod.schema.description,
+    inputSchema: mod.schema.inputSchema,
+    async handler(input: Record<string, unknown>): Promise<ToolResult> {
+      const ccwResult = await mod.handler(input);
+      return ccwResultToMcp(ccwResult);
+    },
+  });
+}
 
 export function registerBuiltinTools(registry: ToolRegistry): void {
-  registry.register({
-    name: 'read_file',
-    description: 'Read file contents from the filesystem',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: 'Absolute or relative file path' },
-      },
-      required: ['path'],
-    },
-    async handler(input) {
-      const path = input.path as string;
-      if (!existsSync(path)) {
-        return { content: [{ type: 'text', text: `File not found: ${path}` }], isError: true };
-      }
-      const text = readFileSync(path, 'utf-8');
-      return { content: [{ type: 'text', text }] };
-    },
-  });
+  // --- CCW-ported tools (modular) ---
+  registerCcwTool(registry, editFileTool);
+  registerCcwTool(registry, writeFileTool);
+  registerCcwTool(registry, readFileTool);
+  registerCcwTool(registry, readManyFilesTool);
+  registerCcwTool(registry, teamMsgTool);
+  registerCcwTool(registry, coreMemoryTool);
 
-  registry.register({
-    name: 'write_file',
-    description: 'Write content to a file',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: 'File path to write' },
-        content: { type: 'string', description: 'Content to write' },
-      },
-      required: ['path', 'content'],
-    },
-    async handler(input) {
-      writeFileSync(input.path as string, input.content as string, 'utf-8');
-      return { content: [{ type: 'text', text: `Written to ${input.path}` }] };
-    },
-  });
+  // --- Maestro-native tools (inline) ---
 
   registry.register({
     name: 'list_tools',
@@ -101,7 +103,6 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
       },
     },
     async handler(input) {
-      // Try to find the most recent bridge file if no session_id provided
       const tmp = tmpdir();
       let metrics: { remaining_percentage: number; used_pct: number; timestamp: number } | null = null;
 
@@ -111,7 +112,6 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
           metrics = JSON.parse(readFileSync(bridgePath, 'utf8'));
         }
       } else {
-        // Scan for most recent bridge file
         try {
           const files = readdirSync(tmp)
             .filter((f) => f.startsWith(BRIDGE_PREFIX) && f.endsWith('.json') && !f.includes('-warned'))

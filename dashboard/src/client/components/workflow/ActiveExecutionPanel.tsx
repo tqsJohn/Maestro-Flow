@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { PhaseCard } from '@/shared/types.js';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { STATUS_COLORS } from '@/shared/constants.js';
@@ -27,6 +27,13 @@ function getNextActionPhase(phases: PhaseCard[]): PhaseCard | null {
 
 function NextActionPanel({ phase }: { phase: PhaseCard | null }) {
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   if (!phase) {
     return (
@@ -43,7 +50,8 @@ function NextActionPanel({ phase }: { phase: PhaseCard | null }) {
   function handleCopy() {
     navigator.clipboard.writeText(command).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     });
   }
 

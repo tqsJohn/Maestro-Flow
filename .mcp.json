@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "maestro": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "maestro-mcp"],
+      "env": {
+        "MAESTRO_ENABLED_TOOLS": "write_file,edit_file,read_file,read_many_files,team_msg,core_memory,spec_load,spec_init,context_status"
+      }
+    },
     "claude_dms3-chrome-devtools": {
       "command": "npx",
       "args": [

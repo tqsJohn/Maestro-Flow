@@ -25,6 +25,8 @@ export interface SpecEntry {
   content: string;
   file: string;
   timestamp: string;
+  category: string;
+  keywords: string[];
 }
 
 interface SpecFileMeta {
@@ -125,7 +127,7 @@ const HEADING_RE = /^(#{2,3})\s+(.+)$/;
  * Parse markdown body into heading-delimited sections.
  * Each section becomes one SpecEntry.
  */
-function parseEntries(body: string, fileName: string): SpecEntry[] {
+function parseEntries(body: string, fileName: string, frontmatter?: Record<string, unknown>): SpecEntry[] {
   const lines = body.split('\n');
   const sections: { heading: string; level: number; bodyLines: string[] }[] = [];
   let current: { heading: string; level: number; bodyLines: string[] } | null = null;
@@ -157,7 +159,9 @@ function parseEntries(body: string, fileName: string): SpecEntry[] {
     const dateMatch = sec.heading.match(/\[(\d{4}-\d{2}-\d{2})\]/);
     const timestamp = dateMatch ? dateMatch[1] : '';
 
-    entries.push({ id, type, title: sec.heading, content, file: fileName, timestamp });
+    const category = typeof frontmatter?.category === 'string' ? frontmatter.category : 'general';
+    const keywords = Array.isArray(frontmatter?.keywords) ? frontmatter.keywords.map(String) : [];
+    entries.push({ id, type, title: sec.heading, content, file: fileName, timestamp, category, keywords });
   }
 
   return entries;
@@ -230,8 +234,8 @@ export function createSpecsRoutes(workflowRoot: string): Hono {
 
       for (const fileName of files) {
         const raw = await readSpecFile(specsDir, fileName);
-        const { content } = parseFrontmatter(raw);
-        const entries = parseEntries(content, fileName);
+        const { data, content } = parseFrontmatter(raw);
+        const entries = parseEntries(content, fileName, data);
         allEntries.push(...entries);
       }
 
@@ -292,8 +296,8 @@ export function createSpecsRoutes(workflowRoot: string): Hono {
         return c.json({ error: `File not found: ${name}` }, 404);
       }
 
-      const { content } = parseFrontmatter(raw);
-      const entries = parseEntries(content, name);
+      const { data, content } = parseFrontmatter(raw);
+      const entries = parseEntries(content, name, data);
 
       return c.json({ name, content: raw, entries });
     } catch (err) {
@@ -346,8 +350,8 @@ export function createSpecsRoutes(workflowRoot: string): Hono {
         await writeSpecFile(specsDir, fileName, updated);
 
         // Parse to get the new entry ID
-        const { content: body } = parseFrontmatter(updated);
-        const entries = parseEntries(body, fileName);
+        const { data: fm, content: body } = parseFrontmatter(updated);
+        const entries = parseEntries(body, fileName, fm);
         if (entries.length > 0) {
           newId = entries[entries.length - 1].id;
         }
@@ -389,8 +393,8 @@ export function createSpecsRoutes(workflowRoot: string): Hono {
           return;
         }
 
-        const { content: body } = parseFrontmatter(raw);
-        const entries = parseEntries(body, fileName);
+        const { data: fm2, content: body } = parseFrontmatter(raw);
+        const entries = parseEntries(body, fileName, fm2);
         const target = entries.find(e => e.id === targetId);
         if (!target) return;
 

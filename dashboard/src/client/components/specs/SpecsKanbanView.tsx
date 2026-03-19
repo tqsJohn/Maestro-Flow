@@ -1,58 +1,84 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
-import Code from 'lucide-react/dist/esm/icons/code.js';
-import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
 import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import Circle from 'lucide-react/dist/esm/icons/circle.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import Compass from 'lucide-react/dist/esm/icons/compass.js';
+import Settings from 'lucide-react/dist/esm/icons/settings.js';
 import Plus from 'lucide-react/dist/esm/icons/plus.js';
 import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Tag from 'lucide-react/dist/esm/icons/tag.js';
 import { useSpecsStore, type SpecType, type SpecEntry } from '@/client/store/specs-store.js';
 
 // ---------------------------------------------------------------------------
-// SpecsKanbanView -- 4-column kanban grouped by spec type
+// SpecsKanbanView -- dynamic kanban grouped by category
+// Click category tag to toggle column visibility
 // ---------------------------------------------------------------------------
 
 interface SpecsKanbanViewProps {
   onAddEntry: () => void;
 }
 
-// Type configuration: icon, color, label
-const TYPE_CONFIG: Record<
-  Exclude<SpecType, 'general'>,
-  { label: string; icon: React.ReactNode; tintBg: string; color: string; dotColor: string }
-> = {
-  bug: {
-    label: 'Bugs',
+// All 7 categories from specs-setup workflow
+const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ReactNode; tintBg: string; color: string }> = {
+  general: {
+    label: 'General',
+    icon: <Circle size={14} strokeWidth={1.8} />,
+    tintBg: 'var(--color-tint-pending)',
+    color: '#A09D97',
+  },
+  planning: {
+    label: 'Planning',
+    icon: <Compass size={14} strokeWidth={1.8} />,
+    tintBg: 'var(--color-tint-planning)',
+    color: '#9178B5',
+  },
+  execution: {
+    label: 'Execution',
+    icon: <Settings size={14} strokeWidth={1.8} />,
+    tintBg: 'var(--color-tint-exploring)',
+    color: '#5B8DB8',
+  },
+  debug: {
+    label: 'Debug',
     icon: <AlertCircle size={14} strokeWidth={1.8} />,
     tintBg: 'var(--color-tint-blocked)',
     color: '#C46555',
-    dotColor: '#C46555',
   },
-  pattern: {
-    label: 'Patterns',
-    icon: <Code size={14} strokeWidth={1.8} />,
-    tintBg: 'var(--color-tint-exploring)',
-    color: '#5B8DB8',
-    dotColor: '#5B8DB8',
-  },
-  decision: {
-    label: 'Decisions',
-    icon: <BarChart3 size={14} strokeWidth={1.8} />,
-    tintBg: 'var(--color-tint-planning)',
-    color: '#9178B5',
-    dotColor: '#9178B5',
-  },
-  rule: {
-    label: 'Rules',
+  test: {
+    label: 'Test',
     icon: <Shield size={14} strokeWidth={1.8} />,
     tintBg: 'var(--color-tint-completed)',
     color: '#5A9E78',
-    dotColor: '#5A9E78',
+  },
+  review: {
+    label: 'Review',
+    icon: <Layers size={14} strokeWidth={1.8} />,
+    tintBg: 'rgba(219,176,108,0.12)',
+    color: '#C4A055',
+  },
+  validation: {
+    label: 'Validation',
+    icon: <Shield size={14} strokeWidth={1.8} />,
+    tintBg: 'rgba(90,158,120,0.10)',
+    color: '#3D8B5F',
   },
 };
 
-const COLUMN_ORDER: Exclude<SpecType, 'general'>[] = ['bug', 'pattern', 'decision', 'rule'];
+const KNOWN_ORDER = ['general', 'planning', 'execution', 'debug', 'test', 'review', 'validation'];
+
+const DEFAULT_CAT_CONFIG = {
+  label: '',
+  icon: <Circle size={14} strokeWidth={1.8} />,
+  tintBg: 'var(--color-tint-pending)',
+  color: '#A09D97',
+};
+
+function getCategoryConfig(cat: string) {
+  return CATEGORY_CONFIG[cat] ?? { ...DEFAULT_CAT_CONFIG, label: cat.charAt(0).toUpperCase() + cat.slice(1) };
+}
 
 const BADGE_STYLES: Record<SpecType, { bg: string; text: string }> = {
   bug: { bg: 'var(--color-tint-blocked)', text: '#C46555' },
@@ -80,58 +106,150 @@ function formatTimestamp(ts: string): string {
 export function SpecsKanbanView({ onAddEntry }: SpecsKanbanViewProps) {
   const entries = useSpecsStore((s) => s.entries);
   const typeFilter = useSpecsStore((s) => s.typeFilter);
+  const keywordFilter = useSpecsStore((s) => s.keywordFilter);
   const search = useSpecsStore((s) => s.search);
   const selectedEntry = useSpecsStore((s) => s.selectedEntry);
   const setSelectedEntry = useSpecsStore((s) => s.setSelectedEntry);
+  const setKeywordFilter = useSpecsStore((s) => s.setKeywordFilter);
+  const hiddenColumns = useSpecsStore((s) => s.hiddenColumns);
+  const toggleColumn = useSpecsStore((s) => s.toggleColumn);
 
-  const grouped = useMemo(() => {
-    let filtered = entries;
-    if (typeFilter !== 'all') filtered = filtered.filter((e) => e.type === typeFilter);
+  // All categories: known order first, then any unknown from data
+  const allCategories = useMemo(() => {
+    const fromData = new Set<string>();
+    for (const e of entries) if (e.category) fromData.add(e.category);
+    const result: string[] = [];
+    for (const k of KNOWN_ORDER) {
+      // Always show known categories (even if empty) so columns are stable
+      result.push(k);
+      fromData.delete(k);
+    }
+    for (const c of Array.from(fromData).sort()) result.push(c);
+    return result;
+  }, [entries]);
+
+  // All keywords from data
+  const allKeywords = useMemo(() => {
+    const kws = new Set<string>();
+    for (const e of entries) for (const k of e.keywords) kws.add(k);
+    return Array.from(kws).sort();
+  }, [entries]);
+
+  // Filter entries (type + keyword + search, but NOT category — category controls column visibility)
+  const filtered = useMemo(() => {
+    let result = entries;
+    if (typeFilter !== 'all') result = result.filter((e) => e.type === typeFilter);
+    if (keywordFilter !== 'all') result = result.filter((e) => e.keywords.includes(keywordFilter));
     if (search) {
       const lc = search.toLowerCase();
-      filtered = filtered.filter(
-        (e) => e.title.toLowerCase().includes(lc) || e.content.toLowerCase().includes(lc) || e.id.toLowerCase().includes(lc),
+      result = result.filter(
+        (e) =>
+          e.title.toLowerCase().includes(lc) ||
+          e.content.toLowerCase().includes(lc) ||
+          e.id.toLowerCase().includes(lc) ||
+          e.keywords.some((k) => k.toLowerCase().includes(lc)),
       );
     }
-    const result: Record<SpecType, SpecEntry[]> = { bug: [], pattern: [], decision: [], rule: [], general: [] };
-    for (const e of filtered) (result[e.type] ?? result.general).push(e);
     return result;
-  }, [entries, typeFilter, search]);
+  }, [entries, typeFilter, keywordFilter, search]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { bug: 0, pattern: 0, decision: 0, rule: 0, general: 0 };
-    for (const e of entries) c[e.type] = (c[e.type] ?? 0) + 1;
+  // Group by category
+  const grouped = useMemo(() => {
+    const result: Record<string, SpecEntry[]> = {};
+    for (const cat of allCategories) result[cat] = [];
+    for (const e of filtered) {
+      const cat = e.category || 'general';
+      if (!result[cat]) result[cat] = [];
+      result[cat].push(e);
+    }
+    return result;
+  }, [filtered, allCategories]);
+
+  // Category counts (from all entries, unfiltered)
+  const categoryCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const e of entries) {
+      const cat = e.category || 'general';
+      c[cat] = (c[cat] ?? 0) + 1;
+    }
     return c;
   }, [entries]);
 
+  // Visible categories
+  const visibleCategories = useMemo(
+    () => allCategories.filter((c) => !hiddenColumns.has(c)),
+    [allCategories, hiddenColumns],
+  );
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Stats bar */}
-      <div className="flex items-center gap-4 px-5 py-2 border-b border-border-divider bg-bg-primary shrink-0">
-        {COLUMN_ORDER.map((type) => {
-          const cfg = TYPE_CONFIG[type];
+      {/* Tag bar: category toggles + keyword filters */}
+      <div className="flex flex-wrap items-center gap-[6px] px-5 py-2 border-b border-border-divider bg-bg-primary shrink-0">
+        {/* Category tags — click to toggle column visibility */}
+        {allCategories.map((cat) => {
+          const cfg = getCategoryConfig(cat);
+          const isVisible = !hiddenColumns.has(cat);
+          const count = categoryCounts[cat] ?? 0;
           return (
-            <div key={type} className="flex items-center gap-[6px] text-[11px] font-medium text-text-secondary">
+            <button
+              key={cat}
+              type="button"
+              onClick={() => toggleColumn(cat)}
+              className={[
+                'text-[11px] font-medium px-[10px] py-[4px] rounded-full border cursor-pointer transition-all',
+                'flex items-center gap-[5px]',
+                isVisible
+                  ? 'bg-bg-card text-text-primary border-border hover:shadow-sm'
+                  : 'bg-bg-secondary text-text-quaternary border-border-divider opacity-60',
+              ].join(' ')}
+              style={isVisible ? { borderColor: cfg.color, boxShadow: `0 0 0 1px ${cfg.color}22` } : undefined}
+            >
               <span
-                className="w-2 h-2 rounded-full"
-                style={{ background: cfg.dotColor }}
+                className="w-2 h-2 rounded-full shrink-0 transition-opacity"
+                style={{ background: cfg.color, opacity: isVisible ? 1 : 0.35 }}
               />
-              <span className="font-mono font-semibold text-text-primary">{counts[type]}</span>
               {cfg.label}
-            </div>
+              <span className="text-[10px] font-mono opacity-60">{count}</span>
+            </button>
           );
         })}
+
+        {/* Keyword filter */}
+        {allKeywords.length > 0 && (
+          <>
+            <div className="w-px h-[18px] bg-border-divider mx-1" />
+            <Tag size={11} strokeWidth={2} className="text-text-quaternary shrink-0" />
+            {allKeywords.map((kw) => {
+              const isActive = keywordFilter === kw;
+              return (
+                <button
+                  key={kw}
+                  type="button"
+                  onClick={() => setKeywordFilter(isActive ? 'all' : kw)}
+                  className={[
+                    'text-[10px] font-medium px-2 py-[2px] rounded-[4px] border cursor-pointer transition-all',
+                    isActive
+                      ? 'bg-text-primary text-white border-text-primary'
+                      : 'bg-bg-card text-text-tertiary border-border-divider hover:border-text-tertiary hover:text-text-primary',
+                  ].join(' ')}
+                >
+                  {kw}
+                </button>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* Kanban columns */}
       <div className="flex gap-3 flex-1 overflow-x-auto p-3">
-        {COLUMN_ORDER.map((type, colIdx) => {
-          const cfg = TYPE_CONFIG[type];
-          const items = grouped[type] ?? [];
+        {visibleCategories.map((cat, colIdx) => {
+          const cfg = getCategoryConfig(cat);
+          const items = grouped[cat] ?? [];
           return (
             <div
-              key={type}
-              className="flex flex-col min-w-[280px] flex-1 bg-bg-secondary rounded-[12px] overflow-hidden"
+              key={cat}
+              className="flex flex-col min-w-[260px] flex-1 bg-bg-secondary rounded-[12px] overflow-hidden"
             >
               {/* Column header */}
               <div className="flex items-center gap-2 px-[14px] py-3 border-b border-black/[0.04]">
@@ -154,7 +272,7 @@ export function SpecsKanbanView({ onAddEntry }: SpecsKanbanViewProps) {
                 </button>
               </div>
 
-              {/* Column body (scrollable cards) */}
+              {/* Column body */}
               <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
                 {items.map((entry, idx) => (
                   <SpecCard
@@ -174,13 +292,19 @@ export function SpecsKanbanView({ onAddEntry }: SpecsKanbanViewProps) {
             </div>
           );
         })}
+
+        {visibleCategories.length === 0 && (
+          <div className="flex items-center justify-center flex-1 text-[13px] text-text-tertiary">
+            All columns hidden — click a category tag above to show it.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// SpecCard -- individual card in the kanban column
+// SpecCard
 // ---------------------------------------------------------------------------
 
 function SpecCard({
@@ -226,6 +350,25 @@ function SpecCard({
       <div className="text-[13px] text-text-primary font-medium leading-[1.5] mb-2 line-clamp-3">
         {entry.content || entry.title}
       </div>
+
+      {/* Keywords */}
+      {entry.keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {entry.keywords.slice(0, 4).map((kw) => (
+            <span
+              key={kw}
+              className="text-[9px] px-[5px] py-[1px] rounded-[3px] bg-bg-secondary text-text-tertiary font-mono"
+            >
+              {kw}
+            </span>
+          ))}
+          {entry.keywords.length > 4 && (
+            <span className="text-[9px] text-text-quaternary font-mono">
+              +{entry.keywords.length - 4}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Meta: timestamp + file */}
       <div className="flex items-center gap-2">

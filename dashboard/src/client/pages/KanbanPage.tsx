@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useLinearStore } from '@/client/store/linear-store.js';
 import { useIssueStore } from '@/client/store/issue-store.js';
@@ -61,32 +62,38 @@ export function KanbanPage() {
   const detailStyle = useUIPrefsStore((s) => s.detailModalStyle);
 
   const { register, unregister } = useContext(ViewSwitcherContext);
-  const selectedPhase = useBoardStore((s) => s.selectedPhase);
-  const setSelectedPhase = useBoardStore((s) => s.setSelectedPhase);
-  const board = useBoardStore((s) => s.board);
+  const { selectedPhase, setSelectedPhase, board } = useBoardStore(useShallow((s) => ({ selectedPhase: s.selectedPhase, setSelectedPhase: s.setSelectedPhase, board: s.board })));
 
   // Issue store
-  const issues = useIssueStore((s) => s.issues);
-  const fetchIssues = useIssueStore((s) => s.fetchIssues);
+  const { issues, fetchIssues } = useIssueStore(useShallow((s) => ({ issues: s.issues, fetchIssues: s.fetchIssues })));
 
   // Execution store
-  const selectedIssueIds = useExecutionStore((s) => s.selectedIssueIds);
-  const toggleSelect = useExecutionStore((s) => s.toggleSelect);
-  const cliPanelIssueId = useExecutionStore((s) => s.cliPanelIssueId);
-  const supervisorStatus = useExecutionStore((s) => s.supervisorStatus);
+  const { selectedIssueIds, toggleSelect, cliPanelIssueId, supervisorStatus } = useExecutionStore(useShallow((s) => ({ selectedIssueIds: s.selectedIssueIds, toggleSelect: s.toggleSelect, cliPanelIssueId: s.cliPanelIssueId, supervisorStatus: s.supervisorStatus })));
 
   const batchMode = selectedIssueIds.size > 0;
 
   // Linear integration
-  const linearConfigured = useLinearStore((s) => s.configured);
-  const linearBoard = useLinearStore((s) => s.board);
-  const linearTeams = useLinearStore((s) => s.teams);
-  const linearSelectedTeamId = useLinearStore((s) => s.selectedTeamId);
-  const linearLoading = useLinearStore((s) => s.loading);
-  const checkLinearStatus = useLinearStore((s) => s.checkStatus);
-  const fetchLinearTeams = useLinearStore((s) => s.fetchTeams);
-  const selectLinearTeam = useLinearStore((s) => s.selectTeam);
-  const refreshLinear = useLinearStore((s) => s.refresh);
+  const {
+    configured: linearConfigured,
+    board: linearBoard,
+    teams: linearTeams,
+    selectedTeamId: linearSelectedTeamId,
+    loading: linearLoading,
+    checkStatus: checkLinearStatus,
+    fetchTeams: fetchLinearTeams,
+    selectTeam: selectLinearTeam,
+    refresh: refreshLinear,
+  } = useLinearStore(useShallow((s) => ({
+    configured: s.configured,
+    board: s.board,
+    teams: s.teams,
+    selectedTeamId: s.selectedTeamId,
+    loading: s.loading,
+    checkStatus: s.checkStatus,
+    fetchTeams: s.fetchTeams,
+    selectTeam: s.selectTeam,
+    refresh: s.refresh,
+  })));
 
   // Fetch issues on mount
   useEffect(() => {

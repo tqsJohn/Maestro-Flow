@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Coordinate — Session Detail (3 Styles)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+    body { font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.5; background: #FAF8F5; color: #2D2A26; -webkit-font-smoothing: antialiased; height: 100%; overflow: hidden; }
+
+    :root {
+      --bg: #FAF8F5; --bg2: #F3F0EA; --bg3: #EBE8E1; --card: #FFFFFF;
+      --hover: rgba(45,42,38,0.04); --active: rgba(45,42,38,0.07);
+      --t1: #2D2A26; --t2: #78756F; --t3: #A09D97; --t4: #D1CEC8;
+      --bdr: #E8E5DE; --bdr2: #ECEAE4;
+      --blue: #4A90D9; --green: #3D9B6F; --orange: #D4832E; --yellow: #C99B2D;
+      --purple: #8B6BBF; --red: #D05454; --gray: #A09D97; --cyan: #3BA0B5;
+      --tint-green: #EEF7F2; --tint-yellow: #FDF6E4; --tint-orange: #FDF0E4;
+      --tint-purple: #F3EEF9; --tint-gray: #F2F1EE; --tint-blue: #EDF4FC; --tint-red: #FCEEEE;
+      --tint-cyan: #E8F6F9;
+      --mono: 'JetBrains Mono', 'Consolas', monospace;
+    }
+
+    /* ========== Style Selector ========== */
+    .style-bar {
+      display: flex; align-items: center; height: 48px; padding: 0 20px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr);
+      flex-shrink: 0; z-index: 200;
+    }
+    .style-bar-title { font-weight: 700; font-size: 14px; color: var(--t1); margin-right: 24px; }
+    .style-tab {
+      padding: 12px 16px; font-size: 12px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+      transition: all 150ms; white-space: nowrap;
+    }
+    .style-tab:hover { color: var(--t1); }
+    .style-tab.active { color: var(--t1); font-weight: 600; border-bottom-color: var(--t1); }
+    .style-tab .stb { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 100px; margin-left: 6px; vertical-align: 1px; }
+    .style-spacer { flex: 1; }
+    .style-hint { font-size: 11px; color: var(--t3); }
+
+    .style-page { display: none; flex: 1; overflow: hidden; }
+    .style-page.active { display: flex; flex-direction: column; }
+
+    .app-shell { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ========== Shared tokens ========== */
+    .pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 5px; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s ease infinite; display: inline-block; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+    .st-done { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-running { background: rgba(201,155,45,0.12); color: var(--yellow); }
+    .st-pending { background: rgba(160,157,151,0.12); color: var(--gray); }
+    .st-blocked { background: rgba(208,84,84,0.12); color: var(--red); }
+    .mono { font-family: var(--mono); }
+
+    /* Markdown-like rendered content */
+    .md-render { font-size: 13px; color: var(--t1); line-height: 1.7; }
+    .md-render h1 { font-size: 20px; font-weight: 700; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--bdr2); }
+    .md-render h2 { font-size: 16px; font-weight: 700; margin: 20px 0 8px; color: var(--t1); }
+    .md-render h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; color: var(--t1); }
+    .md-render p { margin: 0 0 10px; color: var(--t2); }
+    .md-render ul { margin: 0 0 10px 20px; color: var(--t2); }
+    .md-render li { margin-bottom: 4px; }
+    .md-render code { font-family: var(--mono); font-size: 12px; background: var(--bg2); padding: 1px 5px; border-radius: 4px; color: var(--red); }
+    .md-render pre { background: #2D2A26; color: #E8E5DE; padding: 14px 16px; border-radius: 8px; margin: 0 0 12px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+    .md-render table { width: 100%; border-collapse: collapse; margin: 0 0 12px; font-size: 12px; }
+    .md-render th { text-align: left; padding: 6px 10px; background: var(--bg2); font-weight: 600; color: var(--t1); border-bottom: 1px solid var(--bdr); }
+    .md-render td { padding: 6px 10px; border-bottom: 1px solid var(--bdr2); color: var(--t2); }
+    .md-render blockquote { border-left: 3px solid var(--blue); padding: 4px 12px; margin: 0 0 10px; background: var(--tint-blue); border-radius: 0 6px 6px 0; color: var(--t2); }
+
+    /* JSON rendered content */
+    .json-render { font-family: var(--mono); font-size: 12px; line-height: 1.7; background: #1E1D1B; color: #D4D0C8; padding: 16px 18px; border-radius: 10px; overflow: auto; white-space: pre; tab-size: 2; }
+    .json-render .jk { color: #8BB9FE; } /* key */
+    .json-render .js { color: #A8D4A2; } /* string value */
+    .json-render .jn { color: #D4A76A; } /* number */
+    .json-render .jb { color: #E8A0BF; } /* boolean */
+    .json-render .jnull { color: #A09D97; } /* null */
+    .json-render .jp { color: #78756F; } /* punctuation */
+
+
+    /* ================================================================ */
+    /*  STYLE A — IDE Split Panel                                        */
+    /* ================================================================ */
+    .a-shell { display: flex; flex: 1; overflow: hidden; }
+
+    /* A: Left sidebar — file explorer + overview */
+    .a-sidebar {
+      width: 280px; flex-shrink: 0; background: var(--bg2);
+      border-right: 1px solid var(--bdr); display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .a-sb-header {
+      padding: 14px 16px; border-bottom: 1px solid var(--bdr);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .a-sb-title { font-size: 13px; font-weight: 700; color: var(--t1); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-sb-tag { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 100px; }
+    .a-sb-scroll { flex: 1; overflow-y: auto; }
+    .a-sb-section { padding: 10px 0; }
+    .a-sb-section + .a-sb-section { border-top: 1px solid var(--bdr2); }
+    .a-sb-label {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--t4); padding: 0 16px; margin-bottom: 4px;
+      display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+    }
+    .a-sb-label .caret { font-size: 8px; transition: transform 150ms; }
+    .a-file {
+      display: flex; align-items: center; gap: 8px; padding: 5px 16px 5px 24px;
+      cursor: pointer; font-size: 12px; color: var(--t2); transition: all 100ms;
+      border: none; background: none; width: 100%; text-align: left;
+    }
+    .a-file:hover { background: var(--hover); color: var(--t1); }
+    .a-file.active { background: var(--active); color: var(--t1); font-weight: 600; }
+    .a-file-icon { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .a-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-file-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 100px; flex-shrink: 0; }
+
+    /* A: stat strip at bottom of sidebar */
+    .a-sb-stats {
+      padding: 10px 16px; border-top: 1px solid var(--bdr);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex-shrink: 0;
+    }
+    .a-sb-stat-label { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t4); }
+    .a-sb-stat-val { font-size: 14px; font-weight: 700; color: var(--t1); }
+
+    /* A: Main content — tabs + viewer */
+    .a-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    .a-tabs {
+      display: flex; align-items: center; gap: 0; padding: 0 4px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .a-tab {
+      display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+      font-size: 12px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none;
+      border-bottom: 2px solid transparent; transition: all 100ms;
+      white-space: nowrap; max-width: 180px;
+    }
+    .a-tab:hover { color: var(--t1); background: var(--hover); }
+    .a-tab.active { color: var(--t1); font-weight: 600; background: var(--card); border-bottom-color: var(--blue); }
+    .a-tab-icon { width: 14px; height: 14px; flex-shrink: 0; }
+    .a-tab-name { overflow: hidden; text-overflow: ellipsis; }
+    .a-tab-close { width: 16px; height: 16px; border-radius: 4px; border: none; background: none; cursor: pointer; color: var(--t4); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .a-tab-close:hover { background: var(--hover); color: var(--t1); }
+
+    .a-viewer {
+      flex: 1; overflow: auto; padding: 24px 32px; background: var(--card);
+    }
+    .a-viewer-empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      background: var(--card); color: var(--t4); font-size: 13px;
+    }
+
+    /* A: breadcrumb */
+    .a-breadcrumb { display: flex; align-items: center; gap: 4px; margin-bottom: 16px; font-size: 11px; color: var(--t3); }
+    .a-breadcrumb span { color: var(--t4); }
+    .a-breadcrumb a { color: var(--t3); text-decoration: none; }
+    .a-breadcrumb a:hover { color: var(--t1); }
+    .a-breadcrumb .current { color: var(--t1); font-weight: 600; }
+
+    /* A: mini DAG in sidebar */
+    .a-mini-dag { padding: 8px 16px; }
+    .a-dag-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+    .a-dag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .a-dag-line { width: 1px; height: 10px; background: var(--bdr); margin-left: 3.5px; }
+    .a-dag-name { flex: 1; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-dag-name.active { color: var(--t1); font-weight: 600; }
+    .a-dag-st { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+
+    /* ================================================================ */
+    /*  STYLE B — Card Explorer with Inline Preview                      */
+    /* ================================================================ */
+    .b-shell { flex: 1; overflow-y: auto; }
+    .b-container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+    /* B: Compact session header */
+    .b-header {
+      display: flex; align-items: center; gap: 16px; padding: 16px 20px;
+      background: var(--card); border-radius: 14px; border: 1px solid var(--bdr2); margin-bottom: 16px;
+    }
+    .b-header-info { flex: 1; }
+    .b-header-title { font-size: 16px; font-weight: 700; color: var(--t1); }
+    .b-header-id { font-size: 10px; font-family: var(--mono); color: var(--t3); margin-top: 2px; }
+    .b-header-tags { display: flex; gap: 6px; margin-top: 6px; }
+    .b-header-stats { display: flex; gap: 20px; }
+    .b-hstat { text-align: center; }
+    .b-hstat-val { font-size: 18px; font-weight: 700; color: var(--t1); }
+    .b-hstat-label { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t3); }
+
+    /* B: DAG compact bar */
+    .b-dag-bar {
+      display: flex; align-items: center; gap: 6px; padding: 12px 16px;
+      background: var(--card); border-radius: 12px; border: 1px solid var(--bdr2);
+      margin-bottom: 16px; overflow-x: auto;
+    }
+    .b-dag-node {
+      display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+      border-radius: 8px; border: 1.5px solid var(--bdr); font-size: 11px;
+      white-space: nowrap; cursor: pointer; transition: all 120ms; flex-shrink: 0;
+    }
+    .b-dag-node:hover { border-color: var(--blue); }
+    .b-dag-node .nd { width: 8px; height: 8px; border-radius: 50%; }
+    .b-dag-node .nid { font-family: var(--mono); font-size: 10px; color: var(--t3); }
+    .b-dag-node .nn { font-weight: 600; color: var(--t1); }
+    .b-dag-arrow { color: var(--t4); font-size: 14px; flex-shrink: 0; }
+
+    /* B: Section title with view toggle */
+    .b-section-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .b-section-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--t3); flex: 1;
+    }
+    .b-view-toggle { display: flex; gap: 2px; background: var(--bg2); border-radius: 6px; padding: 2px; }
+    .b-vt-btn {
+      padding: 3px 8px; font-size: 10px; font-weight: 600; color: var(--t3);
+      border: none; background: none; border-radius: 4px; cursor: pointer; transition: all 120ms;
+    }
+    .b-vt-btn:hover { color: var(--t1); }
+    .b-vt-btn.active { background: var(--card); color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+
+    /* B: Artifact cards — grid */
+    .b-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .b-card {
+      background: var(--card); border-radius: 12px; border: 1px solid var(--bdr2);
+      overflow: hidden; cursor: pointer; transition: all 180ms;
+    }
+    .b-card:hover { border-color: var(--blue); box-shadow: 0 4px 12px rgba(0,0,0,0.05); transform: translateY(-1px); }
+    .b-card.expanded { border-color: var(--blue); grid-column: 1 / -1; }
+    .b-card-head {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    }
+    .b-card-icon {
+      width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .b-card-info { flex: 1; min-width: 0; }
+    .b-card-name { font-size: 13px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .b-card-meta { font-size: 10px; color: var(--t3); display: flex; gap: 8px; margin-top: 2px; }
+    .b-card-badge { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 100px; flex-shrink: 0; align-self: center; }
+    .b-card-expand {
+      width: 24px; height: 24px; border-radius: 6px; border: none; background: none;
+      cursor: pointer; color: var(--t4); display: flex; align-items: center; justify-content: center;
+      transition: all 120ms; flex-shrink: 0;
+    }
+    .b-card-expand:hover { background: var(--hover); color: var(--t1); }
+    .b-card-expand.open { transform: rotate(180deg); }
+
+    /* B: Inline preview panel */
+    .b-card-preview {
+      max-height: 0; overflow: hidden; transition: max-height 300ms ease;
+      border-top: 0 solid var(--bdr2);
+    }
+    .b-card.expanded .b-card-preview { max-height: 500px; overflow: auto; border-top-width: 1px; }
+    .b-card-preview-inner { padding: 14px 16px; }
+
+    /* B: Artifact list (alternate view) */
+    .b-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+    .b-list-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+      border-radius: 8px; cursor: pointer; transition: background 100ms;
+    }
+    .b-list-item:hover { background: var(--hover); }
+    .b-list-item.active { background: var(--active); }
+    .b-list-icon { width: 20px; height: 20px; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+    .b-list-name { flex: 1; font-size: 12px; font-weight: 500; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .b-list-role { font-size: 10px; color: var(--t3); }
+    .b-list-type { font-size: 9px; font-family: var(--mono); color: var(--t4); }
+    .b-list-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+    /* B: Preview slide-up panel */
+    .b-preview-overlay {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+      background: var(--card); border-top: 1px solid var(--bdr);
+      border-radius: 16px 16px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.1);
+      max-height: 0; overflow: hidden; transition: max-height 300ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .b-preview-overlay.open { max-height: 55vh; }
+    .b-preview-bar {
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+      border-bottom: 1px solid var(--bdr2); cursor: grab;
+    }
+    .b-preview-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--t4); margin: 0 auto; }
+    .b-preview-name { font-size: 13px; font-weight: 600; color: var(--t1); flex: 1; }
+    .b-preview-close {
+      width: 28px; height: 28px; border-radius: 8px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center; justify-content: center;
+    }
+    .b-preview-close:hover { background: var(--hover); color: var(--t1); }
+    .b-preview-body { padding: 16px 20px; overflow-y: auto; max-height: calc(55vh - 48px); }
+
+
+    /* ================================================================ */
+    /*  STYLE C — Document Workspace (Notion-like)                       */
+    /* ================================================================ */
+    .c-shell { display: flex; flex: 1; overflow: hidden; }
+
+    /* C: Page sidebar */
+    .c-sidebar {
+      width: 260px; flex-shrink: 0; background: var(--card);
+      border-right: 1px solid var(--bdr2); display: flex; flex-direction: column;
+    }
+    .c-sb-header { padding: 16px 16px 12px; }
+    .c-sb-title { font-size: 14px; font-weight: 700; color: var(--t1); margin-bottom: 2px; }
+    .c-sb-sub { font-size: 10px; font-family: var(--mono); color: var(--t3); }
+    .c-sb-search {
+      margin: 0 16px 12px; padding: 7px 10px; border-radius: 8px;
+      border: 1px solid var(--bdr); background: var(--bg); font-size: 12px;
+      color: var(--t1); outline: none; width: calc(100% - 32px); transition: border-color 150ms;
+    }
+    .c-sb-search:focus { border-color: var(--blue); }
+    .c-sb-search::placeholder { color: var(--t4); }
+    .c-sb-scroll { flex: 1; overflow-y: auto; }
+    .c-sb-group { padding: 4px 0; }
+    .c-sb-group + .c-sb-group { border-top: 1px solid var(--bdr2); }
+    .c-sb-group-label {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--t4); padding: 8px 16px 4px; display: flex; align-items: center; gap: 6px;
+    }
+    .c-sb-group-label .cnt { font-size: 9px; color: var(--t4); font-weight: 500; }
+    .c-page-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 16px;
+      cursor: pointer; border: none; background: none; width: 100%; text-align: left;
+      font-size: 12px; color: var(--t2); transition: all 100ms;
+    }
+    .c-page-item:hover { background: var(--hover); color: var(--t1); }
+    .c-page-item.active { background: rgba(74,144,217,0.08); color: var(--blue); font-weight: 600; }
+    .c-page-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+    .c-page-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .c-page-ext { font-size: 9px; font-family: var(--mono); color: var(--t4); flex-shrink: 0; }
+
+    /* C: Sidebar footer (DAG mini) */
+    .c-sb-footer {
+      padding: 12px 16px; border-top: 1px solid var(--bdr2); flex-shrink: 0;
+    }
+    .c-sb-footer-title { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t4); margin-bottom: 6px; }
+    .c-pipe-mini { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .c-pipe-node { width: 10px; height: 10px; border-radius: 3px; cursor: pointer; transition: transform 120ms; }
+    .c-pipe-node:hover { transform: scale(1.5); }
+    .c-pipe-arrow { color: var(--t4); font-size: 8px; }
+
+    /* C: Main document area */
+    .c-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+    /* C: Document toolbar */
+    .c-toolbar {
+      display: flex; align-items: center; gap: 8px; padding: 8px 24px;
+      border-bottom: 1px solid var(--bdr2); flex-shrink: 0; background: var(--bg);
+    }
+    .c-breadcrumb { display: flex; align-items: center; gap: 4px; font-size: 11px; flex: 1; }
+    .c-breadcrumb a { color: var(--t3); text-decoration: none; }
+    .c-breadcrumb a:hover { color: var(--t1); }
+    .c-breadcrumb .sep { color: var(--t4); }
+    .c-breadcrumb .cur { color: var(--t1); font-weight: 600; }
+    .c-tool-btn {
+      width: 28px; height: 28px; border-radius: 6px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center; justify-content: center;
+      transition: all 100ms;
+    }
+    .c-tool-btn:hover { background: var(--hover); color: var(--t1); }
+
+    /* C: Document canvas */
+    .c-canvas { flex: 1; overflow-y: auto; display: flex; justify-content: center; }
+    .c-doc {
+      width: 100%; max-width: 760px; padding: 32px 40px 80px;
+    }
+    .c-doc-meta {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 20px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--bdr2);
+    }
+    .c-doc-type {
+      font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+    }
+    .c-doc-author { font-size: 11px; color: var(--t3); }
+    .c-doc-time { font-size: 11px; color: var(--t4); margin-left: auto; }
+
+    /* C: Right panel (optional info drawer) */
+    .c-drawer {
+      width: 0; overflow: hidden; background: var(--card); border-left: 1px solid var(--bdr2);
+      transition: width 200ms; flex-shrink: 0;
+    }
+    .c-drawer.open { width: 280px; }
+    .c-drawer-inner { width: 280px; padding: 16px; }
+    .c-drawer-title { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--t3); margin-bottom: 10px; }
+    .c-drawer-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px; }
+    .c-drawer-row + .c-drawer-row { border-top: 1px solid var(--bdr2); }
+    .c-drawer-key { color: var(--t3); min-width: 80px; font-size: 11px; }
+    .c-drawer-val { color: var(--t1); font-weight: 500; flex: 1; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Style selector -->
+  <nav class="style-bar">
+    <span class="style-bar-title">TC Session Detail</span>
+    <button class="style-tab active" onclick="showStyle('a')">
+      Style A
+      <span class="stb" style="background:var(--tint-blue);color:var(--blue)">IDE Split</span>
+    </button>
+    <button class="style-tab" onclick="showStyle('b')">
+      Style B
+      <span class="stb" style="background:var(--tint-purple);color:var(--purple)">Card Explorer</span>
+    </button>
+    <button class="style-tab" onclick="showStyle('c')">
+      Style C
+      <span class="stb" style="background:var(--tint-green);color:var(--green)">Document Workspace</span>
+    </button>
+    <div class="style-spacer"></div>
+    <span class="style-hint">TC-refactor-auth-module-20260319</span>
+  </nav>
+
+
+  <!-- ================================================================ -->
+  <!--  STYLE A — IDE Split Panel                                        -->
+  <!--  File tree left | Tab-based preview right                         -->
+  <!-- ================================================================ -->
+  <div class="style-page active" id="style-a">
+    <div class="a-shell">
+
+      <!-- Left sidebar: file explorer -->
+      <aside class="a-sidebar">
+        <div class="a-sb-header">
+          <span class="a-sb-title">Refactor Auth Module</span>
+          <span class="a-sb-tag st-running">Active</span>
+        </div>
+
+        <div class="a-sb-scroll">
+          <!-- Mini DAG -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> PIPELINE</div>
+            <div class="a-mini-dag">
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--green)"></div><span class="a-dag-name">RESEARCH-001</span><span class="a-dag-st st-done">Done</span></div>
+              <div class="a-dag-line"></div>
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--green)"></div><span class="a-dag-name">PLAN-001</span><span class="a-dag-st st-done">Done</span></div>
+              <div class="a-dag-line"></div>
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--yellow)"></div><span class="a-dag-name active">IMPL-001</span><span class="a-dag-st st-running">Run</span></div>
+              <div class="a-dag-line"></div>
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--yellow)"></div><span class="a-dag-name active">IMPL-002</span><span class="a-dag-st st-running">Run</span></div>
+              <div class="a-dag-line"></div>
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--gray)"></div><span class="a-dag-name">TEST-001</span><span class="a-dag-st st-blocked">Blk</span></div>
+              <div class="a-dag-line"></div>
+              <div class="a-dag-row"><div class="a-dag-dot" style="background:var(--gray);border:1.5px dashed var(--purple)"></div><span class="a-dag-name" style="color:var(--purple)">SECURITY-001</span><span class="a-dag-st st-pending">Pnd</span></div>
+            </div>
+          </div>
+
+          <!-- File tree: artifacts/ -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> ARTIFACTS</div>
+            <button class="a-file active" onclick="aOpenTab('research-md')">
+              <div class="a-file-icon" style="color:var(--blue)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">RESEARCH-001-analysis.md</span>
+              <span class="a-file-badge st-done">D</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('plan-md')">
+              <div class="a-file-icon" style="color:var(--purple)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">PLAN-001-impl-plan.md</span>
+              <span class="a-file-badge st-done">D</span>
+            </button>
+          </div>
+
+          <!-- File tree: role-specs/ -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> ROLE-SPECS</div>
+            <button class="a-file" onclick="aOpenTab('rs-researcher')">
+              <div class="a-file-icon" style="color:var(--cyan)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">researcher.md</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('rs-planner')">
+              <div class="a-file-icon" style="color:var(--cyan)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">planner.md</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('rs-developer')">
+              <div class="a-file-icon" style="color:var(--cyan)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">developer.md</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('rs-security')">
+              <div class="a-file-icon" style="color:var(--purple)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name" style="color:var(--purple)">security-expert.md</span>
+              <span class="a-file-badge" style="background:rgba(139,107,191,0.12);color:var(--purple)">new</span>
+            </button>
+          </div>
+
+          <!-- File tree: session config -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> SESSION</div>
+            <button class="a-file" onclick="aOpenTab('session-json')">
+              <div class="a-file-icon" style="color:var(--orange)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+              <span class="a-file-name">team-session.json</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('analysis-json')">
+              <div class="a-file-icon" style="color:var(--orange)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+              <span class="a-file-name">task-analysis.json</span>
+            </button>
+          </div>
+
+          <!-- File tree: wisdom/ -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> WISDOM</div>
+            <button class="a-file" onclick="aOpenTab('wisdom-decisions')">
+              <div class="a-file-icon" style="color:var(--green)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">decisions.md</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('wisdom-learnings')">
+              <div class="a-file-icon" style="color:var(--green)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">learnings.md</span>
+            </button>
+          </div>
+
+          <!-- File tree: .msg/ -->
+          <div class="a-sb-section">
+            <div class="a-sb-label"><span class="caret">&#9660;</span> MESSAGES</div>
+            <button class="a-file" onclick="aOpenTab('msg-meta')">
+              <div class="a-file-icon" style="color:var(--yellow)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+              <span class="a-file-name">meta.json</span>
+            </button>
+            <button class="a-file" onclick="aOpenTab('msg-log')">
+              <div class="a-file-icon" style="color:var(--yellow)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+              <span class="a-file-name">messages.jsonl</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats footer -->
+        <div class="a-sb-stats">
+          <div><div class="a-sb-stat-label">Tasks</div><div class="a-sb-stat-val">3/6</div></div>
+          <div><div class="a-sb-stat-label">Roles</div><div class="a-sb-stat-val">4</div></div>
+          <div><div class="a-sb-stat-label">Duration</div><div class="a-sb-stat-val">28m</div></div>
+          <div><div class="a-sb-stat-label">Files</div><div class="a-sb-stat-val">12</div></div>
+        </div>
+      </aside>
+
+      <!-- Main: tab bar + viewer -->
+      <div class="a-main">
+        <div class="a-tabs" id="a-tab-bar">
+          <button class="a-tab active" data-tab="research-md">
+            <svg class="a-tab-icon" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="a-tab-name">RESEARCH-001-analysis.md</span>
+            <span class="a-tab-close">&times;</span>
+          </button>
+        </div>
+
+        <!-- Active viewer: RESEARCH-001 markdown -->
+        <div class="a-viewer" id="a-viewer">
+          <div class="a-breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">artifacts</a> <span>/</span>
+            <span class="current">RESEARCH-001-analysis.md</span>
+          </div>
+
+          <div class="md-render">
+            <h1>Authentication Module — Codebase Analysis</h1>
+
+            <blockquote>Produced by <strong>researcher</strong> role | RESEARCH-001 | self-validated</blockquote>
+
+            <h2>Executive Summary</h2>
+            <p>The current authentication module uses a custom JWT implementation with in-memory session storage. The module has 14 integration points across 6 services and 3 middleware layers.</p>
+
+            <h2>Architecture Findings</h2>
+
+            <h3>Current Session Flow</h3>
+<pre>Client -> auth/middleware.ts -> session/store.ts (in-memory Map)
+       -> jwt/verify.ts -> user/resolver.ts</pre>
+
+            <h3>Integration Points</h3>
+            <table>
+              <thead><tr><th>Service</th><th>File</th><th>Coupling</th><th>Risk</th></tr></thead>
+              <tbody>
+                <tr><td>API Gateway</td><td><code>src/gateway/auth.ts</code></td><td>Direct import</td><td>High</td></tr>
+                <tr><td>User Service</td><td><code>src/users/auth-check.ts</code></td><td>Token validation</td><td>Medium</td></tr>
+                <tr><td>Payment Service</td><td><code>src/payments/verify.ts</code></td><td>Session lookup</td><td>High</td></tr>
+                <tr><td>WebSocket Hub</td><td><code>src/ws/auth-handler.ts</code></td><td>Token + session</td><td>Medium</td></tr>
+                <tr><td>Admin Panel</td><td><code>src/admin/middleware.ts</code></td><td>RBAC check</td><td>Low</td></tr>
+                <tr><td>Webhook Handler</td><td><code>src/webhooks/auth.ts</code></td><td>API key validation</td><td>Low</td></tr>
+              </tbody>
+            </table>
+
+            <h2>Breaking Change Risks</h2>
+            <ul>
+              <li><strong>Risk 1</strong>: <code>SessionStore.get()</code> is synchronous — Redis adapter requires async conversion across 8 call sites</li>
+              <li><strong>Risk 2</strong>: JWT payload structure change (adding <code>refresh_token_id</code>) affects all token consumers</li>
+              <li><strong>Risk 3</strong>: Payment service depends on session data shape — needs migration path</li>
+            </ul>
+
+            <h2>Recommended Approach</h2>
+            <p>Implement adapter pattern for SessionStore to support both sync (in-memory, for tests) and async (Redis) backends. Introduce refresh token rotation with a separate <code>refresh_tokens</code> table rather than embedding in JWT claims.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!--  STYLE B — Card Explorer with Inline Preview                      -->
+  <!--  Browsable card grid | Click to expand preview inline             -->
+  <!-- ================================================================ -->
+  <div class="style-page" id="style-b">
+    <div class="b-shell">
+      <div class="b-container">
+
+        <!-- Compact header -->
+        <div class="b-header">
+          <div class="b-header-info">
+            <div class="b-header-title">Refactor Authentication Module</div>
+            <div class="b-header-id">TC-refactor-auth-module-20260319</div>
+            <div class="b-header-tags">
+              <span class="pill" style="background:rgba(201,155,45,0.12);color:var(--yellow)"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+              <span class="pill" style="background:rgba(74,144,217,0.12);color:var(--blue)">dynamic-pipeline</span>
+              <span class="pill" style="background:rgba(139,107,191,0.12);color:var(--purple)">4 roles</span>
+            </div>
+          </div>
+          <div class="b-header-stats">
+            <div class="b-hstat"><div class="b-hstat-val">3/6</div><div class="b-hstat-label">Tasks</div></div>
+            <div class="b-hstat"><div class="b-hstat-val">28m</div><div class="b-hstat-label">Duration</div></div>
+            <div class="b-hstat"><div class="b-hstat-val">12</div><div class="b-hstat-label">Files</div></div>
+          </div>
+        </div>
+
+        <!-- DAG compact bar -->
+        <div class="b-dag-bar">
+          <div class="b-dag-node" style="border-color:var(--green)"><div class="nd" style="background:var(--green)"></div><span class="nid">RESEARCH-001</span><span class="nn">Analysis</span></div>
+          <span class="b-dag-arrow">&#8594;</span>
+          <div class="b-dag-node" style="border-color:var(--green)"><div class="nd" style="background:var(--green)"></div><span class="nid">PLAN-001</span><span class="nn">Plan</span></div>
+          <span class="b-dag-arrow">&#8594;</span>
+          <div class="b-dag-node" style="border-color:var(--yellow)"><div class="nd" style="background:var(--yellow)"></div><span class="nid">IMPL-001</span><span class="nn">OAuth2</span></div>
+          <div class="b-dag-node" style="border-color:var(--yellow)"><div class="nd" style="background:var(--yellow)"></div><span class="nid">IMPL-002</span><span class="nn">Redis</span></div>
+          <span class="b-dag-arrow">&#8594;</span>
+          <div class="b-dag-node" style="border-color:var(--bdr);opacity:0.5"><div class="nd" style="background:var(--gray)"></div><span class="nid">TEST-001</span><span class="nn">Tests</span></div>
+          <span class="b-dag-arrow">&#8594;</span>
+          <div class="b-dag-node" style="border-color:var(--purple);border-style:dashed;opacity:0.5"><div class="nd" style="background:var(--gray)"></div><span class="nid">SECURITY-001</span><span class="nn">Audit</span></div>
+        </div>
+
+        <!-- Artifact cards: Deliverables -->
+        <div class="b-section-head">
+          <span class="b-section-title">Deliverables (artifacts/)</span>
+          <div class="b-view-toggle">
+            <button class="b-vt-btn active" onclick="bToggleView(this,'grid')">Grid</button>
+            <button class="b-vt-btn" onclick="bToggleView(this,'list')">List</button>
+          </div>
+        </div>
+        <div class="b-grid" id="b-artifacts-grid">
+          <!-- Card: RESEARCH-001 (expanded demo) -->
+          <div class="b-card expanded" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-blue);color:var(--blue)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">RESEARCH-001-analysis.md</div>
+                <div class="b-card-meta">
+                  <span>researcher</span>
+                  <span>2.4 KB</span>
+                  <span>22m ago</span>
+                </div>
+              </div>
+              <span class="b-card-badge st-done">Done</span>
+              <button class="b-card-expand open" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h1>Authentication Module — Codebase Analysis</h1>
+                  <blockquote>Produced by <strong>researcher</strong> role | RESEARCH-001 | self-validated</blockquote>
+                  <h2>Executive Summary</h2>
+                  <p>The current authentication module uses a custom JWT implementation with in-memory session storage. The module has 14 integration points across 6 services and 3 middleware layers.</p>
+                  <h2>Breaking Change Risks</h2>
+                  <ul>
+                    <li><strong>Risk 1</strong>: <code>SessionStore.get()</code> is synchronous — Redis adapter requires async conversion</li>
+                    <li><strong>Risk 2</strong>: JWT payload structure change affects all token consumers</li>
+                    <li><strong>Risk 3</strong>: Payment service depends on session data shape</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: PLAN-001 -->
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-purple);color:var(--purple)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">PLAN-001-impl-plan.md</div>
+                <div class="b-card-meta">
+                  <span>planner</span>
+                  <span>3.1 KB</span>
+                  <span>16m ago</span>
+                </div>
+              </div>
+              <span class="b-card-badge st-done">Done</span>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h1>Implementation Plan — Auth Refactor</h1>
+                  <h2>Parallel Track Design</h2>
+                  <p>Split into two independent implementation streams to maximize throughput:</p>
+                  <table>
+                    <thead><tr><th>Task</th><th>Track</th><th>Dependencies</th><th>Estimated</th></tr></thead>
+                    <tbody>
+                      <tr><td>IMPL-001</td><td>OAuth2 + Tokens</td><td>PLAN-001</td><td>~15m</td></tr>
+                      <tr><td>IMPL-002</td><td>Redis Sessions</td><td>PLAN-001</td><td>~12m</td></tr>
+                    </tbody>
+                  </table>
+                  <h2>Migration Strategy</h2>
+                  <p>Adapter pattern for <code>SessionStore</code> — dual backend support (in-memory for tests, Redis for production). No breaking changes to consumer APIs.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Role-specs section -->
+        <div class="b-section-head">
+          <span class="b-section-title">Role Specs (role-specs/)</span>
+        </div>
+        <div class="b-grid">
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-cyan);color:var(--cyan)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">researcher.md</div>
+                <div class="b-card-meta"><span>RESEARCH-*</span><span>~80 lines</span></div>
+              </div>
+              <span class="b-card-badge" style="background:var(--tint-cyan);color:var(--cyan)">dynamic</span>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h3>researcher — Phase 2-4</h3>
+                  <p><strong>Tag:</strong> [researcher] | <strong>Prefix:</strong> RESEARCH-*<br><strong>Responsibility:</strong> Explore existing auth module, map dependencies, identify integration points.</p>
+                  <h3>Phase 2: Context Loading</h3>
+                  <p>Load upstream state via <code>team_msg(get_state)</code>. Read <code>wisdom/*.md</code> for prior decisions.</p>
+                  <h3>Phase 3: Exploration</h3>
+                  <p>Map all auth integration points. Identify breaking change risks. Document session storage patterns.</p>
+                  <h3>Phase 4: Verification</h3>
+                  <p>Verify artifact exists with expected content. Update shared state with key findings.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-cyan);color:var(--cyan)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">developer.md</div>
+                <div class="b-card-meta"><span>IMPL-*</span><span>inner_loop: true</span></div>
+              </div>
+              <span class="b-card-badge" style="background:var(--tint-cyan);color:var(--cyan)">dynamic</span>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h3>developer — Phase 2-4</h3>
+                  <p><strong>Tag:</strong> [developer] | <strong>Prefix:</strong> IMPL-*<br><strong>Responsibility:</strong> Implement OAuth2 + refresh tokens, Redis session storage with backward-compatible API.</p>
+                  <h3>Phase 3: Implementation</h3>
+                  <p>Implement code changes per plan. Use adapter pattern for SessionStore. Preserve existing API surface.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="b-card" onclick="bToggleCard(this)" style="border-style:dashed;border-color:var(--purple)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:rgba(139,107,191,0.1);color:var(--purple)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name" style="color:var(--purple)">security-expert.md</div>
+                <div class="b-card-meta"><span>SECURITY-*</span><span>injected via capability_gap</span></div>
+              </div>
+              <span class="b-card-badge" style="background:rgba(139,107,191,0.12);color:var(--purple)">injected</span>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h3>security-expert — Phase 2-4</h3>
+                  <p><strong>Tag:</strong> [security-expert] | <strong>Prefix:</strong> SECURITY-*<br><strong>Responsibility:</strong> Audit token storage, rotation logic, OAuth2 flow for OWASP vulnerabilities.</p>
+                  <p style="color:var(--purple);font-style:italic">Injected mid-pipeline via capability_gap report from developer role.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session config files -->
+        <div class="b-section-head">
+          <span class="b-section-title">Session Config & State</span>
+        </div>
+        <div class="b-grid">
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-orange);color:var(--orange)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">task-analysis.json</div>
+                <div class="b-card-meta"><span>Phase 1 output</span><span>1.2 KB</span></div>
+              </div>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="json-render">{
+  <span class="jk">"capabilities"</span>: [<span class="js">"authentication"</span>, <span class="js">"oauth2"</span>, <span class="js">"session-mgmt"</span>, <span class="js">"redis"</span>],
+  <span class="jk">"complexity"</span>: <span class="js">"medium"</span>,
+  <span class="jk">"cross_domain_factor"</span>: <span class="jn">0.7</span>,
+  <span class="jk">"dependency_graph"</span>: {
+    <span class="jk">"RESEARCH-001"</span>: { <span class="jk">"role"</span>: <span class="js">"researcher"</span>, <span class="jk">"blockedBy"</span>: [] },
+    <span class="jk">"PLAN-001"</span>:     { <span class="jk">"role"</span>: <span class="js">"planner"</span>,    <span class="jk">"blockedBy"</span>: [<span class="js">"RESEARCH-001"</span>] },
+    <span class="jk">"IMPL-001"</span>:     { <span class="jk">"role"</span>: <span class="js">"developer"</span>,  <span class="jk">"blockedBy"</span>: [<span class="js">"PLAN-001"</span>] },
+    <span class="jk">"IMPL-002"</span>:     { <span class="jk">"role"</span>: <span class="js">"developer"</span>,  <span class="jk">"blockedBy"</span>: [<span class="js">"PLAN-001"</span>] },
+    <span class="jk">"TEST-001"</span>:     { <span class="jk">"role"</span>: <span class="js">"tester"</span>,    <span class="jk">"blockedBy"</span>: [<span class="js">"IMPL-001"</span>, <span class="js">"IMPL-002"</span>] }
+  },
+  <span class="jk">"roles"</span>: [
+    { <span class="jk">"name"</span>: <span class="js">"researcher"</span>, <span class="jk">"prefix"</span>: <span class="js">"RESEARCH"</span>, <span class="jk">"inner_loop"</span>: <span class="jb">false</span> },
+    { <span class="jk">"name"</span>: <span class="js">"planner"</span>,    <span class="jk">"prefix"</span>: <span class="js">"PLAN"</span>,     <span class="jk">"inner_loop"</span>: <span class="jb">false</span> },
+    { <span class="jk">"name"</span>: <span class="js">"developer"</span>,  <span class="jk">"prefix"</span>: <span class="js">"IMPL"</span>,     <span class="jk">"inner_loop"</span>: <span class="jb">true</span> },
+    { <span class="jk">"name"</span>: <span class="js">"tester"</span>,     <span class="jk">"prefix"</span>: <span class="js">"TEST"</span>,     <span class="jk">"inner_loop"</span>: <span class="jb">false</span> }
+  ]
+}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-orange);color:var(--orange)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">team-session.json</div>
+                <div class="b-card-meta"><span>Session state</span><span>0.9 KB</span></div>
+              </div>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="json-render">{
+  <span class="jk">"session_id"</span>: <span class="js">"TC-refactor-auth-module-20260319"</span>,
+  <span class="jk">"status"</span>: <span class="js">"active"</span>,
+  <span class="jk">"team_name"</span>: <span class="js">"refactor-auth"</span>,
+  <span class="jk">"pipeline"</span>: {
+    <span class="jk">"tasks_total"</span>: <span class="jn">6</span>,
+    <span class="jk">"tasks_completed"</span>: <span class="jn">3</span>
+  },
+  <span class="jk">"active_workers"</span>: [<span class="js">"developer"</span>],
+  <span class="jk">"completed_tasks"</span>: [<span class="js">"RESEARCH-001"</span>, <span class="js">"PLAN-001"</span>],
+  <span class="jk">"completion_action"</span>: <span class="js">"interactive"</span>,
+  <span class="jk">"created_at"</span>: <span class="js">"2026-03-19T14:02:00Z"</span>
+}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wisdom -->
+        <div class="b-section-head">
+          <span class="b-section-title">Wisdom & Messages</span>
+        </div>
+        <div class="b-grid">
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-green);color:var(--green)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">decisions.md</div>
+                <div class="b-card-meta"><span>wisdom/</span><span>2 entries</span></div>
+              </div>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="md-render">
+                  <h2>Decisions</h2>
+                  <ul>
+                    <li><strong>Adapter pattern for SessionStore</strong> — supports sync (tests) + async (Redis) backends without breaking consumer APIs. <em>Decided by: PLAN-001</em></li>
+                    <li><strong>Separate refresh_tokens table</strong> — better auditability than embedding in JWT claims. <em>Decided by: RESEARCH-001</em></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="b-card" onclick="bToggleCard(this)">
+            <div class="b-card-head">
+              <div class="b-card-icon" style="background:var(--tint-yellow);color:var(--yellow)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </div>
+              <div class="b-card-info">
+                <div class="b-card-name">meta.json</div>
+                <div class="b-card-meta"><span>.msg/</span><span>Pipeline state</span></div>
+              </div>
+              <button class="b-card-expand" onclick="event.stopPropagation();bToggleCard(this.closest('.b-card'))">&#9662;</button>
+            </div>
+            <div class="b-card-preview">
+              <div class="b-card-preview-inner">
+                <div class="json-render">{
+  <span class="jk">"pipeline_mode"</span>: <span class="js">"dynamic"</span>,
+  <span class="jk">"pipeline_stages"</span>: [<span class="js">"researcher"</span>, <span class="js">"planner"</span>, <span class="js">"developer"</span>, <span class="js">"tester"</span>],
+  <span class="jk">"researcher"</span>: {
+    <span class="jk">"key_findings"</span>: [<span class="js">"14 integration points"</span>, <span class="js">"3 breaking change risks"</span>],
+    <span class="jk">"scope"</span>: <span class="js">"src/auth/**, src/session/**"</span>
+  },
+  <span class="jk">"planner"</span>: {
+    <span class="jk">"key_findings"</span>: [<span class="js">"2 parallel tracks identified"</span>, <span class="js">"Adapter pattern recommended"</span>]
+  }
+}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!--  STYLE C — Document Workspace (Notion-like)                       -->
+  <!--  Page sidebar | Full-width rendered document | Info drawer         -->
+  <!-- ================================================================ -->
+  <div class="style-page" id="style-c">
+    <div class="c-shell">
+
+      <!-- Left: Page navigation -->
+      <aside class="c-sidebar">
+        <div class="c-sb-header">
+          <div class="c-sb-title">Auth Refactor</div>
+          <div class="c-sb-sub">TC-refactor-auth-module</div>
+        </div>
+        <input class="c-sb-search" type="text" placeholder="Search files..." />
+
+        <div class="c-sb-scroll">
+          <!-- Deliverables -->
+          <div class="c-sb-group">
+            <div class="c-sb-group-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+              Deliverables <span class="cnt">2</span>
+            </div>
+            <button class="c-page-item active" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--blue)">&#9635;</span>
+              <span class="c-page-name">RESEARCH-001-analysis</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--purple)">&#9635;</span>
+              <span class="c-page-name">PLAN-001-impl-plan</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+          </div>
+
+          <!-- Role Specs -->
+          <div class="c-sb-group">
+            <div class="c-sb-group-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+              Role Specs <span class="cnt">4</span>
+            </div>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--cyan)">&#9671;</span>
+              <span class="c-page-name">researcher</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--cyan)">&#9671;</span>
+              <span class="c-page-name">planner</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--cyan)">&#9671;</span>
+              <span class="c-page-name">developer</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--purple)">&#9671;</span>
+              <span class="c-page-name" style="color:var(--purple)">security-expert</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+          </div>
+
+          <!-- Session State -->
+          <div class="c-sb-group">
+            <div class="c-sb-group-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+              Session <span class="cnt">2</span>
+            </div>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--orange)">&#123;&#125;</span>
+              <span class="c-page-name">team-session</span>
+              <span class="c-page-ext">.json</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--orange)">&#123;&#125;</span>
+              <span class="c-page-name">task-analysis</span>
+              <span class="c-page-ext">.json</span>
+            </button>
+          </div>
+
+          <!-- Wisdom -->
+          <div class="c-sb-group">
+            <div class="c-sb-group-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+              Wisdom <span class="cnt">3</span>
+            </div>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--green)">&#9733;</span>
+              <span class="c-page-name">decisions</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--green)">&#9733;</span>
+              <span class="c-page-name">learnings</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--orange)">&#9733;</span>
+              <span class="c-page-name">issues</span>
+              <span class="c-page-ext">.md</span>
+            </button>
+          </div>
+
+          <!-- Messages -->
+          <div class="c-sb-group">
+            <div class="c-sb-group-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              Messages <span class="cnt">2</span>
+            </div>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--yellow)">&#123;&#125;</span>
+              <span class="c-page-name">meta</span>
+              <span class="c-page-ext">.json</span>
+            </button>
+            <button class="c-page-item" onclick="cSelectPage(this)">
+              <span class="c-page-icon" style="color:var(--yellow)">&#9776;</span>
+              <span class="c-page-name">messages</span>
+              <span class="c-page-ext">.jsonl</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer: pipeline mini -->
+        <div class="c-sb-footer">
+          <div class="c-sb-footer-title">Pipeline (3/6)</div>
+          <div class="c-pipe-mini">
+            <div class="c-pipe-node" style="background:var(--green)" title="RESEARCH-001: Done"></div>
+            <span class="c-pipe-arrow">&#8594;</span>
+            <div class="c-pipe-node" style="background:var(--green)" title="PLAN-001: Done"></div>
+            <span class="c-pipe-arrow">&#8594;</span>
+            <div class="c-pipe-node" style="background:var(--yellow)" title="IMPL-001: Running"></div>
+            <div class="c-pipe-node" style="background:var(--yellow)" title="IMPL-002: Running"></div>
+            <span class="c-pipe-arrow">&#8594;</span>
+            <div class="c-pipe-node" style="background:var(--gray)" title="TEST-001: Pending"></div>
+            <span class="c-pipe-arrow">&#8594;</span>
+            <div class="c-pipe-node" style="background:var(--gray);border:1px dashed var(--purple)" title="SECURITY-001: Injected"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main: document area -->
+      <div class="c-main">
+        <!-- Toolbar -->
+        <div class="c-toolbar">
+          <div class="c-breadcrumb">
+            <a href="#">TC-refactor-auth-module</a>
+            <span class="sep">/</span>
+            <a href="#">artifacts</a>
+            <span class="sep">/</span>
+            <span class="cur">RESEARCH-001-analysis.md</span>
+          </div>
+          <button class="c-tool-btn" title="Toggle info panel" onclick="cToggleDrawer()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
+          <button class="c-tool-btn" title="Copy path">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+          <button class="c-tool-btn" title="Raw view">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
+
+        <!-- Document canvas -->
+        <div class="c-canvas">
+          <div class="c-doc">
+            <!-- Doc meta bar -->
+            <div class="c-doc-meta">
+              <span class="c-doc-type" style="background:var(--tint-blue);color:var(--blue)">.md</span>
+              <span class="c-doc-type" style="background:rgba(61,155,111,0.12);color:var(--green)">Done</span>
+              <span class="c-doc-author">researcher</span>
+              <span class="c-doc-time">22 min ago</span>
+            </div>
+
+            <!-- Rendered markdown -->
+            <div class="md-render">
+              <h1>Authentication Module — Codebase Analysis</h1>
+
+              <blockquote>Produced by <strong>researcher</strong> role | RESEARCH-001 | self-validated</blockquote>
+
+              <h2>Executive Summary</h2>
+              <p>The current authentication module uses a custom JWT implementation with in-memory session storage. The module has 14 integration points across 6 services and 3 middleware layers.</p>
+
+              <h2>Architecture Findings</h2>
+
+              <h3>Current Session Flow</h3>
+<pre>Client -> auth/middleware.ts -> session/store.ts (in-memory Map)
+       -> jwt/verify.ts -> user/resolver.ts</pre>
+
+              <h3>Integration Points</h3>
+              <table>
+                <thead><tr><th>Service</th><th>File</th><th>Coupling</th><th>Risk</th></tr></thead>
+                <tbody>
+                  <tr><td>API Gateway</td><td><code>src/gateway/auth.ts</code></td><td>Direct import</td><td>High</td></tr>
+                  <tr><td>User Service</td><td><code>src/users/auth-check.ts</code></td><td>Token validation</td><td>Medium</td></tr>
+                  <tr><td>Payment Service</td><td><code>src/payments/verify.ts</code></td><td>Session lookup</td><td>High</td></tr>
+                  <tr><td>WebSocket Hub</td><td><code>src/ws/auth-handler.ts</code></td><td>Token + session</td><td>Medium</td></tr>
+                  <tr><td>Admin Panel</td><td><code>src/admin/middleware.ts</code></td><td>RBAC check</td><td>Low</td></tr>
+                  <tr><td>Webhook Handler</td><td><code>src/webhooks/auth.ts</code></td><td>API key validation</td><td>Low</td></tr>
+                </tbody>
+              </table>
+
+              <h2>Breaking Change Risks</h2>
+              <ul>
+                <li><strong>Risk 1</strong>: <code>SessionStore.get()</code> is synchronous — Redis adapter requires async conversion across 8 call sites</li>
+                <li><strong>Risk 2</strong>: JWT payload structure change (adding <code>refresh_token_id</code>) affects all token consumers</li>
+                <li><strong>Risk 3</strong>: Payment service depends on session data shape — needs migration path</li>
+              </ul>
+
+              <h2>Recommended Approach</h2>
+              <p>Implement adapter pattern for SessionStore to support both sync (in-memory, for tests) and async (Redis) backends. Introduce refresh token rotation with a separate <code>refresh_tokens</code> table rather than embedding in JWT claims.</p>
+
+              <h2>Files to Modify</h2>
+              <ul>
+                <li><code>src/auth/middleware.ts</code> — Add OAuth2 provider routing</li>
+                <li><code>src/session/store.ts</code> — Extract interface, implement Redis adapter</li>
+                <li><code>src/jwt/verify.ts</code> — Support refresh token claims</li>
+                <li><code>src/jwt/rotate.ts</code> — New: refresh token rotation logic</li>
+                <li><code>src/config/redis.ts</code> — New: Redis connection configuration</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right info drawer (closed by default — toggle via i button) -->
+        <div class="c-drawer" id="c-drawer">
+          <div class="c-drawer-inner">
+            <div class="c-drawer-title">File Info</div>
+            <div class="c-drawer-row"><span class="c-drawer-key">File</span><span class="c-drawer-val mono" style="font-size:11px">RESEARCH-001-analysis.md</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Location</span><span class="c-drawer-val mono" style="font-size:11px">artifacts/</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Producer</span><span class="c-drawer-val">researcher</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Task</span><span class="c-drawer-val mono">RESEARCH-001</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Status</span><span class="c-drawer-val"><span class="pill st-done" style="font-size:10px">Done</span></span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Verification</span><span class="c-drawer-val">self-validated</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Size</span><span class="c-drawer-val">2.4 KB</span></div>
+            <div class="c-drawer-row"><span class="c-drawer-key">Created</span><span class="c-drawer-val">22m ago</span></div>
+
+            <div class="c-drawer-title" style="margin-top:16px;">Key Findings</div>
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              <div style="padding:4px 0;border-bottom:1px solid var(--bdr2);">14 integration points across 6 services</div>
+              <div style="padding:4px 0;border-bottom:1px solid var(--bdr2);">3 breaking change risks identified</div>
+              <div style="padding:4px 0;border-bottom:1px solid var(--bdr2);">Adapter pattern recommended for SessionStore</div>
+              <div style="padding:4px 0;">Refresh token table > JWT embedding</div>
+            </div>
+
+            <div class="c-drawer-title" style="margin-top:16px;">Decisions</div>
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              <div style="padding:4px 0;">Separate refresh_tokens table for auditability</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  /* Style selector */
+  function showStyle(id) {
+    document.querySelectorAll('.style-page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.style-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('style-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  /* Style A: Tab open (simplified demo) */
+  function aOpenTab(id) {
+    document.querySelectorAll('.a-file').forEach(f => f.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+  }
+
+  /* Style B: Card expand/collapse */
+  function bToggleCard(card) {
+    const wasExpanded = card.classList.contains('expanded');
+    // Collapse all in same grid
+    card.closest('.b-grid').querySelectorAll('.b-card').forEach(c => {
+      c.classList.remove('expanded');
+      const btn = c.querySelector('.b-card-expand');
+      if (btn) btn.classList.remove('open');
+    });
+    if (!wasExpanded) {
+      card.classList.add('expanded');
+      const btn = card.querySelector('.b-card-expand');
+      if (btn) btn.classList.add('open');
+    }
+  }
+
+  function bToggleView(btn, mode) {
+    btn.closest('.b-view-toggle').querySelectorAll('.b-vt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  /* Style C: Page selection */
+  function cSelectPage(btn) {
+    document.querySelectorAll('.c-page-item').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  /* Style C: Info drawer toggle */
+  function cToggleDrawer() {
+    document.getElementById('c-drawer').classList.toggle('open');
+  }
+</script>
+</body>
+</html>

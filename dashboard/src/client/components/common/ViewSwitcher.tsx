@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { useViewSwitcherConfig } from '@/client/hooks/useViewSwitcher.js';
 
 // ---------------------------------------------------------------------------
-// ViewSwitcher — animated pill container with sliding background indicator
+// ViewSwitcher — pill container with sliding background indicator
+// Uses CSS transitions instead of framer-motion for bundle optimization.
 // ---------------------------------------------------------------------------
 
 export function ViewSwitcher() {
@@ -42,13 +42,14 @@ export function ViewSwitcher() {
               isActive ? 'text-text-primary' : 'text-text-tertiary hover:text-text-secondary',
             ].join(' ')}
           >
-            {isActive && (
-              <motion.div
-                layoutId="vs-bg"
-                className="absolute inset-0 bg-bg-card rounded-[8px] shadow-sm"
-                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-              />
-            )}
+            <div
+              className="absolute inset-0 rounded-[8px] shadow-sm"
+              style={{
+                backgroundColor: isActive ? 'var(--color-bg-card)' : 'transparent',
+                opacity: isActive ? 1 : 0,
+                transition: 'opacity 150ms ease, background-color 150ms ease',
+              }}
+            />
             <span className="relative z-10 flex items-center gap-[var(--spacing-1-5)]">
               <span className="w-[14px] h-[14px] flex items-center justify-center">{item.icon}</span>
               <span>{item.label}</span>

@@ -137,7 +137,7 @@ Determine report variant based on loop state:
 
 ## Message Bus Protocol
 
-Use `mcp__ccw-tools__team_msg` for all team communication:
+Use `mcp__maestro__team_msg` for all team communication:
 
 - **log** (with state_update): Primary for reporting completion. Parameters: `operation="log"`, `session_id`, `from=<role>`, `type="state_update"`, `data={status, task_id, ref, key_findings, decisions, files_modified, artifact_path, verification}`
 - **get_state**: Primary for loading upstream context. Parameters: `operation="get_state"`, `session_id`, `role=<upstream_role>`

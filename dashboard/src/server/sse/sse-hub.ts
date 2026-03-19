@@ -34,6 +34,7 @@ export class SSEHub {
 
     // Subscribe to all EventBus events and broadcast to clients
     this.eventListener = (event: SSEEvent) => {
+      if (this.clients.size === 0) return;
       this.broadcast(event.type, event.data);
     };
     this.eventBus.onAny(this.eventListener);
@@ -75,6 +76,7 @@ export class SSEHub {
 
   /** Send a named SSE event to all connected clients */
   broadcast(eventType: string, data: unknown): void {
+    if (this.clients.size === 0) return;
     const payload = formatSSE(eventType, data);
     const toRemove: string[] = [];
 
@@ -108,6 +110,7 @@ export class SSEHub {
 
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(() => {
+      if (this.clients.size === 0) return;
       const comment = ': heartbeat\n\n';
       const toRemove: string[] = [];
 

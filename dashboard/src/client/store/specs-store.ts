@@ -14,6 +14,8 @@ export interface SpecEntry {
   content: string;
   file: string;
   timestamp: string;
+  category: string;
+  keywords: string[];
 }
 
 export interface SpecFile {
@@ -34,13 +36,19 @@ export interface SpecsStore {
   error: string | null;
   activeView: SpecsView;
   typeFilter: TypeFilter;
+  categoryFilter: string; // 'all' or category name
+  keywordFilter: string; // 'all' or keyword
   search: string;
   selectedEntry: string | null;
+  hiddenColumns: Set<string>; // hidden category or type keys in kanban
 
   setActiveView: (view: SpecsView) => void;
   setTypeFilter: (filter: TypeFilter) => void;
+  setCategoryFilter: (filter: string) => void;
+  setKeywordFilter: (filter: string) => void;
   setSearch: (q: string) => void;
   setSelectedEntry: (id: string | null) => void;
+  toggleColumn: (key: string) => void;
 
   fetchEntries: () => Promise<void>;
   fetchFiles: () => Promise<void>;
@@ -51,6 +59,8 @@ export interface SpecsStore {
   filteredEntries: () => SpecEntry[];
   entriesByType: () => Record<SpecType, SpecEntry[]>;
   typeCounts: () => Record<SpecType | 'all', number>;
+  allCategories: () => string[];
+  allKeywords: () => string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -64,13 +74,25 @@ export const useSpecsStore = create<SpecsStore>((set, get) => ({
   error: null,
   activeView: 'kanban',
   typeFilter: 'all',
+  categoryFilter: 'all',
+  keywordFilter: 'all',
   search: '',
   selectedEntry: null,
+  hiddenColumns: new Set<string>(),
 
   setActiveView: (view) => set({ activeView: view }),
   setTypeFilter: (filter) => set({ typeFilter: filter }),
+  setCategoryFilter: (filter) => set({ categoryFilter: filter }),
+  setKeywordFilter: (filter) => set({ keywordFilter: filter }),
   setSearch: (q) => set({ search: q }),
   setSelectedEntry: (id) => set({ selectedEntry: id }),
+  toggleColumn: (key) =>
+    set((s) => {
+      const next = new Set(s.hiddenColumns);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return { hiddenColumns: next };
+    }),
 
   fetchEntries: async () => {
     set({ loading: true, error: null });
@@ -129,16 +151,19 @@ export const useSpecsStore = create<SpecsStore>((set, get) => ({
   },
 
   filteredEntries: () => {
-    const { entries, typeFilter, search } = get();
+    const { entries, typeFilter, categoryFilter, keywordFilter, search } = get();
     let result = entries;
     if (typeFilter !== 'all') result = result.filter((e) => e.type === typeFilter);
+    if (categoryFilter !== 'all') result = result.filter((e) => e.category === categoryFilter);
+    if (keywordFilter !== 'all') result = result.filter((e) => e.keywords.includes(keywordFilter));
     if (search) {
       const lc = search.toLowerCase();
       result = result.filter(
         (e) =>
           e.title.toLowerCase().includes(lc) ||
           e.content.toLowerCase().includes(lc) ||
-          e.id.toLowerCase().includes(lc),
+          e.id.toLowerCase().includes(lc) ||
+          e.keywords.some((k) => k.toLowerCase().includes(lc)),
       );
     }
     return result;
@@ -164,5 +189,21 @@ export const useSpecsStore = create<SpecsStore>((set, get) => ({
     const counts: Record<string, number> = { all: entries.length, bug: 0, pattern: 0, decision: 0, rule: 0, general: 0 };
     for (const e of entries) counts[e.type] = (counts[e.type] ?? 0) + 1;
     return counts as Record<SpecType | 'all', number>;
+  },
+
+  allCategories: () => {
+    const { entries } = get();
+    const cats = new Set<string>();
+    for (const e of entries) if (e.category) cats.add(e.category);
+    return Array.from(cats).sort();
+  },
+
+  allKeywords: () => {
+    const { entries } = get();
+    const kws = new Set<string>();
+    for (const e of entries) {
+      for (const k of e.keywords) kws.add(k);
+    }
+    return Array.from(kws).sort();
   },
 }));

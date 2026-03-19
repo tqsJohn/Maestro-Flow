@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useShallow } from 'zustand/react/shallow';
 import Columns from 'lucide-react/dist/esm/icons/columns-3.js';
 import List from 'lucide-react/dist/esm/icons/list.js';
 import Search from 'lucide-react/dist/esm/icons/search.js';
@@ -24,24 +24,20 @@ const VIEW_ITEMS = [
 
 const VIEWS: SpecsView[] = ['kanban', 'table'];
 
-const viewVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
-
 export function SpecsPage() {
-  const activeView = useSpecsStore((s) => s.activeView);
-  const setActiveView = useSpecsStore((s) => s.setActiveView);
-  const fetchEntries = useSpecsStore((s) => s.fetchEntries);
-  const fetchFiles = useSpecsStore((s) => s.fetchFiles);
-  const entries = useSpecsStore((s) => s.entries);
-  const search = useSpecsStore((s) => s.search);
-  const setSearch = useSpecsStore((s) => s.setSearch);
-  const selectedEntry = useSpecsStore((s) => s.selectedEntry);
-  const setSelectedEntry = useSpecsStore((s) => s.setSelectedEntry);
-  const loading = useSpecsStore((s) => s.loading);
-  const error = useSpecsStore((s) => s.error);
+  const {
+    activeView, setActiveView,
+    fetchEntries, fetchFiles,
+    entries, search, setSearch,
+    selectedEntry, setSelectedEntry,
+    loading, error,
+  } = useSpecsStore(useShallow((s) => ({
+    activeView: s.activeView, setActiveView: s.setActiveView,
+    fetchEntries: s.fetchEntries, fetchFiles: s.fetchFiles,
+    entries: s.entries, search: s.search, setSearch: s.setSearch,
+    selectedEntry: s.selectedEntry, setSelectedEntry: s.setSelectedEntry,
+    loading: s.loading, error: s.error,
+  })));
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
@@ -120,7 +116,7 @@ export function SpecsPage() {
       {/* Toolbar */}
       <div className="flex items-center gap-[10px] px-5 py-[10px] border-b border-border-divider shrink-0">
         <span className="text-[16px] font-bold text-text-primary">Specs</span>
-        <span className="text-[11px] text-text-tertiary font-mono">
+        <span className="text-[11px] text-text-tertiary font-mono tabular-nums">
           {entries.length} entries
         </span>
         <div className="flex-1" />
@@ -150,46 +146,26 @@ export function SpecsPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* View area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <AnimatePresence mode="wait">
-            {activeView === 'kanban' && (
-              <motion.div
-                key="kanban"
-                className="flex-1 flex flex-col overflow-hidden"
-                variants={viewVariants}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
-              >
-                <SpecsKanbanView onAddEntry={() => setAddDialogOpen(true)} />
-              </motion.div>
-            )}
+          {activeView === 'kanban' && (
+            <div className="flex-1 flex flex-col overflow-hidden motion-safe:animate-[view-fade-in_250ms_ease-out_both]">
+              <SpecsKanbanView onAddEntry={() => setAddDialogOpen(true)} />
+            </div>
+          )}
 
-            {activeView === 'table' && (
-              <motion.div
-                key="table"
-                className="flex-1 flex flex-col overflow-hidden"
-                variants={viewVariants}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
-              >
-                <SpecsTableView />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {activeView === 'table' && (
+            <div className="flex-1 flex flex-col overflow-hidden motion-safe:animate-[view-fade-in_250ms_ease-out_both]">
+              <SpecsTableView />
+            </div>
+          )}
         </div>
 
         {/* Detail panel */}
-        <AnimatePresence>
-          {selectedEntryObj && (
-            <SpecDetailPanel
-              entry={selectedEntryObj}
-              onClose={() => setSelectedEntry(null)}
-            />
-          )}
-        </AnimatePresence>
+        {selectedEntryObj && (
+          <SpecDetailPanel
+            entry={selectedEntryObj}
+            onClose={() => setSelectedEntry(null)}
+          />
+        )}
       </div>
 
       {/* Add dialog */}

@@ -1,6 +1,13 @@
 import { useState, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutGrid, FileText, MessageSquare, Clock, Layers, BookOpen, PanelLeft, Plus } from 'lucide-react';
+import LayoutGrid from 'lucide-react/dist/esm/icons/layout-grid.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import PanelLeft from 'lucide-react/dist/esm/icons/panel-left.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { STATUS_COLORS, AGENT_DOT_COLORS } from '@/shared/constants.js';

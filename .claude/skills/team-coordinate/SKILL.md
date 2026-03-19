@@ -39,7 +39,7 @@ Universal team coordination skill: analyze task -> generate role-specs -> dispat
 | Session prefix | `TC` |
 | Session path | `.workflow/.team/TC-<slug>-<date>/` |
 | Worker agent | `team-worker` |
-| Message bus | `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)` |
+| Message bus | `mcp__maestro__team_msg(session_id=<session-id>, ...)` |
 | CLI analysis | `maestro cli --mode analysis` |
 | CLI write | `maestro cli --mode write` |
 | Max roles | 5 |

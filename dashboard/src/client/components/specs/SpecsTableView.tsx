@@ -3,10 +3,13 @@ import { motion } from 'framer-motion';
 import ArrowDown from 'lucide-react/dist/esm/icons/arrow-down.js';
 import Edit3 from 'lucide-react/dist/esm/icons/edit-3.js';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import EyeOff from 'lucide-react/dist/esm/icons/eye-off.js';
+import Tag from 'lucide-react/dist/esm/icons/tag.js';
 import { useSpecsStore, type SpecType, type SpecEntry } from '@/client/store/specs-store.js';
 
 // ---------------------------------------------------------------------------
-// SpecsTableView -- sortable, filterable table of spec entries
+// SpecsTableView -- sortable, filterable table with category & keyword support
 // ---------------------------------------------------------------------------
 
 const BADGE_STYLES: Record<SpecType, { bg: string; text: string }> = {
@@ -25,6 +28,16 @@ const DOT_COLORS: Record<SpecType, string> = {
   general: '#A09D97',
 };
 
+const CATEGORY_COLORS: Record<string, string> = {
+  general: '#A09D97',
+  planning: '#9178B5',
+  execution: '#5B8DB8',
+  debug: '#C46555',
+  test: '#5A9E78',
+  review: '#C4A055',
+  validation: '#3D8B5F',
+};
+
 type FilterType = 'all' | SpecType;
 
 const FILTER_CHIPS: { value: FilterType; label: string }[] = [
@@ -33,10 +46,24 @@ const FILTER_CHIPS: { value: FilterType; label: string }[] = [
   { value: 'pattern', label: 'Pattern' },
   { value: 'decision', label: 'Decision' },
   { value: 'rule', label: 'Rule' },
+  { value: 'general', label: 'General' },
 ];
 
-type SortField = 'timestamp' | 'id' | 'type';
+type SortField = 'timestamp' | 'id' | 'type' | 'category';
 type SortDir = 'asc' | 'desc';
+
+// Column definitions for toggle
+type ColumnKey = 'id' | 'type' | 'category' | 'content' | 'keywords' | 'file' | 'added' | 'actions';
+const ALL_COLUMNS: { key: ColumnKey; label: string; width?: number; alwaysVisible?: boolean }[] = [
+  { key: 'id', label: 'ID', width: 60 },
+  { key: 'type', label: 'Type', width: 80 },
+  { key: 'category', label: 'Category', width: 100 },
+  { key: 'content', label: 'Content', alwaysVisible: true },
+  { key: 'keywords', label: 'Keywords', width: 180 },
+  { key: 'file', label: 'File', width: 140 },
+  { key: 'added', label: 'Added', width: 90 },
+  { key: 'actions', label: '', width: 80, alwaysVisible: true },
+];
 
 function formatTimestamp(ts: string): string {
   if (!ts) return '--';
@@ -57,6 +84,10 @@ export function SpecsTableView() {
   const allEntries = useSpecsStore((s) => s.entries);
   const typeFilter = useSpecsStore((s) => s.typeFilter);
   const setTypeFilter = useSpecsStore((s) => s.setTypeFilter);
+  const categoryFilter = useSpecsStore((s) => s.categoryFilter);
+  const setCategoryFilter = useSpecsStore((s) => s.setCategoryFilter);
+  const keywordFilter = useSpecsStore((s) => s.keywordFilter);
+  const setKeywordFilter = useSpecsStore((s) => s.setKeywordFilter);
   const search = useSpecsStore((s) => s.search);
   const selectedEntry = useSpecsStore((s) => s.selectedEntry);
   const setSelectedEntry = useSpecsStore((s) => s.setSelectedEntry);
@@ -68,6 +99,34 @@ export function SpecsTableView() {
   const [showNewRow, setShowNewRow] = useState(false);
   const [newType, setNewType] = useState<SpecType>('bug');
   const [newContent, setNewContent] = useState('');
+  const [hiddenCols, setHiddenCols] = useState<Set<ColumnKey>>(new Set());
+
+  const toggleCol = useCallback((key: ColumnKey) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const visibleColumns = useMemo(
+    () => ALL_COLUMNS.filter((c) => c.alwaysVisible || !hiddenCols.has(c.key)),
+    [hiddenCols],
+  );
+
+  // Discover categories and keywords from entries
+  const allCategories = useMemo(() => {
+    const cats = new Set<string>();
+    for (const e of allEntries) if (e.category) cats.add(e.category);
+    return Array.from(cats).sort();
+  }, [allEntries]);
+
+  const allKeywords = useMemo(() => {
+    const kws = new Set<string>();
+    for (const e of allEntries) for (const k of e.keywords) kws.add(k);
+    return Array.from(kws).sort();
+  }, [allEntries]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: allEntries.length, bug: 0, pattern: 0, decision: 0, rule: 0, general: 0 };
@@ -75,17 +134,32 @@ export function SpecsTableView() {
     return c as Record<SpecType | 'all', number>;
   }, [allEntries]);
 
+  const categoryCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const e of allEntries) {
+      const cat = e.category || 'general';
+      c[cat] = (c[cat] ?? 0) + 1;
+    }
+    return c;
+  }, [allEntries]);
+
   const entries = useMemo(() => {
     let result = allEntries;
     if (typeFilter !== 'all') result = result.filter((e) => e.type === typeFilter);
+    if (categoryFilter !== 'all') result = result.filter((e) => e.category === categoryFilter);
+    if (keywordFilter !== 'all') result = result.filter((e) => e.keywords.includes(keywordFilter));
     if (search) {
       const lc = search.toLowerCase();
       result = result.filter(
-        (e) => e.title.toLowerCase().includes(lc) || e.content.toLowerCase().includes(lc) || e.id.toLowerCase().includes(lc),
+        (e) =>
+          e.title.toLowerCase().includes(lc) ||
+          e.content.toLowerCase().includes(lc) ||
+          e.id.toLowerCase().includes(lc) ||
+          e.keywords.some((k) => k.toLowerCase().includes(lc)),
       );
     }
     return result;
-  }, [allEntries, typeFilter, search]);
+  }, [allEntries, typeFilter, categoryFilter, keywordFilter, search]);
 
   const sorted = useMemo(() => {
     const list = [...entries];
@@ -97,6 +171,8 @@ export function SpecsTableView() {
         cmp = a.id.localeCompare(b.id);
       } else if (sortField === 'type') {
         cmp = a.type.localeCompare(b.type);
+      } else if (sortField === 'category') {
+        cmp = (a.category || '').localeCompare(b.category || '');
       }
       return sortDir === 'desc' ? -cmp : cmp;
     });
@@ -132,9 +208,10 @@ export function SpecsTableView() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Filter bar */}
-      <div className="flex items-center gap-2 px-5 py-2 border-b border-border-divider bg-bg-primary shrink-0">
-        <span className="text-[11px] font-semibold text-text-tertiary uppercase tracking-[0.04em]">
-          Filter
+      <div className="flex flex-wrap items-center gap-2 px-5 py-2 border-b border-border-divider bg-bg-primary shrink-0">
+        {/* Type filter */}
+        <span className="text-[10px] font-semibold text-text-quaternary uppercase tracking-[0.06em]">
+          Type
         </span>
         {FILTER_CHIPS.map((chip) => {
           const active = typeFilter === chip.value;
@@ -165,13 +242,118 @@ export function SpecsTableView() {
           );
         })}
 
+        {/* Category filter */}
+        {allCategories.length > 0 && (
+          <>
+            <div className="w-px h-[18px] bg-border-divider mx-1" />
+            <span className="text-[10px] font-semibold text-text-quaternary uppercase tracking-[0.06em]">
+              Category
+            </span>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('all')}
+              className={[
+                'text-[11px] font-medium px-2 py-[3px] rounded-full border cursor-pointer transition-all',
+                categoryFilter === 'all'
+                  ? 'bg-text-primary text-white border-text-primary'
+                  : 'bg-bg-card text-text-secondary border-border hover:border-text-tertiary hover:text-text-primary',
+              ].join(' ')}
+            >
+              All
+            </button>
+            {allCategories.map((cat) => {
+              const active = categoryFilter === cat;
+              const color = CATEGORY_COLORS[cat] ?? '#A09D97';
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(active ? 'all' : cat)}
+                  className={[
+                    'text-[11px] font-medium px-[10px] py-[3px] rounded-full border cursor-pointer transition-all',
+                    'flex items-center gap-[5px]',
+                    active
+                      ? 'border-transparent text-white'
+                      : 'bg-bg-card text-text-secondary border-border hover:border-text-tertiary hover:text-text-primary',
+                  ].join(' ')}
+                  style={active ? { background: color } : undefined}
+                >
+                  <span
+                    className="w-[6px] h-[6px] rounded-full"
+                    style={{ background: active ? '#fff' : color }}
+                  />
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  <span className="text-[10px] font-mono opacity-70">
+                    {categoryCounts[cat] ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </>
+        )}
+
+        {/* Keyword filter */}
+        {allKeywords.length > 0 && (
+          <>
+            <div className="w-px h-[18px] bg-border-divider mx-1" />
+            <span className="text-[10px] font-semibold text-text-quaternary uppercase tracking-[0.06em]">
+              <Tag size={10} strokeWidth={2} className="inline-block mr-[2px] align-middle" />
+            </span>
+            {allKeywords.map((kw) => {
+              const active = keywordFilter === kw;
+              return (
+                <button
+                  key={kw}
+                  type="button"
+                  onClick={() => setKeywordFilter(active ? 'all' : kw)}
+                  className={[
+                    'text-[10px] font-medium px-2 py-[2px] rounded-[4px] border cursor-pointer transition-all',
+                    active
+                      ? 'bg-text-primary text-white border-text-primary'
+                      : 'bg-bg-card text-text-tertiary border-border-divider hover:border-text-tertiary hover:text-text-primary',
+                  ].join(' ')}
+                >
+                  {kw}
+                </button>
+              );
+            })}
+          </>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Column visibility + Sort */}
+        <div className="flex items-center gap-1">
+          {ALL_COLUMNS.filter((c) => !c.alwaysVisible).map((col) => {
+            const isHidden = hiddenCols.has(col.key);
+            return (
+              <button
+                key={col.key}
+                type="button"
+                onClick={() => toggleCol(col.key)}
+                className={[
+                  'text-[10px] font-medium px-[6px] py-[3px] rounded-[4px] border cursor-pointer transition-all',
+                  'flex items-center gap-[3px]',
+                  isHidden
+                    ? 'bg-bg-secondary text-text-quaternary border-border-divider opacity-50'
+                    : 'bg-bg-card text-text-tertiary border-border hover:text-text-primary',
+                ].join(' ')}
+                title={`${isHidden ? 'Show' : 'Hide'} ${col.label} column`}
+              >
+                {isHidden ? <EyeOff size={9} strokeWidth={2} /> : <Eye size={9} strokeWidth={2} />}
+                {col.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="w-px h-[18px] bg-border-divider" />
 
         {/* Sort button */}
         <button
           type="button"
           onClick={() => toggleSort('timestamp')}
-          className="text-[11px] font-medium px-[10px] py-1 rounded-[6px] border border-border bg-bg-card text-text-tertiary cursor-pointer font-sans transition-all hover:border-text-tertiary hover:text-text-primary flex items-center gap-1 ml-auto"
+          className="text-[11px] font-medium px-[10px] py-1 rounded-[6px] border border-border bg-bg-card text-text-tertiary cursor-pointer font-sans transition-all hover:border-text-tertiary hover:text-text-primary flex items-center gap-1"
         >
           <ArrowDown
             size={12}
@@ -187,97 +369,83 @@ export function SpecsTableView() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <Th width={60} active={sortField === 'id'} onClick={() => toggleSort('id')}>
-                ID
-              </Th>
-              <Th width={80} active={sortField === 'type'} onClick={() => toggleSort('type')}>
-                Type
-              </Th>
-              <Th>Content</Th>
-              <Th width={160}>File</Th>
-              <Th width={90} active={sortField === 'timestamp'} onClick={() => toggleSort('timestamp')}>
-                Added
-              </Th>
-              <Th width={80}>{''}</Th>
+              {visibleColumns.map((col) => {
+                const sortable: Record<string, SortField> = { id: 'id', type: 'type', category: 'category', added: 'timestamp' };
+                const sf = sortable[col.key];
+                return (
+                  <Th
+                    key={col.key}
+                    width={col.width}
+                    active={sf ? sortField === sf : false}
+                    onClick={sf ? () => toggleSort(sf) : undefined}
+                  >
+                    {col.label}
+                  </Th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {/* Inline new entry row */}
             {showNewRow && (
               <tr>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  <span className="font-mono text-[11px] font-semibold" style={{ color: '#9178B5' }}>
-                    NEW
-                  </span>
-                </td>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  <select
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value as SpecType)}
-                    className="px-2 py-1 rounded-[6px] border border-border bg-bg-card text-[11px] text-text-primary font-sans outline-none cursor-pointer"
-                  >
-                    <option value="bug">bug</option>
-                    <option value="pattern">pattern</option>
-                    <option value="decision">decision</option>
-                    <option value="rule">rule</option>
-                  </select>
-                </td>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  <input
-                    type="text"
-                    value={newContent}
-                    onChange={(e) => setNewContent(e.target.value)}
-                    placeholder="Describe the entry..."
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void handleSaveNew();
-                      if (e.key === 'Escape') setShowNewRow(false);
-                    }}
-                    className="w-full px-[10px] py-[6px] rounded-[6px] border border-border bg-bg-card text-[13px] text-text-primary font-sans outline-none focus:border-[#9178B5] transition-colors"
-                  />
-                </td>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top font-mono text-[11px] text-text-tertiary"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  &mdash;
-                </td>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top font-mono text-[11px] text-text-tertiary"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  now
-                </td>
-                <td
-                  className="px-3 py-[10px] border-b-2 align-top"
-                  style={{ background: 'var(--color-tint-planning)', borderBottomColor: 'rgba(145,120,181,0.3)' }}
-                >
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveNew()}
-                      className="px-3 py-[5px] rounded-[6px] border-none bg-text-primary text-white text-[11px] font-semibold cursor-pointer font-sans hover:bg-[#1A1816] transition-all"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowNewRow(false)}
-                      className="px-3 py-[5px] rounded-[6px] border-none bg-bg-secondary text-text-secondary text-[11px] font-semibold cursor-pointer font-sans hover:bg-bg-tertiary transition-all"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </td>
+                {visibleColumns.map((col) => {
+                  const bg = 'var(--color-tint-planning)';
+                  const borderColor = 'rgba(145,120,181,0.3)';
+                  if (col.key === 'id')
+                    return (
+                      <td key={col.key} className="px-3 py-[10px] border-b-2 align-top" style={{ background: bg, borderBottomColor: borderColor }}>
+                        <span className="font-mono text-[11px] font-semibold" style={{ color: '#9178B5' }}>NEW</span>
+                      </td>
+                    );
+                  if (col.key === 'type')
+                    return (
+                      <td key={col.key} className="px-3 py-[10px] border-b-2 align-top" style={{ background: bg, borderBottomColor: borderColor }}>
+                        <select
+                          value={newType}
+                          onChange={(e) => setNewType(e.target.value as SpecType)}
+                          className="px-2 py-1 rounded-[6px] border border-border bg-bg-card text-[11px] text-text-primary font-sans outline-none cursor-pointer"
+                        >
+                          <option value="bug">bug</option>
+                          <option value="pattern">pattern</option>
+                          <option value="decision">decision</option>
+                          <option value="rule">rule</option>
+                          <option value="general">general</option>
+                        </select>
+                      </td>
+                    );
+                  if (col.key === 'content')
+                    return (
+                      <td key={col.key} className="px-3 py-[10px] border-b-2 align-top" style={{ background: bg, borderBottomColor: borderColor }}>
+                        <input
+                          type="text"
+                          value={newContent}
+                          onChange={(e) => setNewContent(e.target.value)}
+                          placeholder="Describe the entry..."
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleSaveNew();
+                            if (e.key === 'Escape') setShowNewRow(false);
+                          }}
+                          className="w-full px-[10px] py-[6px] rounded-[6px] border border-border bg-bg-card text-[13px] text-text-primary font-sans outline-none focus:border-[#9178B5] transition-colors"
+                        />
+                      </td>
+                    );
+                  if (col.key === 'actions')
+                    return (
+                      <td key={col.key} className="px-3 py-[10px] border-b-2 align-top" style={{ background: bg, borderBottomColor: borderColor }}>
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => void handleSaveNew()} className="px-3 py-[5px] rounded-[6px] border-none bg-text-primary text-white text-[11px] font-semibold cursor-pointer font-sans hover:bg-[#1A1816] transition-all">Save</button>
+                          <button type="button" onClick={() => setShowNewRow(false)} className="px-3 py-[5px] rounded-[6px] border-none bg-bg-secondary text-text-secondary text-[11px] font-semibold cursor-pointer font-sans hover:bg-bg-tertiary transition-all">Cancel</button>
+                        </div>
+                      </td>
+                    );
+                  return (
+                    <td key={col.key} className="px-3 py-[10px] border-b-2 align-top font-mono text-[11px] text-text-tertiary" style={{ background: bg, borderBottomColor: borderColor }}>
+                      &mdash;
+                    </td>
+                  );
+                })}
               </tr>
             )}
 
@@ -290,12 +458,13 @@ export function SpecsTableView() {
                 onClick={() => setSelectedEntry(entry.id)}
                 onDelete={handleDelete}
                 index={idx}
+                visibleColumns={visibleColumns}
               />
             ))}
 
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-[13px] text-text-tertiary">
+                <td colSpan={visibleColumns.length} className="text-center py-12 text-[13px] text-text-tertiary">
                   No entries found
                 </td>
               </tr>
@@ -351,14 +520,89 @@ function TableRow({
   onClick,
   onDelete,
   index,
+  visibleColumns,
 }: {
   entry: SpecEntry;
   selected: boolean;
   onClick: () => void;
   onDelete: (e: React.MouseEvent, id: string) => void;
   index: number;
+  visibleColumns: { key: ColumnKey; label: string; width?: number }[];
 }) {
   const badge = BADGE_STYLES[entry.type];
+  const catColor = CATEGORY_COLORS[entry.category] ?? '#A09D97';
+
+  const cellMap: Record<ColumnKey, React.ReactNode> = {
+    id: (
+      <span className="font-mono text-[11px] text-text-tertiary whitespace-nowrap">
+        {entry.id}
+      </span>
+    ),
+    type: (
+      <span
+        className="text-[9px] font-bold px-[7px] py-[2px] rounded-[4px] uppercase font-mono tracking-[0.04em] whitespace-nowrap inline-block"
+        style={{ background: badge.bg, color: badge.text }}
+      >
+        {entry.type}
+      </span>
+    ),
+    category: (
+      <span
+        className="text-[10px] font-semibold px-[7px] py-[2px] rounded-[4px] uppercase font-mono tracking-[0.04em] whitespace-nowrap inline-block"
+        style={{ background: `${catColor}15`, color: catColor }}
+      >
+        {entry.category || 'general'}
+      </span>
+    ),
+    content: (
+      <span className="text-[13px] text-text-primary font-medium leading-[1.5] max-w-[500px] block">
+        {entry.content || entry.title}
+      </span>
+    ),
+    keywords: (
+      <div className="flex flex-wrap gap-[3px]">
+        {entry.keywords.slice(0, 3).map((kw) => (
+          <span
+            key={kw}
+            className="text-[9px] px-[5px] py-[1px] rounded-[3px] bg-bg-secondary text-text-tertiary font-mono whitespace-nowrap"
+          >
+            {kw}
+          </span>
+        ))}
+        {entry.keywords.length > 3 && (
+          <span className="text-[9px] text-text-quaternary font-mono">+{entry.keywords.length - 3}</span>
+        )}
+      </div>
+    ),
+    file: (
+      <span className="font-mono text-[11px] text-text-tertiary whitespace-nowrap">
+        {entry.file ? entry.file.split('/').pop() : ''}
+      </span>
+    ),
+    added: (
+      <span className="font-mono text-[11px] text-text-quaternary whitespace-nowrap">
+        {formatTimestamp(entry.timestamp)}
+      </span>
+    ),
+    actions: (
+      <div className="flex gap-[2px] whitespace-nowrap">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          className="w-7 h-7 rounded-[6px] border-none bg-transparent cursor-pointer text-text-quaternary flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Edit3 size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => onDelete(e, entry.id)}
+          className="w-7 h-7 rounded-[6px] border-none bg-transparent cursor-pointer text-text-quaternary flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-[rgba(196,101,85,0.08)] hover:text-[#C46555]"
+        >
+          <Trash2 size={14} strokeWidth={1.8} />
+        </button>
+      </div>
+    ),
+  };
 
   return (
     <motion.tr
@@ -371,55 +615,11 @@ function TableRow({
         selected ? '[&>td]:bg-tint-planning' : 'hover:[&>td]:bg-bg-hover',
       ].join(' ')}
     >
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <span className="font-mono text-[11px] text-text-tertiary whitespace-nowrap">
-          {entry.id}
-        </span>
-      </td>
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <span
-          className="text-[9px] font-bold px-[7px] py-[2px] rounded-[4px] uppercase font-mono tracking-[0.04em] whitespace-nowrap inline-block"
-          style={{ background: badge.bg, color: badge.text }}
-        >
-          {entry.type}
-        </span>
-      </td>
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <span className="text-[13px] text-text-primary font-medium leading-[1.5] max-w-[500px] block">
-          {entry.content || entry.title}
-        </span>
-      </td>
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <span className="font-mono text-[11px] text-text-tertiary whitespace-nowrap">
-          {entry.file ? entry.file.split('/').pop() : ''}
-        </span>
-      </td>
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <span className="font-mono text-[11px] text-text-quaternary whitespace-nowrap">
-          {formatTimestamp(entry.timestamp)}
-        </span>
-      </td>
-      <td className="px-3 py-[10px] border-b border-border-divider align-top">
-        <div className="flex gap-[2px] whitespace-nowrap">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClick();
-            }}
-            className="w-7 h-7 rounded-[6px] border-none bg-transparent cursor-pointer text-text-quaternary flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-bg-hover hover:text-text-primary"
-          >
-            <Edit3 size={14} strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => onDelete(e, entry.id)}
-            className="w-7 h-7 rounded-[6px] border-none bg-transparent cursor-pointer text-text-quaternary flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-[rgba(196,101,85,0.08)] hover:text-[#C46555]"
-          >
-            <Trash2 size={14} strokeWidth={1.8} />
-          </button>
-        </div>
-      </td>
+      {visibleColumns.map((col) => (
+        <td key={col.key} className="px-3 py-[10px] border-b border-border-divider align-top">
+          {cellMap[col.key]}
+        </td>
+      ))}
     </motion.tr>
   );
 }

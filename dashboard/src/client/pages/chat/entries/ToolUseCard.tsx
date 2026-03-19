@@ -42,7 +42,7 @@ export function ToolUseCard({ entry }: { entry: ToolUseEntry }) {
       >
         <Wrench size={14} className="shrink-0" strokeWidth={1.8} style={{ color: 'var(--color-text-tertiary)' }} />
         <span className="text-[12px] font-semibold text-text-primary truncate">
-          {entry.name}
+          {entry.name === 'unknown' ? 'Tool Call' : entry.name}
         </span>
         {entry.input && typeof entry.input === 'object' && 'file_path' in entry.input && (
           <span className="text-[11px] font-mono" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -58,17 +58,19 @@ export function ToolUseCard({ entry }: { entry: ToolUseEntry }) {
       </button>
       {open && (
         <div className="mt-[4px] space-y-[4px]">
-          <pre
-            className="text-[11px] font-mono rounded-[6px] p-[6px_8px] overflow-x-auto max-h-[120px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.5]"
-            style={{
-              background: 'var(--color-bg-primary)',
-              color: 'var(--color-text-secondary)',
-              border: '1px solid var(--color-border-divider)',
-            }}
-          >
-            {JSON.stringify(entry.input, null, 2)}
-          </pre>
-          {entry.result != null && (
+          {entry.input && Object.keys(entry.input).length > 0 && (
+            <pre
+              className="text-[11px] font-mono rounded-[6px] p-[6px_8px] overflow-x-auto max-h-[120px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.5]"
+              style={{
+                background: 'var(--color-bg-primary)',
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-border-divider)',
+              }}
+            >
+              {JSON.stringify(entry.input, null, 2)}
+            </pre>
+          )}
+          {entry.result != null && entry.result.length > 0 && (
             <pre
               className="text-[11px] font-mono rounded-[6px] p-[6px_8px] overflow-x-auto max-h-[120px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.5]"
               style={{
@@ -79,6 +81,11 @@ export function ToolUseCard({ entry }: { entry: ToolUseEntry }) {
             >
               {entry.result}
             </pre>
+          )}
+          {(!entry.input || Object.keys(entry.input).length === 0) && (!entry.result || entry.result.length === 0) && (
+            <div className="text-[11px] px-[8px] py-[4px]" style={{ color: 'var(--color-text-placeholder)' }}>
+              No details available
+            </div>
           )}
         </div>
       )}

@@ -20,7 +20,13 @@ export async function startMcpServer(): Promise<void> {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = registry.list();
-    const enabled = config.mcp.enabledTools;
+
+    // MAESTRO_ENABLED_TOOLS env var takes priority over config
+    const envTools = process.env.MAESTRO_ENABLED_TOOLS;
+    const enabled = envTools
+      ? envTools.split(',').map(t => t.trim()).filter(Boolean)
+      : config.mcp.enabledTools;
+
     const filtered =
       enabled.includes('all')
         ? tools

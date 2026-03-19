@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import ChevronUp from 'lucide-react/dist/esm/icons/chevron-up.js';
 
 // ---------------------------------------------------------------------------
 // CollapsibleContent -- auto-collapses overflowing content with gradient fade

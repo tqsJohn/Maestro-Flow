@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Session Details — Design Prototypes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.5; background: #FAF8F5; color: #2D2A26; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg: #FAF8F5; --bg2: #F3F0EA; --card: #FFFFFF;
+      --hover: rgba(45,42,38,0.04); --active: rgba(45,42,38,0.07);
+      --t1: #2D2A26; --t2: #78756F; --t3: #A09D97; --t4: #D1CEC8;
+      --bdr: #E8E5DE; --bdr2: #ECEAE4;
+      --blue: #4A90D9; --green: #3D9B6F; --orange: #D4832E; --yellow: #C99B2D;
+      --purple: #8B6BBF; --red: #D05454; --gray: #A09D97;
+      --tint-green: #EEF7F2; --tint-yellow: #FDF6E4; --tint-orange: #FDF0E4;
+      --tint-purple: #F3EEF9; --tint-gray: #F2F1EE; --tint-blue: #EDF4FC; --tint-red: #FCEEEE;
+    }
+
+    /* === Top selector bar === */
+    .proto-bar {
+      display: flex; align-items: center; gap: 0;
+      padding: 0 24px; background: var(--bg2);
+      border-bottom: 1px solid var(--bdr); position: sticky; top: 0; z-index: 100;
+    }
+    .proto-tab {
+      padding: 14px 20px; font-size: 13px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+      transition: all 150ms; white-space: nowrap;
+    }
+    .proto-tab:hover { color: var(--t1); }
+    .proto-tab.active { color: var(--t1); font-weight: 600; border-bottom-color: var(--t1); }
+    .proto-tab .tab-badge {
+      font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 100px;
+      margin-left: 6px; vertical-align: middle;
+    }
+    .proto-spacer { flex: 1; }
+    .proto-label { font-size: 11px; color: var(--t3); }
+
+    .proto-page { display: none; height: calc(100vh - 49px); overflow-y: auto; }
+    .proto-page.active { display: block; }
+
+    /* === Shared detail layout === */
+    .session-shell { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+    /* Header banner */
+    .session-header {
+      background: var(--card); border-radius: 14px; padding: 20px 24px;
+      border: 1px solid var(--bdr2); margin-bottom: 16px;
+    }
+    .sh-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .sh-title { font-size: 18px; font-weight: 700; color: var(--t1); }
+    .sh-id { font-size: 11px; font-family: monospace; color: var(--t3); background: var(--bg2); padding: 2px 8px; border-radius: 6px; }
+    .sh-desc { font-size: 13px; color: var(--t2); margin-bottom: 14px; line-height: 1.6; }
+    .sh-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sh-tag { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; }
+
+    /* Stat row */
+    .stat-row { display: grid; gap: 12px; margin-bottom: 16px; }
+    .stat-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .stat-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .stat-row.cols-5 { grid-template-columns: repeat(5, 1fr); }
+    .stat-card {
+      background: var(--card); border-radius: 12px; padding: 14px 16px;
+      border: 1px solid var(--bdr2);
+    }
+    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t3); margin-bottom: 4px; }
+    .stat-value { font-size: 22px; font-weight: 700; color: var(--t1); }
+    .stat-sub { font-size: 11px; color: var(--t3); margin-top: 2px; }
+
+    /* Section panels */
+    .section { margin-bottom: 16px; }
+    .section-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--t3); margin-bottom: 10px; padding-left: 2px;
+    }
+    .panel {
+      background: var(--card); border-radius: 12px; padding: 16px 18px;
+      border: 1px solid var(--bdr2);
+    }
+
+    /* Two-column layout */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+    /* Progress bars */
+    .prog-bar { display: flex; align-items: center; gap: 10px; }
+    .prog-track { flex: 1; height: 6px; background: rgba(0,0,0,0.05); border-radius: 100px; overflow: hidden; }
+    .prog-fill { height: 100%; border-radius: 100px; transition: width 400ms; }
+    .prog-text { font-size: 11px; font-weight: 500; color: var(--t3); white-space: nowrap; min-width: 36px; text-align: right; }
+
+    /* Tag/pill */
+    .pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 5px; }
+    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* Task row */
+    .task-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 8px; font-size: 12px;
+      transition: background 120ms; cursor: default;
+    }
+    .task-row:hover { background: var(--hover); }
+    .task-row + .task-row { border-top: 1px solid var(--bdr2); }
+    .task-id { font-family: monospace; font-size: 10px; color: var(--t3); min-width: 90px; }
+    .task-role { font-size: 9px; font-weight: 600; text-transform: uppercase; padding: 2px 7px; border-radius: 100px; }
+    .task-name { flex: 1; color: var(--t1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-status { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 100px; }
+
+    /* Status colors */
+    .st-done { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-running { background: rgba(201,155,45,0.12); color: var(--yellow); }
+    .st-pending { background: rgba(160,157,151,0.12); color: var(--gray); }
+    .st-blocked { background: rgba(208,84,84,0.12); color: var(--red); }
+    .st-pass { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-warn { background: rgba(212,131,46,0.12); color: var(--orange); }
+    .st-block { background: rgba(208,84,84,0.12); color: var(--red); }
+
+    /* Activity log */
+    .log-item { display: flex; gap: 10px; padding: 7px 0; font-size: 12px; }
+    .log-item + .log-item { border-top: 1px solid var(--bdr2); }
+    .log-time { font-size: 10px; color: var(--t4); font-family: monospace; min-width: 52px; padding-top: 1px; }
+    .log-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+    .log-text { flex: 1; color: var(--t2); }
+    .log-text strong { color: var(--t1); font-weight: 600; }
+
+    /* Pulse animation */
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s ease infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+
+
+    /* ============================== */
+    /* TYPE 1: Lifecycle (TLV4) */
+    /* ============================== */
+
+    /* Pipeline stage bar */
+    .pipeline-stages { display: flex; gap: 2px; margin-bottom: 16px; }
+    .pipe-stage {
+      flex: 1; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      transition: all 150ms; position: relative; min-width: 0;
+    }
+    .pipe-stage:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .pipe-stage-name { font-size: 11px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pipe-stage-role { font-size: 10px; color: var(--t3); }
+    .pipe-stage-status { font-size: 9px; font-weight: 600; margin-top: 4px; }
+    /* Connector arrow between stages */
+    .pipe-stage::after {
+      content: ''; position: absolute; right: -7px; top: 50%; transform: translateY(-50%);
+      width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+      border-left: 6px solid var(--bdr); z-index: 1;
+    }
+    .pipe-stage:last-child::after { display: none; }
+
+    /* Checkpoint card */
+    .checkpoint-card {
+      border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+      border: 1px solid var(--bdr2);
+    }
+    .ckpt-icon {
+      width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .ckpt-body { flex: 1; }
+    .ckpt-title { font-size: 13px; font-weight: 600; color: var(--t1); }
+    .ckpt-desc { font-size: 11px; color: var(--t2); margin-top: 2px; }
+    .ckpt-verdict { font-size: 10px; font-weight: 600; padding: 2px 10px; border-radius: 100px; }
+    .ckpt-score { font-size: 18px; font-weight: 700; }
+
+    /* Discussion round */
+    .discuss-card {
+      border-radius: 10px; padding: 12px 14px; border: 1px solid var(--bdr2); background: var(--card);
+    }
+    .discuss-round { font-size: 10px; font-weight: 600; color: var(--purple); margin-bottom: 4px; }
+    .discuss-topic { font-size: 13px; font-weight: 600; color: var(--t1); margin-bottom: 4px; }
+    .discuss-summary { font-size: 12px; color: var(--t2); line-height: 1.5; }
+    .discuss-meta { display: flex; gap: 8px; margin-top: 8px; font-size: 10px; color: var(--t3); }
+
+    /* Artifact tree */
+    .artifact-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+    .artifact-item + .artifact-item { border-top: 1px solid var(--bdr2); }
+    .artifact-icon { font-size: 14px; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .artifact-name { font-size: 12px; font-weight: 500; color: var(--t1); flex: 1; }
+    .artifact-role { font-size: 10px; color: var(--t3); }
+    .artifact-size { font-size: 10px; font-family: monospace; color: var(--t4); }
+
+
+    /* ============================== */
+    /* TYPE 2: Coordinate (TC) */
+    /* ============================== */
+
+    /* DAG graph visualization */
+    .dag-container {
+      background: var(--card); border-radius: 12px; padding: 20px;
+      border: 1px solid var(--bdr2); margin-bottom: 16px; overflow-x: auto;
+    }
+    .dag-graph { display: flex; align-items: flex-start; gap: 24px; min-width: max-content; padding: 8px 0; }
+    .dag-column { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+    .dag-col-label { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t4); letter-spacing: 0.06em; margin-bottom: 4px; }
+    .dag-node {
+      width: 140px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--bdr);
+      background: var(--card); cursor: pointer; transition: all 150ms; position: relative;
+    }
+    .dag-node:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .dag-node.active { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(74,144,217,0.15); }
+    .dag-node-id { font-size: 10px; font-family: monospace; color: var(--t3); }
+    .dag-node-name { font-size: 12px; font-weight: 600; color: var(--t1); margin-top: 2px; }
+    .dag-node-role { font-size: 10px; color: var(--t3); margin-top: 2px; }
+    .dag-node-status { position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card); }
+    /* Connector lines between dag columns */
+    .dag-edge {
+      display: flex; align-items: center; color: var(--t4);
+    }
+    .dag-edge svg { width: 24px; height: 24px; }
+
+    /* Role-spec cards */
+    .rolespec-card {
+      border-radius: 10px; padding: 14px 16px; border: 1px solid var(--bdr2);
+      background: var(--card); transition: all 150ms;
+    }
+    .rolespec-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .rs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .rs-name { font-size: 13px; font-weight: 600; color: var(--t1); }
+    .rs-prefix { font-size: 10px; font-family: monospace; color: var(--t3); background: var(--bg2); padding: 1px 6px; border-radius: 4px; }
+    .rs-desc { font-size: 12px; color: var(--t2); margin-bottom: 8px; line-height: 1.5; }
+    .rs-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .rs-badge { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 100px; }
+    .rs-dynamic { font-size: 9px; font-weight: 600; color: var(--purple); display: flex; align-items: center; gap: 4px; }
+
+    /* Capability adaptation timeline */
+    .adapt-timeline { position: relative; padding-left: 20px; }
+    .adapt-timeline::before { content: ''; position: absolute; left: 6px; top: 8px; bottom: 8px; width: 2px; background: var(--bdr); border-radius: 1px; }
+    .adapt-item { position: relative; padding: 8px 0 8px 16px; }
+    .adapt-item + .adapt-item { border: none; }
+    .adapt-dot { position: absolute; left: -17px; top: 12px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--card); }
+    .adapt-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .adapt-desc { font-size: 11px; color: var(--t2); margin-top: 2px; }
+    .adapt-time { font-size: 10px; color: var(--t4); font-family: monospace; margin-top: 2px; }
+
+
+    /* ============================== */
+    /* TYPE 3: Specialized (QA) */
+    /* ============================== */
+
+    /* Coverage gauge */
+    .gauge-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .gauge-card {
+      background: var(--card); border-radius: 12px; padding: 16px; text-align: center;
+      border: 1px solid var(--bdr2);
+    }
+    .gauge-ring {
+      width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 8px;
+      background: conic-gradient(var(--green) 0% var(--gauge-pct, 0%), var(--bg2) var(--gauge-pct, 0%) 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .gauge-inner { width: 56px; height: 56px; border-radius: 50%; background: var(--card); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: var(--t1); }
+    .gauge-label { font-size: 11px; font-weight: 600; color: var(--t2); }
+    .gauge-sub { font-size: 10px; color: var(--t3); margin-top: 2px; }
+
+    /* Severity heatmap */
+    .severity-grid { display: grid; grid-template-columns: auto repeat(4, 1fr); gap: 2px; }
+    .sev-header { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t3); padding: 6px 8px; text-align: center; }
+    .sev-label { font-size: 11px; font-weight: 500; color: var(--t2); padding: 6px 8px; display: flex; align-items: center; }
+    .sev-cell {
+      padding: 8px; text-align: center; border-radius: 6px; font-size: 13px; font-weight: 600;
+      min-width: 48px;
+    }
+    .sev-0 { background: var(--bg2); color: var(--t4); }
+    .sev-low { background: rgba(61,155,111,0.1); color: var(--green); }
+    .sev-med { background: rgba(201,155,45,0.15); color: var(--yellow); }
+    .sev-high { background: rgba(212,131,46,0.15); color: var(--orange); }
+    .sev-crit { background: rgba(208,84,84,0.15); color: var(--red); }
+
+    /* Layer bar */
+    .layer-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+    .layer-row + .layer-row { border-top: 1px solid var(--bdr2); }
+    .layer-label { font-size: 12px; font-weight: 600; color: var(--t1); min-width: 100px; }
+    .layer-bar-track { flex: 1; height: 20px; background: var(--bg2); border-radius: 8px; overflow: hidden; position: relative; }
+    .layer-bar-fill { height: 100%; border-radius: 8px; display: flex; align-items: center; padding-left: 8px; font-size: 10px; font-weight: 600; color: #fff; }
+    .layer-bar-target { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--t3); }
+    .layer-count { font-size: 11px; font-family: monospace; color: var(--t3); min-width: 60px; text-align: right; }
+
+    /* GC loop indicator */
+    .gc-loop {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-radius: 10px; background: var(--tint-yellow); border: 1px solid rgba(201,155,45,0.2);
+    }
+    .gc-loop-icon { font-size: 18px; }
+    .gc-loop-text { flex: 1; }
+    .gc-loop-title { font-size: 12px; font-weight: 600; color: var(--yellow); }
+    .gc-loop-desc { font-size: 11px; color: var(--t2); }
+    .gc-loop-count { font-size: 22px; font-weight: 700; color: var(--yellow); }
+
+    /* Finding row */
+    .finding-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; }
+    .finding-row + .finding-row { border-top: 1px solid var(--bdr2); }
+    .finding-sev { width: 4px; border-radius: 2px; min-height: 32px; flex-shrink: 0; margin-top: 2px; }
+    .finding-body { flex: 1; }
+    .finding-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .finding-loc { font-size: 10px; font-family: monospace; color: var(--t3); margin-top: 2px; }
+    .finding-dim { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 100px; }
+
+    @media (max-width: 900px) {
+      .two-col, .three-col { grid-template-columns: 1fr; }
+      .stat-row.cols-4, .stat-row.cols-5 { grid-template-columns: repeat(2, 1fr); }
+      .gauge-row { grid-template-columns: repeat(2, 1fr); }
+      .pipeline-stages { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Prototype selector bar -->
+<nav class="proto-bar">
+  <button class="proto-tab active" onclick="showPage('lifecycle')">
+    Lifecycle (TLV4)
+    <span class="tab-badge" style="background:rgba(139,107,191,0.12);color:var(--purple)">Static Pipeline</span>
+  </button>
+  <button class="proto-tab" onclick="showPage('coordinate')">
+    Coordinate (TC)
+    <span class="tab-badge" style="background:rgba(74,144,217,0.12);color:var(--blue)">Dynamic DAG</span>
+  </button>
+  <button class="proto-tab" onclick="showPage('specialized')">
+    Specialized (QA)
+    <span class="tab-badge" style="background:rgba(61,155,111,0.12);color:var(--green)">Domain Metrics</span>
+  </button>
+  <div class="proto-spacer"></div>
+  <span class="proto-label">Team Session Detail Prototypes</span>
+</nav>
+
+
+<!-- ============================================================ -->
+<!-- PAGE 1: Lifecycle (TLV4) — Static pipeline + Checkpoints     -->
+<!-- ============================================================ -->
+<div class="proto-page active" id="page-lifecycle">
+  <div class="session-shell">
+
+    <!-- Header -->
+    <div class="session-header">
+      <div class="sh-top">
+        <div class="sh-title">E-Commerce Platform v2.0</div>
+        <span class="sh-id">TLV4-ecommerce-platform-20260319</span>
+      </div>
+      <div class="sh-desc">Full lifecycle specification and implementation of a modern e-commerce platform with product catalog, order management, payment processing, and user authentication.</div>
+      <div class="sh-meta">
+        <span class="sh-tag" style="background:rgba(201,155,45,0.12);color:var(--yellow)"><span class="pulse-dot" style="background:var(--yellow);display:inline-block;vertical-align:middle;margin-right:4px"></span> Active</span>
+        <span class="sh-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">full-lifecycle</span>
+        <span class="sh-tag" style="background:var(--bg2);color:var(--t2)">7 roles</span>
+        <span class="sh-tag" style="background:var(--bg2);color:var(--t2)">Supervision: ON</span>
+      </div>
+    </div>
+
+    <!-- Pipeline stage bar -->
+    <div class="section">
+      <div class="section-title">Pipeline Stages</div>
+      <div class="pipeline-stages">
+        <div class="pipe-stage" style="background:var(--tint-green)">
+          <div class="pipe-stage-name">Research</div>
+          <div class="pipe-stage-role">analyst</div>
+          <div class="pipe-stage-status" style="color:var(--green)">Done</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-green)">
+          <div class="pipe-stage-name">Product Brief</div>
+          <div class="pipe-stage-role">writer</div>
+          <div class="pipe-stage-status" style="color:var(--green)">Done</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-green)">
+          <div class="pipe-stage-name">Requirements</div>
+          <div class="pipe-stage-role">writer</div>
+          <div class="pipe-stage-status" style="color:var(--green)">Done</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-green)">
+          <div class="pipe-stage-name">Checkpoint 1</div>
+          <div class="pipe-stage-role">supervisor</div>
+          <div class="pipe-stage-status" style="color:var(--green)">Pass (0.92)</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-green)">
+          <div class="pipe-stage-name">Architecture</div>
+          <div class="pipe-stage-role">writer</div>
+          <div class="pipe-stage-status" style="color:var(--green)">Done</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-yellow)">
+          <div class="pipe-stage-name">Epics</div>
+          <div class="pipe-stage-role">writer</div>
+          <div class="pipe-stage-status" style="color:var(--yellow)">Running</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-gray)">
+          <div class="pipe-stage-name">Checkpoint 2</div>
+          <div class="pipe-stage-role">supervisor</div>
+          <div class="pipe-stage-status" style="color:var(--gray)">Pending</div>
+        </div>
+        <div class="pipe-stage" style="background:var(--tint-gray)">
+          <div class="pipe-stage-name">Quality Gate</div>
+          <div class="pipe-stage-role">reviewer</div>
+          <div class="pipe-stage-status" style="color:var(--gray)">Pending</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row cols-4">
+      <div class="stat-card">
+        <div class="stat-label">Tasks</div>
+        <div class="stat-value">5 / 8</div>
+        <div class="stat-sub">62% complete</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Checkpoints</div>
+        <div class="stat-value">1 / 2</div>
+        <div class="stat-sub">Next: consistency check</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Discussions</div>
+        <div class="stat-value">2 / 3</div>
+        <div class="stat-sub">D3 after quality gate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value">42m</div>
+        <div class="stat-sub">Est. remaining: 18m</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Checkpoint verdicts -->
+      <div class="section">
+        <div class="section-title">Supervisor Checkpoints</div>
+        <div class="panel" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="checkpoint-card" style="background:var(--tint-green)">
+            <div class="ckpt-icon" style="background:rgba(61,155,111,0.15);color:var(--green)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="ckpt-body">
+              <div class="ckpt-title">CHECKPOINT-001: Brief + PRD Consistency</div>
+              <div class="ckpt-desc">Terminology alignment verified. No blocking issues found. 0 risks logged.</div>
+            </div>
+            <div style="text-align:center">
+              <div class="ckpt-score" style="color:var(--green)">0.92</div>
+              <span class="ckpt-verdict st-pass">Pass</span>
+            </div>
+          </div>
+          <div class="checkpoint-card" style="background:var(--tint-gray)">
+            <div class="ckpt-icon" style="background:rgba(160,157,151,0.15);color:var(--gray)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div class="ckpt-body">
+              <div class="ckpt-title">CHECKPOINT-002: Full Spec Consistency</div>
+              <div class="ckpt-desc">Awaiting: DRAFT-004 (epics) completion</div>
+            </div>
+            <div style="text-align:center">
+              <div class="ckpt-score" style="color:var(--t4)">--</div>
+              <span class="ckpt-verdict st-pending">Pending</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Discussion rounds -->
+      <div class="section">
+        <div class="section-title">Discussion Rounds</div>
+        <div class="panel" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="discuss-card">
+            <div class="discuss-round">D1 — After RESEARCH-001</div>
+            <div class="discuss-topic">Scope Alignment</div>
+            <div class="discuss-summary">Agreed on microservices architecture over monolith. Decided to exclude real-time inventory sync from MVP scope.</div>
+            <div class="discuss-meta">
+              <span>analyst, writer</span>
+              <span>3 turns</span>
+              <span>Consensus: aligned</span>
+            </div>
+          </div>
+          <div class="discuss-card">
+            <div class="discuss-round">D2 — After DRAFT-002</div>
+            <div class="discuss-topic">Requirements Review</div>
+            <div class="discuss-summary">Payment gateway selection narrowed to Stripe + PayPal. Added guest checkout as P0 requirement.</div>
+            <div class="discuss-meta">
+              <span>writer, reviewer</span>
+              <span>4 turns</span>
+              <span>Consensus: aligned</span>
+            </div>
+          </div>
+          <div class="discuss-card" style="opacity:0.5;">
+            <div class="discuss-round">D3 — After QUALITY-001</div>
+            <div class="discuss-topic">Readiness Decision</div>
+            <div class="discuss-summary" style="color:var(--t4)">Pending quality gate completion</div>
+            <div class="discuss-meta"><span>Scheduled</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Task list -->
+      <div class="section">
+        <div class="section-title">Task Pipeline</div>
+        <div class="panel" style="padding:8px 4px;">
+          <div class="task-row">
+            <span class="task-id">RESEARCH-001</span>
+            <span class="task-role" style="background:rgba(74,144,217,0.12);color:var(--blue)">analyst</span>
+            <span class="task-name">Domain research & competitor analysis</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">DRAFT-001</span>
+            <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">writer</span>
+            <span class="task-name">Product brief</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">DRAFT-002</span>
+            <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">writer</span>
+            <span class="task-name">Requirements PRD</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">CHECKPOINT-001</span>
+            <span class="task-role" style="background:rgba(212,131,46,0.12);color:var(--orange)">supervisor</span>
+            <span class="task-name">Brief + PRD consistency check</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">DRAFT-003</span>
+            <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">writer</span>
+            <span class="task-name">Architecture design</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">DRAFT-004</span>
+            <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">writer</span>
+            <span class="task-name">Epics & stories</span>
+            <span class="task-status st-running">Running</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">CHECKPOINT-002</span>
+            <span class="task-role" style="background:rgba(212,131,46,0.12);color:var(--orange)">supervisor</span>
+            <span class="task-name">Full spec consistency</span>
+            <span class="task-status st-blocked">Blocked</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QUALITY-001</span>
+            <span class="task-role" style="background:rgba(61,155,111,0.12);color:var(--green)">reviewer</span>
+            <span class="task-name">Quality gate scoring</span>
+            <span class="task-status st-pending">Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Artifacts + Activity -->
+      <div>
+        <!-- Document artifacts -->
+        <div class="section">
+          <div class="section-title">Artifacts (spec/)</div>
+          <div class="panel" style="padding:8px 14px;">
+            <div class="artifact-item">
+              <div class="artifact-icon" style="background:var(--tint-blue);color:var(--blue)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <span class="artifact-name">RESEARCH-001-domain-analysis.md</span>
+              <span class="artifact-role">analyst</span>
+            </div>
+            <div class="artifact-item">
+              <div class="artifact-icon" style="background:var(--tint-purple);color:var(--purple)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <span class="artifact-name">DRAFT-001-product-brief.md</span>
+              <span class="artifact-role">writer</span>
+            </div>
+            <div class="artifact-item">
+              <div class="artifact-icon" style="background:var(--tint-purple);color:var(--purple)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <span class="artifact-name">DRAFT-002-requirements-prd.md</span>
+              <span class="artifact-role">writer</span>
+            </div>
+            <div class="artifact-item">
+              <div class="artifact-icon" style="background:var(--tint-purple);color:var(--purple)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <span class="artifact-name">DRAFT-003-architecture.md</span>
+              <span class="artifact-role">writer</span>
+            </div>
+            <div class="artifact-item">
+              <div class="artifact-icon" style="background:rgba(212,131,46,0.1);color:var(--orange)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+              </div>
+              <span class="artifact-name">CHECKPOINT-001-report.md</span>
+              <span class="artifact-role">supervisor</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity log -->
+        <div class="section">
+          <div class="section-title">Activity</div>
+          <div class="panel">
+            <div class="log-item">
+              <span class="log-time">1m ago</span>
+              <div class="log-icon" style="background:var(--tint-yellow);color:var(--yellow)">W</div>
+              <span class="log-text"><strong>DRAFT-004</strong> started — writer generating epics & stories</span>
+            </div>
+            <div class="log-item">
+              <span class="log-time">8m ago</span>
+              <div class="log-icon" style="background:var(--tint-green);color:var(--green)">S</div>
+              <span class="log-text"><strong>CHECKPOINT-001</strong> passed (0.92) — Brief consistent with PRD</span>
+            </div>
+            <div class="log-item">
+              <span class="log-time">12m ago</span>
+              <div class="log-icon" style="background:var(--tint-purple);color:var(--purple)">D</div>
+              <span class="log-text"><strong>D2</strong> concluded — guest checkout added as P0</span>
+            </div>
+            <div class="log-item">
+              <span class="log-time">24m ago</span>
+              <div class="log-icon" style="background:var(--tint-green);color:var(--green)">W</div>
+              <span class="log-text"><strong>DRAFT-003</strong> done — architecture doc delivered</span>
+            </div>
+            <div class="log-item">
+              <span class="log-time">38m ago</span>
+              <div class="log-icon" style="background:var(--tint-blue);color:var(--blue)">A</div>
+              <span class="log-text"><strong>RESEARCH-001</strong> done — domain analysis with 12 findings</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wisdom -->
+    <div class="section">
+      <div class="section-title">Accumulated Wisdom</div>
+      <div class="panel">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Learnings (3)</div>
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              Microservices preferred for scale requirements<br>
+              Stripe API v3 has simplified webhook handling<br>
+              Guest checkout critical for conversion rates
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--blue);text-transform:uppercase;margin-bottom:6px;">Decisions (2)</div>
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              Microservices over monolith (scalability)<br>
+              Stripe + PayPal dual gateway (coverage)
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--orange);text-transform:uppercase;margin-bottom:6px;">Issues (1)</div>
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              Real-time inventory sync deferred to post-MVP
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- PAGE 2: Coordinate (TC) — Dynamic DAG + Role-spec generation -->
+<!-- ============================================================ -->
+<div class="proto-page" id="page-coordinate">
+  <div class="session-shell">
+
+    <!-- Header -->
+    <div class="session-header">
+      <div class="sh-top">
+        <div class="sh-title">Refactor Authentication Module</div>
+        <span class="sh-id">TC-refactor-auth-module-20260319</span>
+      </div>
+      <div class="sh-desc">Refactor the authentication module to support OAuth2, implement refresh token rotation, and migrate session storage from in-memory to Redis. Includes comprehensive testing.</div>
+      <div class="sh-meta">
+        <span class="sh-tag" style="background:rgba(201,155,45,0.12);color:var(--yellow)"><span class="pulse-dot" style="background:var(--yellow);display:inline-block;vertical-align:middle;margin-right:4px"></span> Active</span>
+        <span class="sh-tag" style="background:rgba(74,144,217,0.12);color:var(--blue)">dynamic-pipeline</span>
+        <span class="sh-tag" style="background:var(--bg2);color:var(--t2)">4 dynamic roles</span>
+        <span class="sh-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:3px"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          Roles auto-generated
+        </span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row cols-5">
+      <div class="stat-card">
+        <div class="stat-label">Tasks</div>
+        <div class="stat-value">3 / 6</div>
+        <div class="stat-sub">50% complete</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Dynamic Roles</div>
+        <div class="stat-value">4</div>
+        <div class="stat-sub">+1 injected mid-run</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Parallelism</div>
+        <div class="stat-value">2</div>
+        <div class="stat-sub">concurrent workers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Adaptations</div>
+        <div class="stat-value">1</div>
+        <div class="stat-sub">capability_gap resolved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value">28m</div>
+        <div class="stat-sub">Est. remaining: 15m</div>
+      </div>
+    </div>
+
+    <!-- DAG visualization -->
+    <div class="section">
+      <div class="section-title">Dependency Graph (DAG)</div>
+      <div class="dag-container">
+        <div class="dag-graph">
+          <!-- Wave 0 -->
+          <div class="dag-column">
+            <div class="dag-col-label">Wave 0</div>
+            <div class="dag-node" style="border-color:var(--green)">
+              <div class="dag-node-status" style="background:var(--green)"></div>
+              <div class="dag-node-id">RESEARCH-001</div>
+              <div class="dag-node-name">Codebase Analysis</div>
+              <div class="dag-node-role">researcher</div>
+            </div>
+          </div>
+          <div class="dag-edge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/></svg>
+          </div>
+          <!-- Wave 1 -->
+          <div class="dag-column">
+            <div class="dag-col-label">Wave 1</div>
+            <div class="dag-node" style="border-color:var(--green)">
+              <div class="dag-node-status" style="background:var(--green)"></div>
+              <div class="dag-node-id">PLAN-001</div>
+              <div class="dag-node-name">Implementation Plan</div>
+              <div class="dag-node-role">planner</div>
+            </div>
+          </div>
+          <div class="dag-edge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/></svg>
+          </div>
+          <!-- Wave 2 -->
+          <div class="dag-column">
+            <div class="dag-col-label">Wave 2</div>
+            <div class="dag-node active" style="border-color:var(--yellow)">
+              <div class="dag-node-status" style="background:var(--yellow)"></div>
+              <div class="dag-node-id">IMPL-001</div>
+              <div class="dag-node-name">OAuth2 + Refresh Tokens</div>
+              <div class="dag-node-role">developer</div>
+            </div>
+            <div class="dag-node" style="border-color:var(--yellow)">
+              <div class="dag-node-status" style="background:var(--yellow)"></div>
+              <div class="dag-node-id">IMPL-002</div>
+              <div class="dag-node-name">Redis Session Storage</div>
+              <div class="dag-node-role">developer</div>
+            </div>
+          </div>
+          <div class="dag-edge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/></svg>
+          </div>
+          <!-- Wave 3 -->
+          <div class="dag-column">
+            <div class="dag-col-label">Wave 3</div>
+            <div class="dag-node" style="border-color:var(--bdr);opacity:0.6">
+              <div class="dag-node-status" style="background:var(--gray)"></div>
+              <div class="dag-node-id">TEST-001</div>
+              <div class="dag-node-name">Integration Tests</div>
+              <div class="dag-node-role">tester</div>
+            </div>
+          </div>
+          <div class="dag-edge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/></svg>
+          </div>
+          <!-- Wave 4 (injected) -->
+          <div class="dag-column">
+            <div class="dag-col-label" style="color:var(--purple)">Wave 4 (injected)</div>
+            <div class="dag-node" style="border-color:var(--purple);border-style:dashed;opacity:0.6">
+              <div class="dag-node-status" style="background:var(--gray)"></div>
+              <div class="dag-node-id">SECURITY-001</div>
+              <div class="dag-node-name">Token Security Audit</div>
+              <div class="dag-node-role" style="color:var(--purple)">security-expert *</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Dynamic role-specs -->
+      <div class="section">
+        <div class="section-title">Generated Role-Specs (role-specs/)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="rolespec-card">
+            <div class="rs-header">
+              <span class="rs-name">researcher</span>
+              <span class="rs-prefix">RESEARCH-*</span>
+            </div>
+            <div class="rs-desc">Explore existing auth module, map dependencies, identify integration points with Redis and OAuth providers.</div>
+            <div class="rs-meta">
+              <span class="rs-badge" style="background:rgba(61,155,111,0.12);color:var(--green)">inner_loop: false</span>
+              <span class="rs-badge" style="background:var(--bg2);color:var(--t2)">1 task</span>
+              <span class="rs-dynamic">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                runtime-generated
+              </span>
+            </div>
+          </div>
+          <div class="rolespec-card">
+            <div class="rs-header">
+              <span class="rs-name">planner</span>
+              <span class="rs-prefix">PLAN-*</span>
+            </div>
+            <div class="rs-desc">Design migration strategy: OAuth2 flow, refresh token rotation schema, Redis session model. Break into parallel implementation tasks.</div>
+            <div class="rs-meta">
+              <span class="rs-badge" style="background:rgba(61,155,111,0.12);color:var(--green)">inner_loop: false</span>
+              <span class="rs-badge" style="background:var(--bg2);color:var(--t2)">1 task</span>
+              <span class="rs-dynamic">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                runtime-generated
+              </span>
+            </div>
+          </div>
+          <div class="rolespec-card">
+            <div class="rs-header">
+              <span class="rs-name">developer</span>
+              <span class="rs-prefix">IMPL-*</span>
+            </div>
+            <div class="rs-desc">Implement OAuth2 provider integration, refresh token rotation, and Redis-backed session storage with backward-compatible API.</div>
+            <div class="rs-meta">
+              <span class="rs-badge" style="background:rgba(201,155,45,0.12);color:var(--yellow)">inner_loop: true</span>
+              <span class="rs-badge" style="background:var(--bg2);color:var(--t2)">2 tasks</span>
+              <span class="rs-dynamic">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                runtime-generated
+              </span>
+            </div>
+          </div>
+          <div class="rolespec-card" style="border-color:var(--purple);border-style:dashed;">
+            <div class="rs-header">
+              <span class="rs-name" style="color:var(--purple)">security-expert</span>
+              <span class="rs-prefix">SECURITY-*</span>
+            </div>
+            <div class="rs-desc">Audit token storage, rotation logic, and OAuth2 flow for OWASP vulnerabilities. Injected via capability_gap.</div>
+            <div class="rs-meta">
+              <span class="rs-badge" style="background:rgba(208,84,84,0.12);color:var(--red)">inner_loop: false</span>
+              <span class="rs-badge" style="background:var(--bg2);color:var(--t2)">1 task</span>
+              <span class="rs-dynamic" style="color:var(--orange)">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                injected mid-pipeline
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: Adaptation timeline + task list -->
+      <div>
+        <!-- Capability adaptation timeline -->
+        <div class="section">
+          <div class="section-title">Adaptation Timeline</div>
+          <div class="panel">
+            <div class="adapt-timeline">
+              <div class="adapt-item">
+                <div class="adapt-dot" style="background:var(--blue)"></div>
+                <div class="adapt-title">Session Initialized</div>
+                <div class="adapt-desc">3 roles generated: researcher, planner, developer</div>
+                <div class="adapt-time">28m ago</div>
+              </div>
+              <div class="adapt-item">
+                <div class="adapt-dot" style="background:var(--green)"></div>
+                <div class="adapt-title">RESEARCH-001 Complete</div>
+                <div class="adapt-desc">Found 14 integration points, 3 breaking change risks</div>
+                <div class="adapt-time">22m ago</div>
+              </div>
+              <div class="adapt-item">
+                <div class="adapt-dot" style="background:var(--green)"></div>
+                <div class="adapt-title">PLAN-001 Complete</div>
+                <div class="adapt-desc">Split into 2 parallel IMPL tasks (OAuth2 + Redis)</div>
+                <div class="adapt-time">16m ago</div>
+              </div>
+              <div class="adapt-item">
+                <div class="adapt-dot" style="background:var(--purple)"></div>
+                <div class="adapt-title">capability_gap: security audit</div>
+                <div class="adapt-desc">Developer reported token storage pattern needs expert review. New role-spec generated: security-expert</div>
+                <div class="adapt-time">8m ago</div>
+              </div>
+              <div class="adapt-item">
+                <div class="adapt-dot" style="background:var(--yellow)"></div>
+                <div class="adapt-title">IMPL-001, IMPL-002 Executing</div>
+                <div class="adapt-desc">2 parallel workers active</div>
+                <div class="adapt-time">now</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Task list -->
+        <div class="section">
+          <div class="section-title">Task Chain</div>
+          <div class="panel" style="padding:8px 4px;">
+            <div class="task-row">
+              <span class="task-id">RESEARCH-001</span>
+              <span class="task-role" style="background:rgba(74,144,217,0.12);color:var(--blue)">researcher</span>
+              <span class="task-name">Codebase analysis</span>
+              <span class="task-status st-done">Done</span>
+            </div>
+            <div class="task-row">
+              <span class="task-id">PLAN-001</span>
+              <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">planner</span>
+              <span class="task-name">Implementation plan</span>
+              <span class="task-status st-done">Done</span>
+            </div>
+            <div class="task-row">
+              <span class="task-id">IMPL-001</span>
+              <span class="task-role" style="background:rgba(201,155,45,0.12);color:var(--yellow)">developer</span>
+              <span class="task-name">OAuth2 + refresh tokens</span>
+              <span class="task-status st-running">Running</span>
+            </div>
+            <div class="task-row">
+              <span class="task-id">IMPL-002</span>
+              <span class="task-role" style="background:rgba(201,155,45,0.12);color:var(--yellow)">developer</span>
+              <span class="task-name">Redis session storage</span>
+              <span class="task-status st-running">Running</span>
+            </div>
+            <div class="task-row">
+              <span class="task-id">TEST-001</span>
+              <span class="task-role" style="background:rgba(61,155,111,0.12);color:var(--green)">tester</span>
+              <span class="task-name">Integration tests</span>
+              <span class="task-status st-blocked">Blocked</span>
+            </div>
+            <div class="task-row">
+              <span class="task-id" style="color:var(--purple)">SECURITY-001</span>
+              <span class="task-role" style="background:rgba(208,84,84,0.12);color:var(--red)">security</span>
+              <span class="task-name">Token security audit</span>
+              <span class="task-status st-pending">Pending</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task analysis summary -->
+    <div class="section">
+      <div class="section-title">Task Analysis (task-analysis.json)</div>
+      <div class="panel">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;">
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--blue);text-transform:uppercase;margin-bottom:6px;">Detected Capabilities</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <span class="pill" style="background:var(--tint-blue);color:var(--blue);font-size:10px;">authentication</span>
+              <span class="pill" style="background:var(--tint-blue);color:var(--blue);font-size:10px;">oauth2</span>
+              <span class="pill" style="background:var(--tint-blue);color:var(--blue);font-size:10px;">session-mgmt</span>
+              <span class="pill" style="background:var(--tint-blue);color:var(--blue);font-size:10px;">redis</span>
+              <span class="pill" style="background:var(--tint-blue);color:var(--blue);font-size:10px;">token-rotation</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--purple);text-transform:uppercase;margin-bottom:6px;">Complexity</div>
+            <div style="font-size:18px;font-weight:700;color:var(--t1);">Medium</div>
+            <div style="font-size:11px;color:var(--t3);">3 modules, 2 parallel tracks</div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Cross-domain Factor</div>
+            <div style="font-size:18px;font-weight:700;color:var(--t1);">0.7</div>
+            <div style="font-size:11px;color:var(--t3);">Auth + infra overlap</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- PAGE 3: Specialized (QA) — Domain metrics + layer coverage   -->
+<!-- ============================================================ -->
+<div class="proto-page" id="page-specialized">
+  <div class="session-shell">
+
+    <!-- Header -->
+    <div class="session-header">
+      <div class="sh-top">
+        <div class="sh-title">Quality Assurance — Payment Module</div>
+        <span class="sh-id">QA-payment-module-20260319</span>
+      </div>
+      <div class="sh-desc">Full closed-loop quality assurance for the payment processing module. Issue discovery, test strategy, progressive test generation (L1-L3), execution, and gap analysis.</div>
+      <div class="sh-meta">
+        <span class="sh-tag" style="background:rgba(201,155,45,0.12);color:var(--yellow)"><span class="pulse-dot" style="background:var(--yellow);display:inline-block;vertical-align:middle;margin-right:4px"></span> Active</span>
+        <span class="sh-tag" style="background:rgba(61,155,111,0.12);color:var(--green)">full-qa</span>
+        <span class="sh-tag" style="background:var(--bg2);color:var(--t2)">5 roles</span>
+        <span class="sh-tag" style="background:rgba(212,131,46,0.12);color:var(--orange)">GC Loop: 2/3</span>
+      </div>
+    </div>
+
+    <!-- Coverage gauges -->
+    <div class="gauge-row">
+      <div class="gauge-card">
+        <div class="gauge-ring" style="--gauge-pct:78%;">
+          <div class="gauge-inner">78%</div>
+        </div>
+        <div class="gauge-label">Overall Coverage</div>
+        <div class="gauge-sub">Target: 85%</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-ring" style="--gauge-pct:92%;background:conic-gradient(var(--green) 0% 92%, var(--bg2) 92% 100%)">
+          <div class="gauge-inner">92%</div>
+        </div>
+        <div class="gauge-label">L1 Unit</div>
+        <div class="gauge-sub">46 tests passing</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-ring" style="--gauge-pct:71%;background:conic-gradient(var(--yellow) 0% 71%, var(--bg2) 71% 100%)">
+          <div class="gauge-inner">71%</div>
+        </div>
+        <div class="gauge-label">L2 Integration</div>
+        <div class="gauge-sub">18 tests passing</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-ring" style="--gauge-pct:45%;background:conic-gradient(var(--orange) 0% 45%, var(--bg2) 45% 100%)">
+          <div class="gauge-inner">45%</div>
+        </div>
+        <div class="gauge-label">L3 E2E</div>
+        <div class="gauge-sub">5 tests passing</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row cols-5">
+      <div class="stat-card">
+        <div class="stat-label">Findings</div>
+        <div class="stat-value" style="color:var(--red)">14</div>
+        <div class="stat-sub">3 critical, 5 high</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tests Written</div>
+        <div class="stat-value">69</div>
+        <div class="stat-sub">46 unit + 18 int + 5 e2e</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pass Rate</div>
+        <div class="stat-value" style="color:var(--green)">94%</div>
+        <div class="stat-sub">65/69 passing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">GC Loops</div>
+        <div class="stat-value">2 / 3</div>
+        <div class="stat-sub">Converging to 85%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value">35m</div>
+        <div class="stat-sub">GC loop 3 in progress</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Severity heatmap -->
+      <div class="section">
+        <div class="section-title">Findings by Severity x Dimension</div>
+        <div class="panel">
+          <div class="severity-grid">
+            <div class="sev-header"></div>
+            <div class="sev-header">SEC</div>
+            <div class="sev-header">COR</div>
+            <div class="sev-header">PRF</div>
+            <div class="sev-header">MNT</div>
+
+            <div class="sev-label">Critical</div>
+            <div class="sev-cell sev-crit">2</div>
+            <div class="sev-cell sev-crit">1</div>
+            <div class="sev-cell sev-0">0</div>
+            <div class="sev-cell sev-0">0</div>
+
+            <div class="sev-label">High</div>
+            <div class="sev-cell sev-high">1</div>
+            <div class="sev-cell sev-high">2</div>
+            <div class="sev-cell sev-high">1</div>
+            <div class="sev-cell sev-high">1</div>
+
+            <div class="sev-label">Medium</div>
+            <div class="sev-cell sev-med">0</div>
+            <div class="sev-cell sev-med">1</div>
+            <div class="sev-cell sev-med">2</div>
+            <div class="sev-cell sev-low">0</div>
+
+            <div class="sev-label">Low</div>
+            <div class="sev-cell sev-0">0</div>
+            <div class="sev-cell sev-low">1</div>
+            <div class="sev-cell sev-low">1</div>
+            <div class="sev-cell sev-low">1</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Layer coverage bars -->
+      <div class="section">
+        <div class="section-title">Coverage by Layer</div>
+        <div class="panel">
+          <div class="layer-row">
+            <span class="layer-label">L1 Unit</span>
+            <div class="layer-bar-track">
+              <div class="layer-bar-fill" style="width:92%;background:var(--green)">92%</div>
+              <div class="layer-bar-target" style="left:80%;" title="Target: 80%"></div>
+            </div>
+            <span class="layer-count">46 tests</span>
+          </div>
+          <div class="layer-row">
+            <span class="layer-label">L2 Integration</span>
+            <div class="layer-bar-track">
+              <div class="layer-bar-fill" style="width:71%;background:var(--yellow)">71%</div>
+              <div class="layer-bar-target" style="left:75%;" title="Target: 75%"></div>
+            </div>
+            <span class="layer-count">18 tests</span>
+          </div>
+          <div class="layer-row">
+            <span class="layer-label">L3 E2E</span>
+            <div class="layer-bar-track">
+              <div class="layer-bar-fill" style="width:45%;background:var(--orange)">45%</div>
+              <div class="layer-bar-target" style="left:60%;" title="Target: 60%"></div>
+            </div>
+            <span class="layer-count">5 tests</span>
+          </div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr2);">
+            <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--t3);">
+              <div style="width:2px;height:14px;background:var(--t3);border-radius:1px;"></div>
+              Target threshold
+              <div style="flex:1"></div>
+              <span style="color:var(--green)">Above target</span>
+              <span style="color:var(--yellow)">Near target</span>
+              <span style="color:var(--orange)">Below target</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GC Loop indicator -->
+    <div class="section">
+      <div class="section-title">Generator-Critic Convergence</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        <div class="panel" style="text-align:center;">
+          <div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Loop 1</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);">58%</div>
+          <div style="font-size:11px;color:var(--t3);">+58% from baseline</div>
+          <div style="margin-top:8px;">
+            <div class="prog-bar">
+              <div class="prog-track" style="height:4px"><div class="prog-fill" style="width:58%;background:var(--green);height:100%;border-radius:100px"></div></div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--t4);margin-top:4px;">38 tests generated</div>
+        </div>
+        <div class="panel" style="text-align:center;">
+          <div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Loop 2</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);">78%</div>
+          <div style="font-size:11px;color:var(--t3);">+20% from loop 1</div>
+          <div style="margin-top:8px;">
+            <div class="prog-bar">
+              <div class="prog-track" style="height:4px"><div class="prog-fill" style="width:78%;background:var(--green);height:100%;border-radius:100px"></div></div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--t4);margin-top:4px;">+24 tests, 7 gaps filled</div>
+        </div>
+        <div class="gc-loop">
+          <div class="gc-loop-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--yellow)" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 11-6.22-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
+          </div>
+          <div class="gc-loop-text">
+            <div class="gc-loop-title">Loop 3 In Progress</div>
+            <div class="gc-loop-desc">Targeting L3 E2E gaps + 4 uncovered L2 paths. Goal: 85%</div>
+          </div>
+          <div class="gc-loop-count">3/3</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Pipeline tasks -->
+      <div class="section">
+        <div class="section-title">QA Pipeline</div>
+        <div class="panel" style="padding:8px 4px;">
+          <div class="task-row">
+            <span class="task-id">SCOUT-001</span>
+            <span class="task-role" style="background:rgba(74,144,217,0.12);color:var(--blue)">scout</span>
+            <span class="task-name">Issue discovery scan</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QASTRAT-001</span>
+            <span class="task-role" style="background:rgba(139,107,191,0.12);color:var(--purple)">strategist</span>
+            <span class="task-name">Test strategy & layer planning</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QAGEN-001</span>
+            <span class="task-role" style="background:rgba(212,131,46,0.12);color:var(--orange)">generator</span>
+            <span class="task-name">L1 unit test generation</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QAGEN-002</span>
+            <span class="task-role" style="background:rgba(212,131,46,0.12);color:var(--orange)">generator</span>
+            <span class="task-name">L2 integration tests</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QARUN-001</span>
+            <span class="task-role" style="background:rgba(201,155,45,0.12);color:var(--yellow)">executor</span>
+            <span class="task-name">Test execution (GC loop 2)</span>
+            <span class="task-status st-done">Done</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QAGEN-003</span>
+            <span class="task-role" style="background:rgba(212,131,46,0.12);color:var(--orange)">generator</span>
+            <span class="task-name">L3 E2E + gap coverage</span>
+            <span class="task-status st-running">Running</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QARUN-002</span>
+            <span class="task-role" style="background:rgba(201,155,45,0.12);color:var(--yellow)">executor</span>
+            <span class="task-name">Test execution (GC loop 3)</span>
+            <span class="task-status st-blocked">Blocked</span>
+          </div>
+          <div class="task-row">
+            <span class="task-id">QAANA-001</span>
+            <span class="task-role" style="background:rgba(61,155,111,0.12);color:var(--green)">analyst</span>
+            <span class="task-name">Final quality analysis</span>
+            <span class="task-status st-pending">Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top findings -->
+      <div class="section">
+        <div class="section-title">Top Findings (14 total)</div>
+        <div class="panel" style="padding:10px 14px;">
+          <div class="finding-row">
+            <div class="finding-sev" style="background:var(--red)"></div>
+            <div class="finding-body">
+              <div class="finding-title">SQL injection in payment query builder</div>
+              <div class="finding-loc">src/payments/queries.ts:142</div>
+            </div>
+            <span class="finding-dim" style="background:rgba(208,84,84,0.12);color:var(--red)">SEC</span>
+          </div>
+          <div class="finding-row">
+            <div class="finding-sev" style="background:var(--red)"></div>
+            <div class="finding-body">
+              <div class="finding-title">Unvalidated redirect after payment callback</div>
+              <div class="finding-loc">src/payments/callback.ts:67</div>
+            </div>
+            <span class="finding-dim" style="background:rgba(208,84,84,0.12);color:var(--red)">SEC</span>
+          </div>
+          <div class="finding-row">
+            <div class="finding-sev" style="background:var(--red)"></div>
+            <div class="finding-body">
+              <div class="finding-title">Race condition in concurrent refund processing</div>
+              <div class="finding-loc">src/payments/refund.ts:89</div>
+            </div>
+            <span class="finding-dim" style="background:rgba(212,131,46,0.12);color:var(--orange)">COR</span>
+          </div>
+          <div class="finding-row">
+            <div class="finding-sev" style="background:var(--orange)"></div>
+            <div class="finding-body">
+              <div class="finding-title">Missing retry logic for gateway timeouts</div>
+              <div class="finding-loc">src/payments/gateway.ts:203</div>
+            </div>
+            <span class="finding-dim" style="background:rgba(201,155,45,0.12);color:var(--yellow)">PRF</span>
+          </div>
+          <div class="finding-row">
+            <div class="finding-sev" style="background:var(--orange)"></div>
+            <div class="finding-body">
+              <div class="finding-title">Insufficient decimal precision for currency</div>
+              <div class="finding-loc">src/payments/types.ts:24</div>
+            </div>
+            <span class="finding-dim" style="background:rgba(212,131,46,0.12);color:var(--orange)">COR</span>
+          </div>
+          <div style="text-align:center;padding:8px 0;font-size:11px;color:var(--t3);">
+            + 9 more findings (3 high, 3 medium, 3 low)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Session directory structure -->
+    <div class="section">
+      <div class="section-title">Session Artifacts</div>
+      <div class="panel">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+          <div style="text-align:center;">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--tint-blue);margin:0 auto 6px;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:var(--t1);">scan/</div>
+            <div style="font-size:10px;color:var(--t3);">14 findings</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--tint-purple);margin:0 auto 6px;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:var(--t1);">strategy/</div>
+            <div style="font-size:10px;color:var(--t3);">3 layers planned</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--tint-orange);margin:0 auto 6px;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:var(--t1);">tests/</div>
+            <div style="font-size:10px;color:var(--t3);">69 test files</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--tint-yellow);margin:0 auto 6px;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--yellow)" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:var(--t1);">results/</div>
+            <div style="font-size:10px;color:var(--t3);">94% pass rate</div>
+          </div>
+          <div style="text-align:center;opacity:0.5;">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--tint-green);margin:0 auto 6px;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:var(--t1);">analysis/</div>
+            <div style="font-size:10px;color:var(--t3);">pending</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+  function showPage(name) {
+    document.querySelectorAll('.proto-page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.proto-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+</script>
+</body>
+</html>

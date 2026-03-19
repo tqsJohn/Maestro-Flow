@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { AgentProcess, AgentProcessStatus, NormalizedEntry, ApprovalRequest, ThoughtData } from '@/shared/agent-types.js';
 
+const MAX_ENTRIES_PER_PROCESS = 500;
+
 // ---------------------------------------------------------------------------
 // Token usage accumulator (per-process)
 // ---------------------------------------------------------------------------
@@ -75,10 +77,13 @@ export const useAgentStore = create<AgentStore>((set) => ({
       const existing = state.entries[processId] ?? [];
       // Idempotent: skip if entry with same id already exists (prevents duplicates on reconnect)
       if (entry.id && existing.some(e => e.id === entry.id)) return state;
+      const newEntries = [...existing, entry];
       return {
         entries: {
           ...state.entries,
-          [processId]: [...existing, entry],
+          [processId]: newEntries.length > MAX_ENTRIES_PER_PROCESS
+            ? newEntries.slice(-MAX_ENTRIES_PER_PROCESS)
+            : newEntries,
         },
       };
     }),

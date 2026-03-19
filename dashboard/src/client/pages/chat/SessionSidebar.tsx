@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
-import { X, Plus } from 'lucide-react';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
-import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
-import { cn } from '@/client/lib/utils.js';
+import { AGENT_DOT_COLORS, AGENT_LABELS } from '@/shared/constants.js';
 import type { AgentProcess, AgentType, NormalizedEntry } from '@/shared/agent-types.js';
 
 interface CliHistoryMeta {
@@ -18,24 +18,8 @@ interface CliHistoryMeta {
 }
 
 // ---------------------------------------------------------------------------
-// SessionSidebar -- process list sidebar with status indicators
+// Helpers
 // ---------------------------------------------------------------------------
-
-const STATUS_DOT_COLORS: Record<string, string> = {
-  spawning: 'var(--color-status-exploring)',
-  running:  'var(--color-status-executing)',
-  paused:   'var(--color-status-pending)',
-  stopping: 'var(--color-accent-orange)',
-  stopped:  'var(--color-status-pending)',
-  error:    'var(--color-accent-red)',
-};
-
-function getAgentRingColor(type: AgentType): string {
-  if (type.includes('claude')) return 'var(--color-accent-purple)';
-  if (type.includes('codex'))  return 'var(--color-accent-green)';
-  if (type.includes('gemini')) return 'var(--color-accent-blue)';
-  return 'var(--color-accent-gray)';
-}
 
 function formatTime(iso: string): string {
   try {
@@ -46,107 +30,107 @@ function formatTime(iso: string): string {
   }
 }
 
-function ProcessItem({ process, isActive }: { process: AgentProcess; isActive: boolean }) {
-  const setActiveProcessId = useAgentStore((s) => s.setActiveProcessId);
-  const dismissProcess = useAgentStore((s) => s.dismissProcess);
-  const dotColor = STATUS_DOT_COLORS[process.status] ?? 'var(--color-text-tertiary)';
-  const ringColor = getAgentRingColor(process.type);
-  const isRunning = process.status === 'running' || process.status === 'spawning';
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
-  const handleDismiss = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isRunning) {
-      sendWsMessage({ action: 'stop', processId: process.id });
-    }
-    dismissProcess(process.id);
-  };
+// ---------------------------------------------------------------------------
+// HistoryPanel — right-side sliding panel with rich history cards
+// ---------------------------------------------------------------------------
+
+export function HistoryPanel({ open }: { open: boolean }) {
+  const [history, setHistory] = useState<CliHistoryMeta[]>([]);
+  const processes = useAgentStore((s) => s.processes);
+
+  useEffect(() => {
+    fetch('/api/cli-history?limit=20')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: CliHistoryMeta[]) => setHistory(data))
+      .catch(() => {});
+  }, []);
+
+  // Filter out items already loaded as active processes
+  const activeIds = useMemo(() => new Set(Object.keys(processes)), [processes]);
+  const filteredHistory = useMemo(
+    () => history.filter((m) => !activeIds.has(m.execId) && !activeIds.has(`cli-history-${m.execId}`)),
+    [history, activeIds],
+  );
 
   return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={() => setActiveProcessId(process.id)}
-        className={cn(
-          'w-full text-left px-[var(--spacing-3)] py-[var(--spacing-2)] rounded-[var(--radius-default)] transition-colors flex items-start gap-[var(--spacing-2)]',
-          isActive ? 'bg-bg-active' : 'hover:bg-bg-hover',
-        )}
-        style={{
-          transitionDuration: 'var(--duration-fast)',
-          animation: isRunning ? 'sidebar-pulse 2s ease-in-out infinite' : undefined,
-        }}
+    <div
+      className="absolute right-0 top-0 bottom-0 z-40 overflow-y-auto flex flex-col"
+      style={{
+        width: 280,
+        backgroundColor: 'var(--color-bg-secondary)',
+        borderLeft: '1px solid var(--color-border)',
+        boxShadow: open ? '-4px 0 16px rgba(0,0,0,0.06)' : 'none',
+        transform: open ? 'translateX(0)' : 'translateX(100%)',
+        opacity: open ? 1 : 0,
+        transition: 'transform 200ms cubic-bezier(0.34,1.56,0.64,1), opacity 180ms ease',
+        pointerEvents: open ? 'auto' : 'none',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center gap-2 px-3 py-3 border-b shrink-0"
+        style={{ borderColor: 'var(--color-border-divider)' }}
       >
-        {/* Status dot with agent type ring */}
-        <span className="relative mt-[5px] shrink-0">
-          <span
-            className="inline-block w-2 h-2 rounded-full"
-            style={{
-              backgroundColor: dotColor,
-              boxShadow: `0 0 0 2px ${ringColor}`,
-            }}
-          />
-          {isRunning && (
-            <span
-              className="absolute inset-0 inline-block w-2 h-2 rounded-full animate-ping opacity-40 motion-reduce:hidden"
-              style={{ backgroundColor: dotColor }}
-            />
-          )}
+        <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-text-tertiary)' }} />
+        <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          History
         </span>
-        {/* Content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-[var(--spacing-1)]">
-            <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-medium)] text-text-primary truncate">
-              {process.type}
-            </span>
-            <span className="text-[length:var(--font-size-xs)] text-text-tertiary shrink-0">
-              {formatTime(process.startedAt)}
-            </span>
+      </div>
+
+      {/* Cards */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {filteredHistory.length === 0 ? (
+          <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            No history entries
           </div>
-          <div className="text-[length:var(--font-size-xs)] text-text-tertiary truncate mt-[var(--spacing-0-5)]">
-            {process.config.prompt.slice(0, 60)}{process.config.prompt.length > 60 ? '...' : ''}
-          </div>
-        </div>
-      </button>
-      {/* Delete button — visible on hover */}
-      <button
-        type="button"
-        onClick={handleDismiss}
-        className="absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
-        style={{ color: 'var(--color-text-placeholder)' }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-tint-blocked)';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-red)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-placeholder)';
-        }}
-        aria-label="Remove session"
-      >
-        <X size={12} strokeWidth={2} />
-      </button>
+        ) : (
+          filteredHistory.map((meta) => (
+            <HistoryCard
+              key={meta.execId}
+              meta={meta}
+              onRemove={(execId) => setHistory((prev) => prev.filter((m) => m.execId !== execId))}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
 
-function HistoryItem({ meta, isActive, onRemove }: { meta: CliHistoryMeta; isActive: boolean; onRemove: (execId: string) => void }) {
+// ---------------------------------------------------------------------------
+// HistoryCard — rich info card for history items
+// ---------------------------------------------------------------------------
+
+function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (execId: string) => void }) {
   const { addProcess, addEntry, setActiveProcessId } = useAgentStore.getState();
+
+  const agentType = (meta.tool === 'claude' ? 'claude-code' : meta.tool) as AgentType;
+  const dotColor = AGENT_DOT_COLORS[agentType] ?? 'var(--color-text-tertiary)';
+  const label = AGENT_LABELS[agentType] ?? meta.tool;
 
   const handleClick = async () => {
     const processId = `cli-history-${meta.execId}`;
 
-    // If already loaded, just activate
     if (useAgentStore.getState().processes[processId]) {
       setActiveProcessId(processId);
       return;
     }
 
-    // Create synthetic process and load entries
     const syntheticProcess: AgentProcess = {
       id: processId,
-      type: (meta.tool === 'claude' ? 'claude-code' : meta.tool) as AgentType,
+      type: agentType,
       status: 'stopped',
       config: {
-        type: (meta.tool === 'claude' ? 'claude-code' : meta.tool) as AgentType,
+        type: agentType,
         prompt: meta.prompt,
         workDir: meta.workDir,
       },
@@ -158,64 +142,111 @@ function HistoryItem({ meta, isActive, onRemove }: { meta: CliHistoryMeta; isAct
     try {
       const res = await fetch(`/api/cli-history/${encodeURIComponent(meta.execId)}/entries`);
       if (res.ok) {
-        const entries = await res.json() as NormalizedEntry[];
-        for (const entry of entries) {
-          addEntry(processId, { ...entry, processId } as NormalizedEntry);
+        const raw = (await res.json()) as NormalizedEntry[];
+        // Post-process history entries:
+        // 1. Consolidate consecutive assistant_message fragments into single messages
+        // 2. Clear partial flag on assistant messages (session is complete)
+        // 3. Merge tool_use running→completed pairs (adapter emits two entries per tool call)
+        const merged: NormalizedEntry[] = [];
+        for (const entry of raw) {
+          const fixed = { ...entry, processId } as NormalizedEntry;
+          if (fixed.type === 'assistant_message') {
+            (fixed as { partial: boolean }).partial = false;
+            // Merge consecutive assistant messages (streaming deltas stored as separate entries)
+            const prev = merged[merged.length - 1];
+            if (prev && prev.type === 'assistant_message') {
+              (prev as { content: string }).content += (fixed as { content: string }).content;
+              continue;
+            }
+          }
+          if (fixed.type === 'tool_use' && (fixed.status === 'completed' || fixed.status === 'failed')) {
+            // Find and merge with the matching 'running' entry — keep input, add result+status
+            const runIdx = merged.findLastIndex(
+              (e) => e.type === 'tool_use' && (e as typeof fixed).status === 'running',
+            );
+            if (runIdx !== -1) {
+              const running = merged[runIdx] as typeof fixed;
+              merged[runIdx] = {
+                ...running,
+                status: fixed.status,
+                result: fixed.result ?? running.result,
+                input: (running.input && Object.keys(running.input).length > 0) ? running.input : fixed.input,
+              } as NormalizedEntry;
+              continue;
+            }
+          }
+          merged.push(fixed);
+        }
+        for (const entry of merged) {
+          addEntry(processId, entry);
         }
       }
     } catch {
-      // Silent fail — process is shown but entries may be empty
+      // Silent fail
     }
   };
 
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Remove from loaded store if present
     const processId = `cli-history-${meta.execId}`;
     useAgentStore.getState().dismissProcess(processId);
-    // Remove from history list
     onRemove(meta.execId);
   };
 
-  const ringColor = getAgentRingColor(
-    (meta.tool === 'claude' ? 'claude-code' : meta.tool) as AgentType,
-  );
+  const exitBadge = meta.exitCode !== undefined ? (
+    <span
+      className="text-[10px] font-medium px-[5px] py-[1px] rounded"
+      style={{
+        backgroundColor: meta.exitCode === 0 ? 'var(--color-tint-exploring)' : 'var(--color-tint-blocked)',
+        color: meta.exitCode === 0 ? 'var(--color-accent-green)' : 'var(--color-accent-red)',
+      }}
+    >
+      {meta.exitCode === 0 ? 'OK' : `Exit ${meta.exitCode}`}
+    </span>
+  ) : null;
 
   return (
     <div className="group relative">
       <button
         type="button"
         onClick={handleClick}
-        className={cn(
-          'w-full text-left px-[var(--spacing-3)] py-[var(--spacing-2)] rounded-[var(--radius-default)] transition-colors flex items-start gap-[var(--spacing-2)]',
-          isActive ? 'bg-bg-active' : 'hover:bg-bg-hover',
-        )}
-        style={{ transitionDuration: 'var(--duration-fast)' }}
+        className="w-full text-left px-3 py-[10px] rounded-lg border-none bg-transparent cursor-pointer transition-colors duration-150"
+        style={{ color: 'var(--color-text-secondary)' }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+        }}
       >
-        <span className="relative mt-[5px] shrink-0">
-          <span
-            className="inline-block w-2 h-2 rounded-full"
-            style={{
-              backgroundColor: 'var(--color-text-tertiary)',
-              boxShadow: `0 0 0 2px ${ringColor}`,
-            }}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-[var(--spacing-1)]">
-            <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-medium)] text-text-primary truncate">
-              {meta.tool}
-            </span>
-            <span className="text-[length:var(--font-size-xs)] text-text-tertiary shrink-0">
-              {formatTime(meta.startedAt)}
-            </span>
-          </div>
-          <div className="text-[length:var(--font-size-xs)] text-text-tertiary truncate mt-[var(--spacing-0-5)]">
-            {meta.prompt.slice(0, 60)}{meta.prompt.length > 60 ? '...' : ''}
-          </div>
+        {/* Top row: dot + label + exit badge */}
+        <div className="flex items-center gap-[6px] mb-[4px]">
+          <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+          <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            {label}
+          </span>
+          {exitBadge}
+        </div>
+
+        {/* Prompt preview */}
+        <div className="text-[11px] truncate mb-[4px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          {meta.prompt.slice(0, 60)}{meta.prompt.length > 60 ? '...' : ''}
+        </div>
+
+        {/* Bottom row: date, time, model/mode */}
+        <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--color-text-placeholder)' }}>
+          <span>{formatDate(meta.startedAt)}</span>
+          <span>{formatTime(meta.startedAt)}</span>
+          {meta.model && (
+            <>
+              <span style={{ color: 'var(--color-border-divider)' }}>·</span>
+              <span>{meta.model}</span>
+            </>
+          )}
         </div>
       </button>
-      {/* Delete button — visible on hover */}
+
+      {/* Dismiss on hover */}
       <button
         type="button"
         onClick={handleDismiss}
@@ -233,100 +264,6 @@ function HistoryItem({ meta, isActive, onRemove }: { meta: CliHistoryMeta; isAct
       >
         <X size={12} strokeWidth={2} />
       </button>
-    </div>
-  );
-}
-
-export function SessionSidebar() {
-  const processes = useAgentStore((s) => s.processes);
-  const activeProcessId = useAgentStore((s) => s.activeProcessId);
-  const [history, setHistory] = useState<CliHistoryMeta[]>([]);
-
-  useEffect(() => {
-    fetch('/api/cli-history?limit=20')
-      .then(r => r.ok ? r.json() : [])
-      .then((data: CliHistoryMeta[]) => setHistory(data))
-      .catch(() => {});
-  }, []);
-
-  const sortedProcesses = useMemo(() => {
-    return Object.values(processes).sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-    );
-  }, [processes]);
-
-  // Filter history items that aren't already shown as active processes
-  const activeIds = useMemo(() => new Set(Object.keys(processes)), [processes]);
-  const filteredHistory = useMemo(
-    () => history.filter(m => !activeIds.has(m.execId) && !activeIds.has(`cli-history-${m.execId}`)),
-    [history, activeIds],
-  );
-
-  return (
-    <div
-      className="w-[280px] shrink-0 border-r overflow-y-auto flex flex-col"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}
-    >
-      <div className="flex items-center justify-between px-[var(--spacing-3)] py-[var(--spacing-3)] border-b" style={{ borderColor: 'var(--color-border-divider)' }}>
-        <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-text-primary">
-          Sessions
-        </span>
-        <button
-          type="button"
-          onClick={() => useAgentStore.getState().setActiveProcessId(null)}
-          className="w-6 h-6 rounded-[6px] border-none bg-transparent flex items-center justify-center cursor-pointer transition-all duration-150"
-          style={{ color: 'var(--color-text-tertiary)' }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
-            (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-            (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
-          }}
-          aria-label="New session"
-        >
-          <Plus size={14} strokeWidth={2} />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-[var(--spacing-2)] space-y-[var(--spacing-0-5)]">
-        {sortedProcesses.length === 0 && filteredHistory.length === 0 ? (
-          <div className="px-[var(--spacing-3)] py-[var(--spacing-4)] text-center text-[length:var(--font-size-xs)] text-text-tertiary">
-            No active sessions
-          </div>
-        ) : (
-          <>
-            {sortedProcesses.map((proc) => (
-              <ProcessItem
-                key={proc.id}
-                process={proc}
-                isActive={proc.id === activeProcessId}
-              />
-            ))}
-            {filteredHistory.length > 0 && sortedProcesses.length > 0 && (
-              <div
-                className="border-t mx-[var(--spacing-2)] my-[var(--spacing-2)]"
-                style={{ borderColor: 'var(--color-border-divider)' }}
-              />
-            )}
-            {filteredHistory.length > 0 && (
-              <div className="px-[var(--spacing-3)] pt-[var(--spacing-1)] pb-[var(--spacing-1)]">
-                <span className="text-[length:var(--font-size-xs)] font-[var(--font-weight-medium)] text-text-tertiary">
-                  History
-                </span>
-              </div>
-            )}
-            {filteredHistory.map((meta) => (
-              <HistoryItem
-                key={meta.execId}
-                meta={meta}
-                isActive={activeProcessId === `cli-history-${meta.execId}`}
-                onRemove={(execId) => setHistory((prev) => prev.filter((m) => m.execId !== execId))}
-              />
-            ))}
-          </>
-        )}
-      </div>
     </div>
   );
 }

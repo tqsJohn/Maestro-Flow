@@ -1,29 +1,47 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Columns2, Plus, X, MessageSquare, ChevronDown } from 'lucide-react';
+import Columns2 from 'lucide-react/dist/esm/icons/columns-2.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { useResizableSplit } from '@/client/hooks/useResizableSplit.js';
 import { useApprovalKeyboard } from '@/client/hooks/useApprovalKeyboard.js';
+import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
 import { MessageArea } from './MessageArea.js';
 import { ChatInput } from './ChatInput.js';
 import { ThoughtDisplay } from './ThoughtDisplay.js';
-import { SessionSidebar } from './SessionSidebar.js';
+import { HistoryPanel } from './SessionSidebar.js';
 import { AGENT_DOT_COLORS, AGENT_LABELS } from '@/shared/constants.js';
 import type { AgentProcess, AgentType } from '@/shared/agent-types.js';
 
 // ---------------------------------------------------------------------------
-// WelcomeView -- centered landing page shown when no session is active
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  spawning: 'Starting…',
+  running: 'Running',
+  paused: 'Paused',
+  stopping: 'Stopping…',
+  stopped: 'Stopped',
+  error: 'Error',
+};
+
+// ---------------------------------------------------------------------------
+// WelcomeView
 // ---------------------------------------------------------------------------
 
 function WelcomeView() {
   return (
-    <div
-      className="flex-1 flex flex-col items-center justify-center"
-      style={{ marginTop: '-5vh' }}
-    >
-      <div
-        className="w-full px-4"
-        style={{ maxWidth: 'clamp(360px, calc(100% - 32px), 780px)' }}
-      >
+    <div className="flex-1 flex flex-col items-center justify-center" style={{ marginTop: '-5vh' }}>
+      <div className="w-full px-4" style={{ maxWidth: 'clamp(360px, calc(100% - 32px), 780px)' }}>
         <div className="flex flex-col items-center mb-8">
           <div
             className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
@@ -31,16 +49,10 @@ function WelcomeView() {
           >
             <MessageSquare size={24} strokeWidth={1.5} style={{ color: 'var(--color-accent-blue)' }} />
           </div>
-          <h1
-            className="text-xl font-semibold mb-2 text-center"
-            style={{ color: 'var(--color-text-primary)' }}
-          >
+          <h1 className="text-xl font-semibold mb-2 text-center" style={{ color: 'var(--color-text-primary)' }}>
             Start a new conversation
           </h1>
-          <p
-            className="text-[13px] text-center"
-            style={{ color: 'var(--color-text-tertiary)' }}
-          >
+          <p className="text-[13px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
             Select an agent, type a message, and press Enter to begin.
           </p>
         </div>
@@ -51,16 +63,348 @@ function WelcomeView() {
 }
 
 // ---------------------------------------------------------------------------
-// ChatPage -- tab bar + split-pane chat layout (matches design-chat-v1a)
+// TabButton — session tab with dismiss + hover tooltip
+// ---------------------------------------------------------------------------
+
+function TabButton({
+  process,
+  isActive,
+  onClick,
+  onDismiss,
+}: {
+  process: AgentProcess;
+  isActive: boolean;
+  onClick: () => void;
+  onDismiss?: () => void;
+}) {
+  const dotColor = AGENT_DOT_COLORS[process.type] ?? 'var(--color-text-tertiary)';
+  const label = AGENT_LABELS[process.type] ?? process.type;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group/tab flex items-center gap-[6px] px-3 py-[5px] rounded-[9px] border-none text-[11px] font-medium cursor-pointer transition-all duration-150 shrink-0 relative"
+      style={{
+        backgroundColor: isActive ? 'var(--color-text-primary)' : 'transparent',
+        color: isActive ? '#fff' : 'var(--color-text-tertiary)',
+        paddingRight: onDismiss ? '22px' : undefined,
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
+        }
+      }}
+    >
+      <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: isActive ? '#fff' : dotColor }} />
+      {label}
+
+      {/* Dismiss X */}
+      {onDismiss && (
+        <span
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          className="absolute right-[6px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] rounded-sm flex items-center justify-center opacity-0 group-hover/tab:opacity-100 transition-opacity duration-100"
+          style={{ color: isActive ? 'rgba(255,255,255,0.6)' : 'var(--color-text-placeholder)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = isActive ? '#fff' : 'var(--color-accent-red)';
+            e.currentTarget.style.backgroundColor = isActive ? 'rgba(255,255,255,0.15)' : 'var(--color-tint-blocked)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = isActive ? 'rgba(255,255,255,0.6)' : 'var(--color-text-placeholder)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          <X size={10} strokeWidth={2} />
+        </span>
+      )}
+
+      {/* Hover tooltip with detailed info */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 top-full mt-2 opacity-0 group-hover/tab:opacity-100 pointer-events-none transition-opacity duration-150 z-[200]"
+        style={{ width: 220 }}
+      >
+        <div
+          className="rounded-[8px] p-[10px] text-[11px]"
+          style={{
+            backgroundColor: 'var(--color-text-primary)',
+            color: '#fff',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <div className="flex items-center gap-[6px] mb-[4px]">
+            <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+            <span className="font-semibold">{label}</span>
+            <span
+              className="ml-auto text-[10px] px-[5px] py-[1px] rounded"
+              style={{
+                backgroundColor: process.status === 'running' ? 'rgba(90,158,120,0.3)' : 'rgba(255,255,255,0.15)',
+                color: process.status === 'running' ? '#8fd4a8' : 'rgba(255,255,255,0.7)',
+              }}
+            >
+              {STATUS_LABELS[process.status] ?? process.status}
+            </span>
+          </div>
+          <div className="text-[10px] mb-[4px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            {process.config.prompt.slice(0, 80)}{process.config.prompt.length > 80 ? '…' : ''}
+          </div>
+          <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            <span>{formatTime(process.startedAt)}</span>
+            <span>·</span>
+            <span>{process.type}</span>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GlobalTabBar — always-visible, shows session tabs (non-split) or just
+//                utility buttons (split mode)
+// ---------------------------------------------------------------------------
+
+function GlobalTabBar({
+  sortedProcesses,
+  activeProcessId,
+  splitOpen,
+  historyOpen,
+  onSelectProcess,
+  onDismissProcess,
+  onNewSession,
+  onToggleSplit,
+  onToggleHistory,
+}: {
+  sortedProcesses: AgentProcess[];
+  activeProcessId: string | null;
+  splitOpen: boolean;
+  historyOpen: boolean;
+  onSelectProcess: (id: string) => void;
+  onDismissProcess: (id: string) => void;
+  onNewSession: () => void;
+  onToggleSplit: () => void;
+  onToggleHistory: () => void;
+}) {
+  return (
+    <div className="sticky top-0 z-30 flex justify-center pt-2 pointer-events-none shrink-0">
+      <div
+        className="inline-flex items-center gap-[2px] border rounded-[12px] p-[3px] pointer-events-auto"
+        style={{
+          backgroundColor: 'var(--color-bg-card)',
+          borderColor: 'var(--color-border)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+          maxWidth: 'calc(100% - 32px)',
+        }}
+      >
+        {/* Session tabs — only in non-split mode */}
+        {!splitOpen && (sortedProcesses.length > 0 || activeProcessId === null) && (
+          <div
+            className="flex items-center gap-[2px] overflow-x-auto"
+            style={{ scrollbarWidth: 'none', maxWidth: 'min(600px, 60vw)' }}
+          >
+            {sortedProcesses.map((proc) => (
+              <TabButton
+                key={proc.id}
+                process={proc}
+                isActive={proc.id === activeProcessId}
+                onClick={() => onSelectProcess(proc.id)}
+                onDismiss={() => onDismissProcess(proc.id)}
+              />
+            ))}
+            {/* "New" tab — shown when in new-session mode */}
+            {activeProcessId === null && (
+              <button
+                type="button"
+                className="flex items-center gap-[6px] px-3 py-[5px] rounded-[9px] border-none text-[11px] font-medium cursor-pointer shrink-0"
+                style={{
+                  backgroundColor: 'var(--color-text-primary)',
+                  color: '#fff',
+                }}
+              >
+                <Plus size={10} strokeWidth={2.5} />
+                New
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Split toggle — only when 2+ sessions */}
+        {sortedProcesses.length > 1 && (
+          <>
+            {!splitOpen && sortedProcesses.length > 0 && (
+              <div className="w-px h-4 shrink-0" style={{ backgroundColor: 'var(--color-border-divider)', margin: '0 2px' }} />
+            )}
+            <IconButton
+              icon={<Columns2 size={14} strokeWidth={1.8} />}
+              isActive={splitOpen}
+              onClick={onToggleSplit}
+              label="Toggle split view"
+            />
+          </>
+        )}
+
+        {/* New session */}
+        <button
+          type="button"
+          onClick={onNewSession}
+          className="w-7 h-7 rounded-[8px] border-none bg-transparent flex items-center justify-center cursor-pointer transition-all duration-150 shrink-0"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+            (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+            (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
+          }}
+          aria-label="New session"
+        >
+          <Plus size={14} strokeWidth={2} />
+        </button>
+
+        {/* History toggle */}
+        <div className="w-px h-4 shrink-0" style={{ backgroundColor: 'var(--color-border-divider)', margin: '0 2px' }} />
+        <IconButton
+          icon={<Clock size={14} strokeWidth={1.8} />}
+          isActive={historyOpen}
+          onClick={onToggleHistory}
+          label="Toggle history"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PaneTabBar — per-pane floating tab bar (used in split mode)
+// ---------------------------------------------------------------------------
+
+function PaneTabBar({
+  sortedProcesses,
+  currentProcessId,
+  onSelectProcess,
+  onClose,
+}: {
+  sortedProcesses: AgentProcess[];
+  currentProcessId: string | null;
+  onSelectProcess: (id: string) => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="flex justify-center pt-[6px] pb-[2px] pointer-events-none shrink-0">
+      <div
+        className="inline-flex items-center gap-[2px] border rounded-[10px] p-[2px] pointer-events-auto"
+        style={{
+          backgroundColor: 'var(--color-bg-card)',
+          borderColor: 'var(--color-border)',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+          maxWidth: 'calc(100% - 16px)',
+        }}
+      >
+        <div
+          className="flex items-center gap-[2px] overflow-x-auto"
+          style={{ scrollbarWidth: 'none', maxWidth: 'min(400px, 100%)' }}
+        >
+          {sortedProcesses.map((proc) => (
+            <TabButton
+              key={proc.id}
+              process={proc}
+              isActive={proc.id === currentProcessId}
+              onClick={() => onSelectProcess(proc.id)}
+            />
+          ))}
+        </div>
+
+        {/* Close pane button */}
+        {onClose && (
+          <>
+            <div className="w-px h-3 shrink-0" style={{ backgroundColor: 'var(--color-border-divider)', margin: '0 1px' }} />
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-[22px] h-[22px] rounded-[6px] border-none bg-transparent flex items-center justify-center cursor-pointer transition-all duration-100 shrink-0"
+              style={{ color: 'var(--color-text-placeholder)' }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-tint-blocked)';
+                (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-red)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                (e.currentTarget as HTMLElement).style.color = 'var(--color-text-placeholder)';
+              }}
+              aria-label="Close pane"
+            >
+              <X size={10} strokeWidth={2} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IconButton — small toggle button for the tab bar
+// ---------------------------------------------------------------------------
+
+function IconButton({
+  icon,
+  isActive,
+  onClick,
+  label,
+}: {
+  icon: React.ReactNode;
+  isActive: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center px-2 py-[5px] rounded-[9px] border-none bg-transparent cursor-pointer transition-all duration-150 shrink-0"
+      style={{
+        color: isActive ? 'var(--color-accent-blue)' : 'var(--color-text-tertiary)',
+        backgroundColor: isActive ? 'var(--color-tint-exploring)' : 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
+        }
+      }}
+      aria-label={label}
+    >
+      {icon}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ChatPage
 // ---------------------------------------------------------------------------
 
 export function ChatPage() {
   const processes = useAgentStore((s) => s.processes);
   const activeProcessId = useAgentStore((s) => s.activeProcessId);
   const setActiveProcessId = useAgentStore((s) => s.setActiveProcessId);
+  const dismissProcess = useAgentStore((s) => s.dismissProcess);
 
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitProcessId, setSplitProcessId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { ratio: splitRatio, setRatio: setSplitRatio, handleMouseDown: handleDividerMouseDown, containerRef } = useResizableSplit({ defaultRatio: 50, minRatio: 25, maxRatio: 75 });
 
   const sortedProcesses = useMemo(() => {
@@ -69,23 +413,17 @@ export function ChatPage() {
     );
   }, [processes]);
 
-  // Track when the user explicitly entered new-session mode by clicking "+"
   const isNewSessionModeRef = useRef(false);
-  // Use process count (a number) as dep — stable across status updates, only changes on add/remove
   const processCount = Object.keys(processes).length;
   const prevProcessCountRef = useRef(processCount);
-  // Keep a ref to sorted processes so the effect can read the current list without it as a dep
   const sortedProcessesRef = useRef(sortedProcesses);
   sortedProcessesRef.current = sortedProcesses;
 
-  // Auto-select first process on initial load or after spawn.
-  // Does NOT auto-select when user intentionally clicked "+" (isNewSessionModeRef.current = true).
   useEffect(() => {
     const prevCount = prevProcessCountRef.current;
     prevProcessCountRef.current = processCount;
 
     if (isNewSessionModeRef.current) {
-      // New-session mode: only auto-select when a new process actually spawns
       if (processCount > prevCount) {
         isNewSessionModeRef.current = false;
         const first = sortedProcessesRef.current[0];
@@ -101,14 +439,10 @@ export function ChatPage() {
   }, [activeProcessId, processCount, setActiveProcessId]);
 
   const splitProcess = splitProcessId ? processes[splitProcessId] : null;
-
-  // Show welcome view when no active session
   const showWelcome = !activeProcessId;
 
-  // Keyboard shortcuts for pending approvals on the active process
   useApprovalKeyboard(activeProcessId);
 
-  // Close split if the split process is dismissed
   useEffect(() => {
     if (splitOpen && splitProcessId && !processes[splitProcessId]) {
       setSplitOpen(false);
@@ -121,7 +455,6 @@ export function ChatPage() {
       setSplitOpen(false);
       setSplitProcessId(null);
     } else {
-      // Open split with first non-active process
       const other = sortedProcesses.find((p) => p.id !== activeProcessId);
       if (other) {
         setSplitProcessId(other.id);
@@ -131,96 +464,54 @@ export function ChatPage() {
     }
   }, [splitOpen, sortedProcesses, activeProcessId, setSplitRatio]);
 
-  return (
-    <div className="h-full flex min-w-0 overflow-hidden">
-      {/* Session sidebar */}
-      <SessionSidebar />
+  const handleDismissProcess = useCallback((processId: string) => {
+    const proc = processes[processId];
+    if (proc && (proc.status === 'running' || proc.status === 'spawning')) {
+      sendWsMessage({ action: 'stop', processId });
+    }
+    dismissProcess(processId);
+  }, [processes, dismissProcess]);
 
-      {/* Main chat area */}
+  const handleNewSession = useCallback(() => {
+    isNewSessionModeRef.current = true;
+    setActiveProcessId(null);
+  }, [setActiveProcessId]);
+
+  return (
+    <div className="h-full flex min-w-0 overflow-hidden relative">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
+      {/* Global tab bar — always visible */}
+      <GlobalTabBar
+        sortedProcesses={sortedProcesses}
+        activeProcessId={activeProcessId}
+        splitOpen={splitOpen}
+        historyOpen={historyOpen}
+        onSelectProcess={setActiveProcessId}
+        onDismissProcess={handleDismissProcess}
+        onNewSession={handleNewSession}
+        onToggleSplit={toggleSplit}
+        onToggleHistory={() => setHistoryOpen(!historyOpen)}
+      />
+
       {showWelcome ? (
-        /* Centered welcome view */
         <WelcomeView />
       ) : (
-        <>
-        {/* Floating tab bar */}
-        <div className="sticky top-0 z-30 flex justify-center pt-2 pointer-events-none">
-          <div
-            className="inline-flex items-center gap-[2px] border rounded-[12px] p-[3px] pointer-events-auto"
-            style={{
-              backgroundColor: 'var(--color-bg-card)',
-              borderColor: 'var(--color-border)',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
-            }}
-          >
-            {sortedProcesses.map((proc) => (
-              <TabButton
-                key={proc.id}
-                process={proc}
-                isActive={proc.id === activeProcessId}
-                onClick={() => setActiveProcessId(proc.id)}
-              />
-            ))}
-            {sortedProcesses.length > 1 && (
-              <>
-                <div className="w-px h-4" style={{ backgroundColor: 'var(--color-border-divider)', margin: '0 2px' }} />
-                <button
-                  type="button"
-                  onClick={toggleSplit}
-                  className="flex items-center px-2 py-[5px] rounded-[9px] border-none bg-transparent cursor-pointer transition-all duration-150"
-                  style={{
-                    color: splitOpen ? 'var(--color-accent-blue)' : 'var(--color-text-tertiary)',
-                    backgroundColor: splitOpen ? 'var(--color-tint-exploring)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!splitOpen) {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
-                      (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!splitOpen) {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                      (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
-                    }
-                  }}
-                  aria-label="Toggle split view"
-                >
-                  <Columns2 size={14} strokeWidth={1.8} />
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                isNewSessionModeRef.current = true;
-                setActiveProcessId(null);
-              }}
-              className="w-7 h-7 rounded-[8px] border-none bg-transparent flex items-center justify-center cursor-pointer transition-all duration-150"
-              style={{ color: 'var(--color-text-tertiary)' }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
-                (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
-              }}
-              aria-label="New session"
-            >
-              <Plus size={14} strokeWidth={2} />
-            </button>
-          </div>
-        </div>
-
-        {/* Split container */}
-        <div ref={containerRef} className="flex-1 flex overflow-hidden">
-          {/* Pane 1 (primary) */}
+        <div ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
+          {/* Pane 1 */}
           <div className="flex flex-col min-w-0 overflow-hidden" style={{ flex: splitOpen ? `0 0 ${splitRatio}%` : '1' }}>
-            <MessageArea processId={activeProcessId} />
+            {/* Per-pane tab bar in split mode */}
+            {splitOpen && (
+              <PaneTabBar
+                sortedProcesses={sortedProcesses}
+                currentProcessId={activeProcessId}
+                onSelectProcess={setActiveProcessId}
+              />
+            )}
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <MessageArea processId={activeProcessId} />
+            </div>
             <ThoughtDisplay processId={activeProcessId} />
-            {/* In split mode, bind input to this pane's process; otherwise use store default for spawn capability */}
             {splitOpen ? (
               <ChatInput processId={activeProcessId} executor={processes[activeProcessId!]?.type} />
             ) : (
@@ -228,7 +519,7 @@ export function ChatPage() {
             )}
           </div>
 
-          {/* Split divider */}
+          {/* Divider */}
           {splitOpen && (
             <div
               className="w-[5px] shrink-0 cursor-col-resize relative transition-colors duration-150"
@@ -239,20 +530,21 @@ export function ChatPage() {
             />
           )}
 
-          {/* Pane 2 (split) */}
+          {/* Pane 2 */}
           {splitOpen && (
             <div
               className="flex flex-col min-w-0 overflow-hidden border-l"
               style={{ flex: `0 0 ${100 - splitRatio}%`, borderColor: 'var(--color-border)' }}
             >
-              <SplitPaneHeader
-                processId={splitProcessId}
-                processes={sortedProcesses}
-                excludeProcessId={activeProcessId}
+              <PaneTabBar
+                sortedProcesses={sortedProcesses}
+                currentProcessId={splitProcessId}
                 onSelectProcess={setSplitProcessId}
                 onClose={toggleSplit}
               />
-              <MessageArea processId={splitProcessId} />
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <MessageArea processId={splitProcessId} />
+              </div>
               <ThoughtDisplay processId={splitProcessId} />
               <ChatInput
                 processId={splitProcessId}
@@ -261,161 +553,10 @@ export function ChatPage() {
             </div>
           )}
         </div>
-        </>
       )}
       </div>
-    </div>
-  );
-}
 
-// ---------------------------------------------------------------------------
-// TabButton — session tab in the floating bar
-// ---------------------------------------------------------------------------
-
-function TabButton({
-  process,
-  isActive,
-  onClick,
-}: {
-  process: AgentProcess;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const dotColor = AGENT_DOT_COLORS[process.type] ?? 'var(--color-text-tertiary)';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-[6px] px-3 py-[5px] rounded-[9px] border-none text-[11px] font-medium cursor-pointer transition-all duration-150"
-      style={{
-        backgroundColor: isActive ? 'var(--color-text-primary)' : 'transparent',
-        color: isActive ? '#fff' : 'var(--color-text-tertiary)',
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
-        }
-      }}
-    >
-      <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-      {AGENT_LABELS[process.type] ?? process.type}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SplitPaneHeader — header for the split pane with session selector
-// ---------------------------------------------------------------------------
-
-function SplitPaneHeader({
-  processId,
-  processes,
-  excludeProcessId,
-  onSelectProcess,
-  onClose,
-}: {
-  processId: string | null;
-  processes: AgentProcess[];
-  excludeProcessId: string | null;
-  onSelectProcess: (id: string) => void;
-  onClose: () => void;
-}) {
-  const [selectorOpen, setSelectorOpen] = useState(false);
-  const current = processId ? processes.find((p) => p.id === processId) : null;
-  const dotColor = current ? (AGENT_DOT_COLORS[current.type] ?? 'var(--color-text-tertiary)') : 'var(--color-text-tertiary)';
-  const label = current ? (AGENT_LABELS[current.type] ?? current.type) : 'Select session';
-  const available = processes.filter((p) => p.id !== excludeProcessId);
-
-  return (
-    <div
-      className="flex items-center gap-[6px] px-4 py-[6px] text-[11px] font-semibold shrink-0 border-b relative"
-      style={{
-        color: 'var(--color-text-secondary)',
-        backgroundColor: 'var(--color-bg-primary)',
-        borderColor: 'var(--color-border-divider)',
-      }}
-    >
-      {/* Session selector trigger */}
-      <button
-        type="button"
-        onClick={() => setSelectorOpen(!selectorOpen)}
-        className="flex items-center gap-[6px] border-none bg-transparent cursor-pointer text-[11px] font-semibold px-0"
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        <span className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: dotColor }} />
-        {label}
-        <ChevronDown size={10} strokeWidth={2} style={{ opacity: 0.5 }} />
-      </button>
-
-      {/* Session selector dropdown */}
-      {selectorOpen && (
-        <div
-          className="absolute left-2 top-full mt-1 border rounded-[8px] p-1 z-50 min-w-[160px]"
-          style={{
-            backgroundColor: 'var(--color-bg-card)',
-            borderColor: 'var(--color-border)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-          }}
-        >
-          {available.map((proc) => {
-            const d = AGENT_DOT_COLORS[proc.type] ?? 'var(--color-text-tertiary)';
-            const isSelected = proc.id === processId;
-            return (
-              <button
-                key={proc.id}
-                type="button"
-                onClick={() => {
-                  onSelectProcess(proc.id);
-                  setSelectorOpen(false);
-                }}
-                className="flex items-center gap-[6px] w-full px-2 py-[5px] rounded-[6px] border-none cursor-pointer text-[11px] font-medium text-left transition-colors duration-100"
-                style={{
-                  backgroundColor: isSelected ? 'var(--color-bg-active)' : 'transparent',
-                  color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                }}
-              >
-                <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d }} />
-                {AGENT_LABELS[proc.type] ?? proc.type}
-                <span className="ml-auto text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                  {proc.config.prompt.slice(0, 30)}{proc.config.prompt.length > 30 ? '...' : ''}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={onClose}
-        className="ml-auto w-[18px] h-[18px] rounded flex items-center justify-center border-none bg-transparent cursor-pointer transition-all duration-100"
-        style={{ color: 'var(--color-text-placeholder)' }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-tint-blocked)';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-red)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-text-placeholder)';
-        }}
-        aria-label="Close split pane"
-      >
-        <X size={12} strokeWidth={2} />
-      </button>
+      <HistoryPanel open={historyOpen} />
     </div>
   );
 }

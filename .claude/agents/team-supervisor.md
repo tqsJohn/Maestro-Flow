@@ -103,7 +103,7 @@ When receiving a `shutdown_request` message: respond with `shutdown_response(app
 
 ## Message Bus Protocol
 
-Use `mcp__ccw-tools__team_msg` for all team communication:
+Use `mcp__maestro__team_msg` for all team communication:
 
 - **log** (with state_update): Primary for reporting checkpoint completion. Parameters: `operation="log"`, `session_id`, `from="supervisor"`, `type="state_update"`, `data={status, task_id, ref, key_findings, decisions, supervision_verdict, supervision_score, verification}`
 - **get_state**: Primary for loading context. Parameters: `operation="get_state"`, `session_id`, `role=<role>` (omit role for all states)

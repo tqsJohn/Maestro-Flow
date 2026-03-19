@@ -31,14 +31,20 @@ interface StreamJsonMessage {
 interface StreamJsonToolUse {
   type: 'tool_use';
   name?: string;
+  tool_name?: string;
   input?: Record<string, unknown>;
+  parameters?: Record<string, unknown>;
+  tool_id?: string;
 }
 
 interface StreamJsonToolResult {
   type: 'tool_result';
   name?: string;
+  tool_id?: string;
   content?: string;
+  output?: string;
   is_error?: boolean;
+  status?: string;
 }
 
 interface StreamJsonResult {
@@ -46,6 +52,11 @@ interface StreamJsonResult {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+  };
+  stats?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
   };
 }
 
@@ -67,6 +78,7 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
   private readonly childProcesses = new Map<string, ChildProcess>();
   private readonly readlineInterfaces = new Map<string, ReadlineInterface>();
   private readonly lastContentLength = new Map<string, number>();
+  private readonly toolIdNames = new Map<string, string>();
   private readonly stoppedEmitted = new Set<string>();
 
   constructor(executable: string, agentType: AgentType) {
@@ -224,33 +236,42 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
       }
 
       case 'tool_use': {
-        const name = msg.name ?? 'unknown';
-        const input = msg.input ?? {};
+        const name = msg.tool_name ?? msg.name ?? 'unknown';
+        const input = msg.parameters ?? msg.input ?? {};
         this.emitEntry(
           processId,
           EntryNormalizer.toolUse(processId, name, input, 'running'),
         );
+        // Track tool_id → name mapping for tool_result correlation
+        if (msg.tool_id) {
+          this.toolIdNames.set(msg.tool_id, name);
+        }
         break;
       }
 
       case 'tool_result': {
-        const name = msg.name ?? 'unknown';
-        const status = msg.is_error ? 'failed' : 'completed';
+        const name = msg.tool_id
+          ? (this.toolIdNames.get(msg.tool_id) ?? msg.name ?? 'unknown')
+          : (msg.name ?? 'unknown');
+        const isError = msg.is_error || (msg.status !== undefined && msg.status !== 'success');
+        const status = isError ? 'failed' : 'completed';
+        const content = msg.content ?? msg.output;
         this.emitEntry(
           processId,
-          EntryNormalizer.toolUse(processId, name, {}, status, msg.content),
+          EntryNormalizer.toolUse(processId, name, {}, status, content),
         );
         break;
       }
 
       case 'result': {
-        if (msg.usage) {
+        const usage = msg.usage ?? msg.stats;
+        if (usage) {
           this.emitEntry(
             processId,
             EntryNormalizer.tokenUsage(
               processId,
-              msg.usage.input_tokens ?? 0,
-              msg.usage.output_tokens ?? 0,
+              usage.input_tokens ?? 0,
+              usage.output_tokens ?? 0,
             ),
           );
         }
@@ -360,6 +381,7 @@ export class StreamJsonAdapter extends BaseAgentAdapter {
     }
     this.childProcesses.delete(processId);
     this.lastContentLength.delete(processId);
+    this.toolIdNames.clear();
     // Note: stoppedEmitted is intentionally NOT cleared here — it must persist
     // to guard against the readline close fallback timer firing after cleanup.
   }

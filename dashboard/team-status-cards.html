@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Status Card — 3 Floating Styles</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.5; background: #FAF8F5; color: #2D2A26; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg: #FAF8F5; --bg2: #F3F0EA; --bg3: #EBE8E1; --card: #FFFFFF;
+      --hover: rgba(45,42,38,0.04); --active: rgba(45,42,38,0.07);
+      --t1: #2D2A26; --t2: #78756F; --t3: #A09D97; --t4: #D1CEC8;
+      --bdr: #E8E5DE; --bdr2: #ECEAE4;
+      --blue: #4A90D9; --green: #3D9B6F; --orange: #D4832E; --yellow: #C99B2D;
+      --purple: #8B6BBF; --red: #D05454; --gray: #A09D97; --cyan: #3BA0B5;
+      --tint-green: #EEF7F2; --tint-yellow: #FDF6E4; --tint-orange: #FDF0E4;
+      --tint-purple: #F3EEF9; --tint-gray: #F2F1EE; --tint-blue: #EDF4FC;
+      --tint-cyan: #E8F6F9;
+      --mono: 'JetBrains Mono', 'Consolas', monospace;
+    }
+    .pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 5px; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s ease infinite; display: inline-block; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+    .st-done { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-running { background: rgba(201,155,45,0.12); color: var(--yellow); }
+    .st-pending { background: rgba(160,157,151,0.12); color: var(--gray); }
+    .st-blocked { background: rgba(208,84,84,0.12); color: var(--red); }
+
+    /* ========== Selector bar ========== */
+    .sel-bar {
+      display: flex; align-items: center; height: 44px; padding: 0 20px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0; z-index: 300;
+    }
+    .sel-title { font-size: 13px; font-weight: 700; color: var(--t1); margin-right: 20px; }
+    .sel-tab {
+      padding: 10px 14px; font-size: 12px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; transition: all 120ms;
+    }
+    .sel-tab:hover { color: var(--t1); }
+    .sel-tab.active { color: var(--t1); font-weight: 600; border-bottom-color: var(--t1); }
+    .sel-tab .badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 100px; margin-left: 4px; vertical-align: 1px; }
+    .sel-spacer { flex: 1; }
+    .sel-hint { font-size: 10px; color: var(--t3); font-family: var(--mono); }
+
+    .page { display: none; flex: 1; overflow: hidden; }
+    .page.active { display: flex; }
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ========== Shared IDE base (simplified from Style A) ========== */
+    .ide { display: flex; flex: 1; overflow: hidden; position: relative; }
+    .ide-sidebar {
+      width: 260px; flex-shrink: 0; background: var(--bg2);
+      border-right: 1px solid var(--bdr); display: flex; flex-direction: column;
+    }
+    .ide-sb-head { padding: 12px 14px; border-bottom: 1px solid var(--bdr); display: flex; align-items: center; gap: 8px; }
+    .ide-sb-title { font-size: 12px; font-weight: 700; color: var(--t1); flex: 1; }
+    .ide-sb-scroll { flex: 1; overflow-y: auto; padding: 6px 0; }
+    .ide-file {
+      display: flex; align-items: center; gap: 7px; padding: 4px 14px 4px 20px;
+      cursor: pointer; font-size: 11px; color: var(--t2); border: none; background: none;
+      width: 100%; text-align: left; transition: background 80ms;
+    }
+    .ide-file:hover { background: var(--hover); color: var(--t1); }
+    .ide-file.active { background: var(--active); color: var(--t1); font-weight: 600; }
+    .ide-file-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .ide-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ide-grp { font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--t4); padding: 10px 14px 3px; }
+    .ide-sb-stats { display: flex; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--bdr); font-size: 10px; color: var(--t3); flex-shrink: 0; }
+    .ide-sb-stats strong { color: var(--t1); font-weight: 700; }
+
+    .ide-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    .ide-tabs {
+      display: flex; align-items: center; gap: 0; padding: 0 4px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0;
+    }
+    .ide-tab {
+      padding: 7px 12px; font-size: 11px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+    }
+    .ide-tab.active { color: var(--t1); font-weight: 600; background: var(--card); border-bottom-color: var(--blue); }
+    .ide-viewer { flex: 1; overflow: auto; padding: 20px 28px; background: var(--card); }
+    .ide-viewer-line { font-size: 12px; color: var(--t2); line-height: 1.7; }
+    .ide-viewer-line strong { color: var(--t1); }
+
+    /* Blurred IDE background (for visual clarity) */
+    .ide.blurred .ide-sidebar,
+    .ide.blurred .ide-main { filter: brightness(0.97); }
+
+
+    /* ================================================================ */
+    /*  VARIANT 1 — Ribbon Banner (Top-docked, collapsible)             */
+    /*  Compact horizontal strip with pipeline, roles, messages, stats  */
+    /* ================================================================ */
+
+    .v1-ribbon {
+      background: var(--card); border-bottom: 1px solid var(--bdr);
+      flex-shrink: 0; overflow: hidden;
+      transition: max-height 250ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .v1-ribbon.collapsed { max-height: 40px; }
+    .v1-ribbon.expanded { max-height: 260px; }
+
+    /* Toggle bar */
+    .v1-toggle {
+      display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+      cursor: pointer; user-select: none;
+    }
+    .v1-toggle:hover { background: var(--hover); }
+    .v1-toggle-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .v1-toggle-pills { display: flex; gap: 6px; flex: 1; }
+    .v1-toggle-caret {
+      width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+      color: var(--t3); transition: transform 200ms; font-size: 10px;
+    }
+    .v1-ribbon.expanded .v1-toggle-caret { transform: rotate(180deg); }
+
+    /* Ribbon content */
+    .v1-body { padding: 0 16px 12px; display: flex; gap: 12px; }
+
+    /* Pipeline strip */
+    .v1-pipeline { flex: 2; min-width: 0; }
+    .v1-pipe-label { font-size: 9px; font-weight: 600; text-transform: uppercase; color: var(--t4); letter-spacing: 0.06em; margin-bottom: 6px; }
+    .v1-pipe-track {
+      display: flex; align-items: center; gap: 3px; background: var(--bg2);
+      border-radius: 8px; padding: 6px 8px; overflow-x: auto;
+    }
+    .v1-pipe-node {
+      display: flex; align-items: center; gap: 5px; padding: 4px 10px;
+      border-radius: 6px; font-size: 10px; white-space: nowrap;
+      flex-shrink: 0; transition: all 120ms; cursor: default;
+    }
+    .v1-pipe-node:hover { filter: brightness(0.97); }
+    .v1-pipe-node .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .v1-pipe-node .nid { font-family: var(--mono); font-size: 9px; color: var(--t3); }
+    .v1-pipe-node .nn { font-weight: 600; color: var(--t1); }
+    .v1-pipe-arrow { color: var(--t4); font-size: 10px; flex-shrink: 0; }
+
+    /* Parallel bracket */
+    .v1-pipe-parallel {
+      display: flex; flex-direction: column; gap: 2px; padding: 2px 0;
+      border-left: 2px solid var(--yellow); border-radius: 0 0 0 4px; padding-left: 4px;
+    }
+
+    /* Roles column */
+    .v1-roles { flex: 1; min-width: 150px; }
+    .v1-role-row {
+      display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px;
+    }
+    .v1-role-ava {
+      width: 22px; height: 22px; border-radius: 6px; display: flex;
+      align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .v1-role-name { flex: 1; color: var(--t1); font-weight: 500; }
+    .v1-role-prefix { font-size: 9px; font-family: var(--mono); color: var(--t4); }
+    .v1-role-st { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+    /* Messages column */
+    .v1-msgs { flex: 1; min-width: 160px; }
+    .v1-msg-row {
+      display: flex; align-items: flex-start; gap: 6px; padding: 3px 0; font-size: 11px;
+    }
+    .v1-msg-row + .v1-msg-row { border-top: 1px solid var(--bdr2); }
+    .v1-msg-time { font-size: 9px; font-family: var(--mono); color: var(--t4); min-width: 32px; padding-top: 1px; }
+    .v1-msg-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+    .v1-msg-text { flex: 1; color: var(--t2); }
+    .v1-msg-text strong { color: var(--t1); font-weight: 600; }
+
+
+    /* ================================================================ */
+    /*  VARIANT 2 — Floating HUD Card (Absolute, draggable-style)       */
+    /*  Glassmorphism card hovering top-right, multiple tabs inside      */
+    /* ================================================================ */
+
+    .v2-hud {
+      position: absolute; top: 12px; right: 16px; z-index: 50;
+      width: 380px; max-height: calc(100% - 24px);
+      background: rgba(255,255,255,0.92); backdrop-filter: blur(16px) saturate(1.5);
+      border: 1px solid rgba(232,229,222,0.7); border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(45,42,38,0.10), 0 2px 8px rgba(45,42,38,0.06);
+      display: flex; flex-direction: column; overflow: hidden;
+      transition: opacity 200ms, transform 200ms;
+    }
+    .v2-hud.minimized { max-height: 42px; overflow: hidden; }
+    .v2-hud.minimized .v2-body { display: none; }
+
+    /* HUD header (draggable) */
+    .v2-hud-bar {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      cursor: grab; user-select: none; flex-shrink: 0;
+      border-bottom: 1px solid var(--bdr2);
+    }
+    .v2-hud-bar:active { cursor: grabbing; }
+    .v2-hud-title { font-size: 12px; font-weight: 700; color: var(--t1); flex: 1; }
+    .v2-hud-status { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--yellow); }
+    .v2-hud-btn {
+      width: 22px; height: 22px; border-radius: 6px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center;
+      justify-content: center; font-size: 12px; transition: all 100ms;
+    }
+    .v2-hud-btn:hover { background: var(--hover); color: var(--t1); }
+
+    /* HUD tabs */
+    .v2-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid var(--bdr2); flex-shrink: 0;
+      background: rgba(243,240,234,0.5);
+    }
+    .v2-tab {
+      padding: 7px 14px; font-size: 11px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+      transition: all 100ms; flex: 1; text-align: center;
+    }
+    .v2-tab:hover { color: var(--t1); }
+    .v2-tab.active { color: var(--t1); font-weight: 600; border-bottom-color: var(--blue); }
+    .v2-tab .cnt { font-size: 9px; font-weight: 600; background: var(--bg2); padding: 0 5px; border-radius: 100px; margin-left: 3px; color: var(--t3); }
+
+    /* HUD body */
+    .v2-body { flex: 1; overflow-y: auto; }
+    .v2-panel { display: none; padding: 12px 14px; }
+    .v2-panel.active { display: block; }
+
+    /* Pipeline panel */
+    .v2-pipe-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 11px;
+    }
+    .v2-pipe-row + .v2-pipe-row { border-top: 1px solid var(--bdr2); }
+    .v2-pipe-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; position: relative; }
+    .v2-pipe-dot::after {
+      content: ''; position: absolute; top: 12px; left: 4px; width: 2px; height: 10px;
+      background: var(--bdr); border-radius: 1px;
+    }
+    .v2-pipe-row:last-child .v2-pipe-dot::after { display: none; }
+    .v2-pipe-id { font-family: var(--mono); font-size: 10px; color: var(--t3); min-width: 80px; }
+    .v2-pipe-name { flex: 1; color: var(--t1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .v2-pipe-st { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 100px; }
+
+    /* Progress bar (pipeline panel) */
+    .v2-progress { display: flex; align-items: center; gap: 8px; padding: 8px 0 4px; margin-bottom: 8px; border-bottom: 1px solid var(--bdr2); }
+    .v2-prog-track { flex: 1; height: 4px; background: var(--bg2); border-radius: 100px; overflow: hidden; }
+    .v2-prog-fill { height: 100%; border-radius: 100px; background: var(--green); transition: width 400ms; }
+    .v2-prog-text { font-size: 10px; font-weight: 600; color: var(--t3); }
+
+    /* Roles panel */
+    .v2-role-card {
+      padding: 8px 10px; border-radius: 8px; border: 1px solid var(--bdr2);
+      margin-bottom: 6px; display: flex; align-items: center; gap: 10px;
+    }
+    .v2-role-card:hover { border-color: var(--blue); }
+    .v2-role-ava {
+      width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center;
+      justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .v2-role-info { flex: 1; min-width: 0; }
+    .v2-role-name { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .v2-role-desc { font-size: 10px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .v2-role-meta { display: flex; gap: 4px; }
+    .v2-role-badge { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+    /* Messages panel */
+    .v2-msg-item { display: flex; gap: 8px; padding: 6px 0; font-size: 11px; }
+    .v2-msg-item + .v2-msg-item { border-top: 1px solid var(--bdr2); }
+    .v2-msg-ava {
+      width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 8px; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 1px;
+    }
+    .v2-msg-body { flex: 1; }
+    .v2-msg-header { display: flex; align-items: center; gap: 6px; }
+    .v2-msg-from { font-size: 10px; font-weight: 600; color: var(--t1); }
+    .v2-msg-type { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+    .v2-msg-when { font-size: 9px; color: var(--t4); font-family: var(--mono); margin-left: auto; }
+    .v2-msg-content { font-size: 11px; color: var(--t2); margin-top: 2px; line-height: 1.5; }
+
+
+    /* ================================================================ */
+    /*  VARIANT 3 — Slide-down Dashboard (Overlay, multi-section grid)  */
+    /*  Full-width overlay that slides from top with backdrop dim        */
+    /* ================================================================ */
+
+    .v3-backdrop {
+      position: absolute; inset: 0; z-index: 40;
+      background: rgba(45,42,38,0.2); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity 200ms;
+    }
+    .v3-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .v3-panel {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+      background: var(--card); border-bottom: 1px solid var(--bdr);
+      border-radius: 0 0 16px 16px;
+      box-shadow: 0 12px 40px rgba(45,42,38,0.12);
+      transform: translateY(-100%); transition: transform 280ms cubic-bezier(0.34,1.56,0.64,1);
+      max-height: 70vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .v3-backdrop.open .v3-panel { transform: translateY(0); }
+
+    /* Header */
+    .v3-header {
+      display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+      border-bottom: 1px solid var(--bdr2); flex-shrink: 0;
+    }
+    .v3-title { font-size: 14px; font-weight: 700; color: var(--t1); }
+    .v3-id { font-size: 10px; font-family: var(--mono); color: var(--t3); }
+    .v3-header-spacer { flex: 1; }
+    .v3-close {
+      width: 28px; height: 28px; border-radius: 8px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center;
+      justify-content: center; font-size: 16px; transition: all 100ms;
+    }
+    .v3-close:hover { background: var(--hover); color: var(--t1); }
+
+    /* Body — grid layout */
+    .v3-body {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+      flex: 1; overflow: auto;
+    }
+    .v3-col { padding: 14px 18px; }
+    .v3-col + .v3-col { border-left: 1px solid var(--bdr2); }
+    .v3-col-title { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t4); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .v3-col-title .cnt { background: var(--bg2); padding: 0 5px; border-radius: 100px; font-size: 9px; color: var(--t3); }
+
+    /* Pipeline column */
+    .v3-dag { position: relative; }
+    .v3-dag-wave { margin-bottom: 10px; }
+    .v3-dag-wave-label { font-size: 9px; font-weight: 600; color: var(--t4); margin-bottom: 4px; }
+    .v3-dag-nodes { display: flex; gap: 6px; flex-wrap: wrap; }
+    .v3-dag-node {
+      display: flex; align-items: center; gap: 5px; padding: 5px 10px;
+      border-radius: 8px; border: 1.5px solid var(--bdr); font-size: 10px; cursor: default;
+      transition: all 100ms;
+    }
+    .v3-dag-node:hover { border-color: var(--blue); }
+    .v3-dag-node .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .v3-dag-node .nid { font-family: var(--mono); font-size: 9px; color: var(--t3); }
+    .v3-dag-node .nn { font-weight: 600; color: var(--t1); }
+    .v3-dag-arrow-row { display: flex; align-items: center; gap: 4px; padding: 2px 0 2px 12px; color: var(--t4); font-size: 9px; }
+
+    /* Stats row inside pipeline col */
+    .v3-stats-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .v3-stat-box { flex: 1; text-align: center; padding: 8px; background: var(--bg2); border-radius: 8px; }
+    .v3-stat-val { font-size: 16px; font-weight: 700; color: var(--t1); }
+    .v3-stat-label { font-size: 9px; font-weight: 600; color: var(--t3); text-transform: uppercase; }
+
+    /* Roles column */
+    .v3-role {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    }
+    .v3-role + .v3-role { border-top: 1px solid var(--bdr2); }
+    .v3-role-ava {
+      width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center;
+      justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .v3-role-body { flex: 1; min-width: 0; }
+    .v3-role-name { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .v3-role-meta { font-size: 10px; color: var(--t3); }
+    .v3-role-tags { display: flex; gap: 3px; flex-shrink: 0; }
+    .v3-role-tag { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+    /* Messages column */
+    .v3-msg { display: flex; gap: 8px; padding: 6px 0; font-size: 11px; align-items: flex-start; }
+    .v3-msg + .v3-msg { border-top: 1px solid var(--bdr2); }
+    .v3-msg-icon {
+      width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px;
+    }
+    .v3-msg-body { flex: 1; }
+    .v3-msg-head { display: flex; align-items: center; gap: 6px; }
+    .v3-msg-from { font-size: 10px; font-weight: 600; color: var(--t1); }
+    .v3-msg-type-tag { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+    .v3-msg-time { font-size: 9px; font-family: var(--mono); color: var(--t4); margin-left: auto; }
+    .v3-msg-text { font-size: 11px; color: var(--t2); margin-top: 2px; }
+
+    /* Handle bar at bottom */
+    .v3-handle {
+      display: flex; justify-content: center; padding: 6px 0; border-top: 1px solid var(--bdr2); flex-shrink: 0; cursor: pointer;
+    }
+    .v3-handle-bar { width: 40px; height: 4px; border-radius: 2px; background: var(--t4); }
+
+    /* Trigger button (in IDE toolbar area) */
+    .v3-trigger {
+      display: flex; align-items: center; gap: 6px; padding: 5px 12px;
+      border-radius: 8px; border: 1px solid var(--bdr); background: var(--card);
+      cursor: pointer; font-size: 11px; font-weight: 600; color: var(--t1);
+      transition: all 120ms; margin: 6px 12px;
+    }
+    .v3-trigger:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .v3-trigger .tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Selector bar -->
+  <nav class="sel-bar">
+    <span class="sel-title">Floating Status Card</span>
+    <button class="sel-tab active" onclick="showPage('v1')">
+      Variant 1 <span class="badge" style="background:var(--tint-blue);color:var(--blue)">Ribbon</span>
+    </button>
+    <button class="sel-tab" onclick="showPage('v2')">
+      Variant 2 <span class="badge" style="background:var(--tint-purple);color:var(--purple)">HUD Card</span>
+    </button>
+    <button class="sel-tab" onclick="showPage('v3')">
+      Variant 3 <span class="badge" style="background:var(--tint-orange);color:var(--orange)">Slide-down</span>
+    </button>
+    <div class="sel-spacer"></div>
+    <span class="sel-hint">TC-refactor-auth-module-20260319</span>
+  </nav>
+
+
+  <!-- ================================================================ -->
+  <!-- VARIANT 1 — Ribbon Banner                                        -->
+  <!-- Docked top of IDE main area, collapsible. Horizontal 3-column.   -->
+  <!-- ================================================================ -->
+  <div class="page active" id="page-v1">
+    <div class="ide">
+      <!-- Sidebar (simplified) -->
+      <aside class="ide-sidebar">
+        <div class="ide-sb-head"><span class="ide-sb-title">Refactor Auth Module</span><span class="pill st-running" style="font-size:9px">Active</span></div>
+        <div class="ide-sb-scroll">
+          <div class="ide-grp">Artifacts</div>
+          <button class="ide-file active"><div class="ide-file-dot" style="background:var(--blue)"></div><span class="ide-file-name">RESEARCH-001-analysis.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name">PLAN-001-impl-plan.md</span></button>
+          <div class="ide-grp">Role-Specs</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">researcher.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">planner.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">developer.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name" style="color:var(--purple)">security-expert.md</span></button>
+          <div class="ide-grp">Session</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--orange)"></div><span class="ide-file-name">team-session.json</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--orange)"></div><span class="ide-file-name">task-analysis.json</span></button>
+          <div class="ide-grp">Wisdom</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--green)"></div><span class="ide-file-name">decisions.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--green)"></div><span class="ide-file-name">learnings.md</span></button>
+        </div>
+        <div class="ide-sb-stats"><span>Tasks: <strong>3/6</strong></span><span>Roles: <strong>4</strong></span><span><strong>28m</strong></span></div>
+      </aside>
+
+      <div class="ide-main">
+
+        <!-- ===== V1: Ribbon Banner ===== -->
+        <div class="v1-ribbon expanded" id="v1-ribbon">
+          <div class="v1-toggle" onclick="document.getElementById('v1-ribbon').classList.toggle('collapsed');document.getElementById('v1-ribbon').classList.toggle('expanded')">
+            <span class="v1-toggle-title">Team Status</span>
+            <div class="v1-toggle-pills">
+              <span class="pill st-running" style="font-size:9px"><span class="pulse-dot" style="background:var(--yellow)"></span> 2 Running</span>
+              <span class="pill st-done" style="font-size:9px">3 Done</span>
+              <span class="pill st-pending" style="font-size:9px">1 Pending</span>
+            </div>
+            <span class="v1-toggle-caret">&#9662;</span>
+          </div>
+
+          <div class="v1-body">
+            <!-- Pipeline -->
+            <div class="v1-pipeline">
+              <div class="v1-pipe-label">Pipeline (3/6 — 50%)</div>
+              <div class="v1-pipe-track">
+                <div class="v1-pipe-node" style="background:var(--tint-green)">
+                  <div class="dot" style="background:var(--green)"></div>
+                  <span class="nid">RESEARCH-001</span>
+                  <span class="nn">Analysis</span>
+                </div>
+                <span class="v1-pipe-arrow">&#8594;</span>
+                <div class="v1-pipe-node" style="background:var(--tint-green)">
+                  <div class="dot" style="background:var(--green)"></div>
+                  <span class="nid">PLAN-001</span>
+                  <span class="nn">Plan</span>
+                </div>
+                <span class="v1-pipe-arrow">&#8594;</span>
+                <div class="v1-pipe-parallel">
+                  <div class="v1-pipe-node" style="background:var(--tint-yellow)">
+                    <div class="dot" style="background:var(--yellow)"></div>
+                    <span class="nid">IMPL-001</span>
+                    <span class="nn">OAuth2</span>
+                  </div>
+                  <div class="v1-pipe-node" style="background:var(--tint-yellow)">
+                    <div class="dot" style="background:var(--yellow)"></div>
+                    <span class="nid">IMPL-002</span>
+                    <span class="nn">Redis</span>
+                  </div>
+                </div>
+                <span class="v1-pipe-arrow">&#8594;</span>
+                <div class="v1-pipe-node" style="background:var(--tint-gray);opacity:0.6">
+                  <div class="dot" style="background:var(--gray)"></div>
+                  <span class="nid">TEST-001</span>
+                  <span class="nn">Tests</span>
+                </div>
+                <span class="v1-pipe-arrow">&#8594;</span>
+                <div class="v1-pipe-node" style="background:var(--tint-purple);border:1px dashed var(--purple);opacity:0.6">
+                  <div class="dot" style="background:var(--gray)"></div>
+                  <span class="nid">SEC-001</span>
+                  <span class="nn" style="color:var(--purple)">Audit</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Roles -->
+            <div class="v1-roles">
+              <div class="v1-pipe-label">Roles (4)</div>
+              <div class="v1-role-row">
+                <div class="v1-role-ava" style="background:var(--blue)">R</div>
+                <span class="v1-role-name">researcher</span>
+                <span class="v1-role-prefix">RESEARCH</span>
+                <span class="v1-role-st st-done">Done</span>
+              </div>
+              <div class="v1-role-row">
+                <div class="v1-role-ava" style="background:var(--purple)">P</div>
+                <span class="v1-role-name">planner</span>
+                <span class="v1-role-prefix">PLAN</span>
+                <span class="v1-role-st st-done">Done</span>
+              </div>
+              <div class="v1-role-row">
+                <div class="v1-role-ava" style="background:var(--yellow)">D</div>
+                <span class="v1-role-name">developer</span>
+                <span class="v1-role-prefix">IMPL</span>
+                <span class="v1-role-st st-running">Active</span>
+              </div>
+              <div class="v1-role-row">
+                <div class="v1-role-ava" style="background:var(--red);opacity:0.6">S</div>
+                <span class="v1-role-name" style="color:var(--purple)">security-expert</span>
+                <span class="v1-role-prefix">SEC</span>
+                <span class="v1-role-st st-pending">New</span>
+              </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="v1-msgs">
+              <div class="v1-pipe-label">Recent Messages</div>
+              <div class="v1-msg-row">
+                <span class="v1-msg-time">1m</span>
+                <div class="v1-msg-dot" style="background:var(--purple)"></div>
+                <span class="v1-msg-text"><strong>capability_gap</strong> — security audit needed for token storage</span>
+              </div>
+              <div class="v1-msg-row">
+                <span class="v1-msg-time">5m</span>
+                <div class="v1-msg-dot" style="background:var(--yellow)"></div>
+                <span class="v1-msg-text"><strong>state_update</strong> — IMPL-001 OAuth2 provider routing started</span>
+              </div>
+              <div class="v1-msg-row">
+                <span class="v1-msg-time">12m</span>
+                <div class="v1-msg-dot" style="background:var(--green)"></div>
+                <span class="v1-msg-text"><strong>impl_complete</strong> — PLAN-001 delivered, 2 parallel tracks</span>
+              </div>
+              <div class="v1-msg-row">
+                <span class="v1-msg-time">22m</span>
+                <div class="v1-msg-dot" style="background:var(--green)"></div>
+                <span class="v1-msg-text"><strong>impl_complete</strong> — RESEARCH-001 delivered, 14 points mapped</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- IDE tabs + viewer (underneath ribbon) -->
+        <div class="ide-tabs">
+          <button class="ide-tab active">RESEARCH-001-analysis.md</button>
+        </div>
+        <div class="ide-viewer">
+          <div class="ide-viewer-line"><strong style="font-size:18px">Authentication Module — Codebase Analysis</strong></div>
+          <br>
+          <div class="ide-viewer-line">The current authentication module uses a custom JWT implementation with in-memory session storage. The module has <strong>14 integration points</strong> across 6 services and 3 middleware layers.</div>
+          <br>
+          <div class="ide-viewer-line"><strong>Breaking Change Risks:</strong></div>
+          <div class="ide-viewer-line">1. SessionStore.get() is synchronous — Redis adapter requires async</div>
+          <div class="ide-viewer-line">2. JWT payload structure change affects all token consumers</div>
+          <div class="ide-viewer-line">3. Payment service depends on session data shape</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- VARIANT 2 — Floating HUD Card                                    -->
+  <!-- Glassmorphism card, top-right, tabbed (Pipeline/Roles/Messages)  -->
+  <!-- ================================================================ -->
+  <div class="page" id="page-v2">
+    <div class="ide">
+      <!-- Sidebar -->
+      <aside class="ide-sidebar">
+        <div class="ide-sb-head"><span class="ide-sb-title">Refactor Auth Module</span><span class="pill st-running" style="font-size:9px">Active</span></div>
+        <div class="ide-sb-scroll">
+          <div class="ide-grp">Artifacts</div>
+          <button class="ide-file active"><div class="ide-file-dot" style="background:var(--blue)"></div><span class="ide-file-name">RESEARCH-001-analysis.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name">PLAN-001-impl-plan.md</span></button>
+          <div class="ide-grp">Role-Specs</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">researcher.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">developer.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name" style="color:var(--purple)">security-expert.md</span></button>
+          <div class="ide-grp">Session</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--orange)"></div><span class="ide-file-name">team-session.json</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--orange)"></div><span class="ide-file-name">task-analysis.json</span></button>
+        </div>
+        <div class="ide-sb-stats"><span>Tasks: <strong>3/6</strong></span><span>Roles: <strong>4</strong></span></div>
+      </aside>
+
+      <div class="ide-main" style="position:relative">
+        <div class="ide-tabs">
+          <button class="ide-tab active">RESEARCH-001-analysis.md</button>
+        </div>
+        <div class="ide-viewer">
+          <div class="ide-viewer-line"><strong style="font-size:18px">Authentication Module — Codebase Analysis</strong></div>
+          <br>
+          <div class="ide-viewer-line">The current authentication module uses a custom JWT implementation with in-memory session storage. The module has <strong>14 integration points</strong> across 6 services.</div>
+          <br>
+          <div class="ide-viewer-line"><strong>Breaking Change Risks:</strong></div>
+          <div class="ide-viewer-line">1. SessionStore.get() is synchronous — Redis adapter requires async</div>
+          <div class="ide-viewer-line">2. JWT payload structure change affects all token consumers</div>
+          <div class="ide-viewer-line">3. Payment service depends on session data shape</div>
+        </div>
+
+        <!-- ===== V2: Floating HUD Card ===== -->
+        <div class="v2-hud" id="v2-hud">
+          <div class="v2-hud-bar">
+            <span class="v2-hud-title">Team Status</span>
+            <span class="v2-hud-status"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+            <button class="v2-hud-btn" onclick="document.getElementById('v2-hud').classList.toggle('minimized')" title="Minimize">&#8722;</button>
+          </div>
+          <div class="v2-body">
+            <div class="v2-tabs">
+              <button class="v2-tab active" onclick="v2Tab(this,0)">Pipeline <span class="cnt">6</span></button>
+              <button class="v2-tab" onclick="v2Tab(this,1)">Roles <span class="cnt">4</span></button>
+              <button class="v2-tab" onclick="v2Tab(this,2)">Messages <span class="cnt">5</span></button>
+            </div>
+
+            <!-- Pipeline tab -->
+            <div class="v2-panel active" id="v2-p0">
+              <div class="v2-progress">
+                <div class="v2-prog-track"><div class="v2-prog-fill" style="width:50%"></div></div>
+                <span class="v2-prog-text">3/6 (50%)</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--green)"></div>
+                <span class="v2-pipe-id">RESEARCH-001</span>
+                <span class="v2-pipe-name">Codebase Analysis</span>
+                <span class="v2-pipe-st st-done">Done</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--green)"></div>
+                <span class="v2-pipe-id">PLAN-001</span>
+                <span class="v2-pipe-name">Implementation Plan</span>
+                <span class="v2-pipe-st st-done">Done</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--yellow)"></div>
+                <span class="v2-pipe-id">IMPL-001</span>
+                <span class="v2-pipe-name">OAuth2 + Refresh Tokens</span>
+                <span class="v2-pipe-st st-running">Running</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--yellow)"></div>
+                <span class="v2-pipe-id">IMPL-002</span>
+                <span class="v2-pipe-name">Redis Session Storage</span>
+                <span class="v2-pipe-st st-running">Running</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--gray)"></div>
+                <span class="v2-pipe-id">TEST-001</span>
+                <span class="v2-pipe-name">Integration Tests</span>
+                <span class="v2-pipe-st st-blocked">Blocked</span>
+              </div>
+              <div class="v2-pipe-row">
+                <div class="v2-pipe-dot" style="background:var(--gray);outline:1.5px dashed var(--purple);outline-offset:1px"></div>
+                <span class="v2-pipe-id" style="color:var(--purple)">SECURITY-001</span>
+                <span class="v2-pipe-name" style="color:var(--purple)">Token Security Audit</span>
+                <span class="v2-pipe-st" style="background:rgba(139,107,191,0.12);color:var(--purple)">Injected</span>
+              </div>
+            </div>
+
+            <!-- Roles tab -->
+            <div class="v2-panel" id="v2-p1">
+              <div class="v2-role-card">
+                <div class="v2-role-ava" style="background:var(--blue)">R</div>
+                <div class="v2-role-info">
+                  <div class="v2-role-name">researcher</div>
+                  <div class="v2-role-desc">Codebase analysis, dependency mapping</div>
+                </div>
+                <div class="v2-role-meta">
+                  <span class="v2-role-badge st-done">Done</span>
+                  <span class="v2-role-badge" style="background:var(--bg2);color:var(--t3)">1 task</span>
+                </div>
+              </div>
+              <div class="v2-role-card">
+                <div class="v2-role-ava" style="background:var(--purple)">P</div>
+                <div class="v2-role-info">
+                  <div class="v2-role-name">planner</div>
+                  <div class="v2-role-desc">Migration strategy, parallel track design</div>
+                </div>
+                <div class="v2-role-meta">
+                  <span class="v2-role-badge st-done">Done</span>
+                  <span class="v2-role-badge" style="background:var(--bg2);color:var(--t3)">1 task</span>
+                </div>
+              </div>
+              <div class="v2-role-card" style="border-color:var(--yellow)">
+                <div class="v2-role-ava" style="background:var(--yellow)">D</div>
+                <div class="v2-role-info">
+                  <div class="v2-role-name">developer</div>
+                  <div class="v2-role-desc">OAuth2 + Redis implementation</div>
+                </div>
+                <div class="v2-role-meta">
+                  <span class="v2-role-badge st-running">Active</span>
+                  <span class="v2-role-badge" style="background:var(--bg2);color:var(--t3)">2 tasks</span>
+                </div>
+              </div>
+              <div class="v2-role-card" style="border-style:dashed;border-color:var(--purple)">
+                <div class="v2-role-ava" style="background:var(--red)">S</div>
+                <div class="v2-role-info">
+                  <div class="v2-role-name" style="color:var(--purple)">security-expert</div>
+                  <div class="v2-role-desc">OWASP audit, injected via capability_gap</div>
+                </div>
+                <div class="v2-role-meta">
+                  <span class="v2-role-badge" style="background:rgba(139,107,191,0.12);color:var(--purple)">Injected</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Messages tab -->
+            <div class="v2-panel" id="v2-p2">
+              <div class="v2-msg-item">
+                <div class="v2-msg-ava" style="background:var(--purple)">D</div>
+                <div class="v2-msg-body">
+                  <div class="v2-msg-header">
+                    <span class="v2-msg-from">developer</span>
+                    <span class="v2-msg-type" style="background:rgba(139,107,191,0.12);color:var(--purple)">capability_gap</span>
+                    <span class="v2-msg-when">1m</span>
+                  </div>
+                  <div class="v2-msg-content">Token storage pattern needs security expert review. Requesting OWASP audit capability.</div>
+                </div>
+              </div>
+              <div class="v2-msg-item">
+                <div class="v2-msg-ava" style="background:var(--blue)">C</div>
+                <div class="v2-msg-body">
+                  <div class="v2-msg-header">
+                    <span class="v2-msg-from">coordinator</span>
+                    <span class="v2-msg-type" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                    <span class="v2-msg-when">1m</span>
+                  </div>
+                  <div class="v2-msg-content">Generated security-expert role-spec. SECURITY-001 task created, blocked by IMPL-001 + IMPL-002.</div>
+                </div>
+              </div>
+              <div class="v2-msg-item">
+                <div class="v2-msg-ava" style="background:var(--yellow)">D</div>
+                <div class="v2-msg-body">
+                  <div class="v2-msg-header">
+                    <span class="v2-msg-from">developer</span>
+                    <span class="v2-msg-type" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                    <span class="v2-msg-when">5m</span>
+                  </div>
+                  <div class="v2-msg-content">IMPL-001 started — OAuth2 provider routing implementation.</div>
+                </div>
+              </div>
+              <div class="v2-msg-item">
+                <div class="v2-msg-ava" style="background:var(--green)">P</div>
+                <div class="v2-msg-body">
+                  <div class="v2-msg-header">
+                    <span class="v2-msg-from">planner</span>
+                    <span class="v2-msg-type" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                    <span class="v2-msg-when">12m</span>
+                  </div>
+                  <div class="v2-msg-content">PLAN-001 complete. 2 parallel tracks: OAuth2 (IMPL-001) + Redis (IMPL-002).</div>
+                </div>
+              </div>
+              <div class="v2-msg-item">
+                <div class="v2-msg-ava" style="background:var(--green)">R</div>
+                <div class="v2-msg-body">
+                  <div class="v2-msg-header">
+                    <span class="v2-msg-from">researcher</span>
+                    <span class="v2-msg-type" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                    <span class="v2-msg-when">22m</span>
+                  </div>
+                  <div class="v2-msg-content">RESEARCH-001 complete. 14 integration points, 3 breaking change risks identified.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- VARIANT 3 — Slide-down Dashboard                                 -->
+  <!-- Full-width overlay panel, 3-column grid, backdrop dim            -->
+  <!-- ================================================================ -->
+  <div class="page" id="page-v3">
+    <div class="ide" style="position:relative">
+      <!-- Sidebar -->
+      <aside class="ide-sidebar">
+        <div class="ide-sb-head"><span class="ide-sb-title">Refactor Auth Module</span><span class="pill st-running" style="font-size:9px">Active</span></div>
+        <div class="ide-sb-scroll">
+          <div class="ide-grp">Artifacts</div>
+          <button class="ide-file active"><div class="ide-file-dot" style="background:var(--blue)"></div><span class="ide-file-name">RESEARCH-001-analysis.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name">PLAN-001-impl-plan.md</span></button>
+          <div class="ide-grp">Role-Specs</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">researcher.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--cyan)"></div><span class="ide-file-name">developer.md</span></button>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--purple)"></div><span class="ide-file-name" style="color:var(--purple)">security-expert.md</span></button>
+          <div class="ide-grp">Session</div>
+          <button class="ide-file"><div class="ide-file-dot" style="background:var(--orange)"></div><span class="ide-file-name">team-session.json</span></button>
+        </div>
+        <div class="ide-sb-stats"><span>Tasks: <strong>3/6</strong></span><span>Roles: <strong>4</strong></span></div>
+      </aside>
+
+      <div class="ide-main" style="position:relative">
+        <!-- Trigger button area -->
+        <div style="display:flex;align-items:center;border-bottom:1px solid var(--bdr);background:var(--bg2);flex-shrink:0;">
+          <button class="ide-tab active">RESEARCH-001-analysis.md</button>
+          <div style="flex:1"></div>
+          <button class="v3-trigger" onclick="document.getElementById('v3-overlay').classList.add('open')">
+            <span class="tdot"></span>
+            Team Status
+            <span style="font-size:9px;color:var(--t3);font-weight:500">3/6</span>
+            <span style="color:var(--t4);font-size:10px">&#9662;</span>
+          </button>
+        </div>
+        <div class="ide-viewer">
+          <div class="ide-viewer-line"><strong style="font-size:18px">Authentication Module — Codebase Analysis</strong></div>
+          <br>
+          <div class="ide-viewer-line">The current authentication module uses a custom JWT implementation with in-memory session storage. The module has <strong>14 integration points</strong> across 6 services.</div>
+          <br>
+          <div class="ide-viewer-line"><strong>Breaking Change Risks:</strong></div>
+          <div class="ide-viewer-line">1. SessionStore.get() is synchronous — Redis adapter requires async</div>
+          <div class="ide-viewer-line">2. JWT payload structure change affects all token consumers</div>
+        </div>
+
+        <!-- ===== V3: Slide-down overlay ===== -->
+        <div class="v3-backdrop" id="v3-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+          <div class="v3-panel">
+            <div class="v3-header">
+              <span class="v3-title">Team Status</span>
+              <span class="pill st-running" style="font-size:10px"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+              <span class="v3-id">TC-refactor-auth-module-20260319</span>
+              <div class="v3-header-spacer"></div>
+              <span style="font-size:11px;color:var(--t3)">28m elapsed</span>
+              <button class="v3-close" onclick="document.getElementById('v3-overlay').classList.remove('open')">&times;</button>
+            </div>
+
+            <div class="v3-body">
+              <!-- Col 1: Pipeline -->
+              <div class="v3-col">
+                <div class="v3-col-title">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                  Pipeline <span class="cnt">3/6</span>
+                </div>
+
+                <div class="v3-stats-row">
+                  <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--green)">3</div><div class="v3-stat-label">Done</div></div>
+                  <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--yellow)">2</div><div class="v3-stat-label">Running</div></div>
+                  <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--gray)">1</div><div class="v3-stat-label">Pending</div></div>
+                </div>
+
+                <div class="v3-dag">
+                  <div class="v3-dag-wave">
+                    <div class="v3-dag-wave-label">Wave 0</div>
+                    <div class="v3-dag-nodes">
+                      <div class="v3-dag-node" style="border-color:var(--green)"><div class="dot" style="background:var(--green)"></div><span class="nid">RESEARCH-001</span><span class="nn">Analysis</span></div>
+                    </div>
+                  </div>
+                  <div class="v3-dag-arrow-row">&#8595; depends on</div>
+                  <div class="v3-dag-wave">
+                    <div class="v3-dag-wave-label">Wave 1</div>
+                    <div class="v3-dag-nodes">
+                      <div class="v3-dag-node" style="border-color:var(--green)"><div class="dot" style="background:var(--green)"></div><span class="nid">PLAN-001</span><span class="nn">Plan</span></div>
+                    </div>
+                  </div>
+                  <div class="v3-dag-arrow-row">&#8595; depends on</div>
+                  <div class="v3-dag-wave">
+                    <div class="v3-dag-wave-label">Wave 2 (parallel)</div>
+                    <div class="v3-dag-nodes">
+                      <div class="v3-dag-node" style="border-color:var(--yellow)"><div class="dot" style="background:var(--yellow)"></div><span class="nid">IMPL-001</span><span class="nn">OAuth2</span></div>
+                      <div class="v3-dag-node" style="border-color:var(--yellow)"><div class="dot" style="background:var(--yellow)"></div><span class="nid">IMPL-002</span><span class="nn">Redis</span></div>
+                    </div>
+                  </div>
+                  <div class="v3-dag-arrow-row">&#8595; all complete</div>
+                  <div class="v3-dag-wave">
+                    <div class="v3-dag-wave-label">Wave 3-4</div>
+                    <div class="v3-dag-nodes">
+                      <div class="v3-dag-node" style="border-color:var(--bdr);opacity:0.5"><div class="dot" style="background:var(--gray)"></div><span class="nid">TEST-001</span><span class="nn">Tests</span></div>
+                      <div class="v3-dag-node" style="border-color:var(--purple);border-style:dashed;opacity:0.5"><div class="dot" style="background:var(--gray)"></div><span class="nid">SEC-001</span><span class="nn" style="color:var(--purple)">Audit</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Col 2: Roles -->
+              <div class="v3-col">
+                <div class="v3-col-title">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+                  Dynamic Roles <span class="cnt">4</span>
+                </div>
+
+                <div class="v3-role">
+                  <div class="v3-role-ava" style="background:var(--blue)">R</div>
+                  <div class="v3-role-body">
+                    <div class="v3-role-name">researcher</div>
+                    <div class="v3-role-meta">RESEARCH-* | 1 task | inner_loop: false</div>
+                  </div>
+                  <div class="v3-role-tags"><span class="v3-role-tag st-done">Done</span></div>
+                </div>
+                <div class="v3-role">
+                  <div class="v3-role-ava" style="background:var(--purple)">P</div>
+                  <div class="v3-role-body">
+                    <div class="v3-role-name">planner</div>
+                    <div class="v3-role-meta">PLAN-* | 1 task | inner_loop: false</div>
+                  </div>
+                  <div class="v3-role-tags"><span class="v3-role-tag st-done">Done</span></div>
+                </div>
+                <div class="v3-role">
+                  <div class="v3-role-ava" style="background:var(--yellow)">D</div>
+                  <div class="v3-role-body">
+                    <div class="v3-role-name">developer</div>
+                    <div class="v3-role-meta">IMPL-* | 2 tasks | inner_loop: true</div>
+                  </div>
+                  <div class="v3-role-tags"><span class="v3-role-tag st-running">Active</span></div>
+                </div>
+                <div class="v3-role">
+                  <div class="v3-role-ava" style="background:var(--red)">S</div>
+                  <div class="v3-role-body">
+                    <div class="v3-role-name" style="color:var(--purple)">security-expert</div>
+                    <div class="v3-role-meta">SECURITY-* | 1 task | via capability_gap</div>
+                  </div>
+                  <div class="v3-role-tags"><span class="v3-role-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">Injected</span></div>
+                </div>
+
+                <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr2);">
+                  <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t4);margin-bottom:6px;">Adaptation Log</div>
+                  <div style="font-size:11px;color:var(--t2);display:flex;align-items:flex-start;gap:6px;">
+                    <span style="width:6px;height:6px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:5px"></span>
+                    <span><strong style="color:var(--t1)">+security-expert</strong> injected at 8m — developer flagged token storage pattern needs OWASP review</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Col 3: Messages -->
+              <div class="v3-col">
+                <div class="v3-col-title">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                  Message Bus <span class="cnt">5</span>
+                </div>
+
+                <div class="v3-msg">
+                  <div class="v3-msg-icon" style="background:rgba(139,107,191,0.12);color:var(--purple)">!</div>
+                  <div class="v3-msg-body">
+                    <div class="v3-msg-head">
+                      <span class="v3-msg-from">developer</span>
+                      <span class="v3-msg-type-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">capability_gap</span>
+                      <span class="v3-msg-time">1m</span>
+                    </div>
+                    <div class="v3-msg-text">Token storage pattern needs security expert review</div>
+                  </div>
+                </div>
+
+                <div class="v3-msg">
+                  <div class="v3-msg-icon" style="background:var(--tint-blue);color:var(--blue)">&#8635;</div>
+                  <div class="v3-msg-body">
+                    <div class="v3-msg-head">
+                      <span class="v3-msg-from">coordinator</span>
+                      <span class="v3-msg-type-tag" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                      <span class="v3-msg-time">1m</span>
+                    </div>
+                    <div class="v3-msg-text">New role-spec: security-expert. SECURITY-001 created.</div>
+                  </div>
+                </div>
+
+                <div class="v3-msg">
+                  <div class="v3-msg-icon" style="background:var(--tint-yellow);color:var(--yellow)">&#9654;</div>
+                  <div class="v3-msg-body">
+                    <div class="v3-msg-head">
+                      <span class="v3-msg-from">developer</span>
+                      <span class="v3-msg-type-tag" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                      <span class="v3-msg-time">5m</span>
+                    </div>
+                    <div class="v3-msg-text">IMPL-001 started — OAuth2 provider routing</div>
+                  </div>
+                </div>
+
+                <div class="v3-msg">
+                  <div class="v3-msg-icon" style="background:var(--tint-green);color:var(--green)">&#10003;</div>
+                  <div class="v3-msg-body">
+                    <div class="v3-msg-head">
+                      <span class="v3-msg-from">planner</span>
+                      <span class="v3-msg-type-tag" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                      <span class="v3-msg-time">12m</span>
+                    </div>
+                    <div class="v3-msg-text">PLAN-001 complete. 2 parallel tracks designed.</div>
+                  </div>
+                </div>
+
+                <div class="v3-msg">
+                  <div class="v3-msg-icon" style="background:var(--tint-green);color:var(--green)">&#10003;</div>
+                  <div class="v3-msg-body">
+                    <div class="v3-msg-head">
+                      <span class="v3-msg-from">researcher</span>
+                      <span class="v3-msg-type-tag" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                      <span class="v3-msg-time">22m</span>
+                    </div>
+                    <div class="v3-msg-text">RESEARCH-001 complete. 14 integration points mapped.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="v3-handle" onclick="document.getElementById('v3-overlay').classList.remove('open')">
+              <div class="v3-handle-bar"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.sel-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  function v2Tab(btn, idx) {
+    btn.closest('.v2-hud').querySelectorAll('.v2-tab').forEach(t => t.classList.remove('active'));
+    btn.closest('.v2-hud').querySelectorAll('.v2-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('v2-p' + idx).classList.add('active');
+  }
+</script>
+</body>
+</html>
