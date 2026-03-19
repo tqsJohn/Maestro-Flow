@@ -1,6 +1,6 @@
 <div align="center">
 
-# Maestro
+# Maestro-Flow
 
 ### Multi-Agent Workflow Orchestration for Claude Code & Codex
 
@@ -15,7 +15,7 @@
 
 ---
 
-*I don't write code — Claude Code and Codex do. But telling them what to do, in what order, with what context, and verifying the result — that's where all the time goes. Maestro makes that orchestration automatic.*
+*I don't write code — Claude Code and Codex do. But telling them what to do, in what order, with what context, and verifying the result — that's where all the time goes. Maestro-Flow makes that orchestration automatic.*
 
 </div>
 
@@ -25,7 +25,7 @@
 
 This project is a **ground-up rewrite** of [Claude-Code-Workflow (CCW)](https://github.com/catlog22/Claude-Code-Workflow), my earlier multi-CLI orchestration framework. CCW proved that coordinating Claude, Codex, Gemini and other AI agents through structured workflows is powerful — but it grew complex. Too many layers, too many abstractions.
 
-Maestro takes the core ideas that worked and rebuilds them with a clear philosophy: **less ceremony, faster execution.** The spec-driven phase pipeline is inspired by [GET SHIT DONE (GSD)](https://github.com/gsd-build/get-shit-done) — its context engineering approach and atomic commit discipline are genuinely elegant. Maestro adopts those design patterns while adding what GSD doesn't have: a real-time visual dashboard, multi-agent execution with Claude Agent SDK, and an autonomous Commander that keeps the pipeline moving without you.
+Maestro-Flow takes the core ideas that worked and rebuilds them with a clear philosophy: **less ceremony, faster execution.** The spec-driven phase pipeline is inspired by [GET SHIT DONE (GSD)](https://github.com/gsd-build/get-shit-done) — its context engineering approach and atomic commit discipline are genuinely elegant. Maestro-Flow adopts those design patterns while adding what GSD doesn't have: a real-time visual dashboard, multi-agent execution with Claude Agent SDK, and an autonomous Commander that keeps the pipeline moving without you.
 
 **What changed from CCW:**
 - Stripped the heavy session/beat orchestration layer — replaced with lightweight skill-based routing
@@ -44,10 +44,10 @@ Maestro takes the core ideas that worked and rebuilds them with a clear philosop
 
 ## What It Does
 
-You describe what you want. Maestro figures out which agents to use, in what order, with what context — and drives it to completion.
+You describe what you want. Maestro-Flow figures out which agents to use, in what order, with what context — and drives it to completion.
 
 ```bash
-# Natural language — Maestro routes to the optimal command chain
+# Natural language — Maestro-Flow routes to the optimal command chain
 /maestro "implement OAuth2 authentication with refresh tokens"
 
 # Or step by step
@@ -84,7 +84,7 @@ Not everything needs a full pipeline:
 |---------|------|------|
 | `/maestro-quick` | analyze → plan → execute | Quick fixes, small features |
 | Scratch mode | `analyze -q` → `plan --dir` → `execute --dir` | No roadmap, just get it done |
-| `/maestro "..."` | AI-routed command chain | Describe intent, let Maestro decide |
+| `/maestro "..."` | AI-routed command chain | Describe intent, let Maestro-Flow decide |
 
 ---
 
@@ -170,7 +170,7 @@ Quality commands (`review`, `test`, `verify`) automatically create Issues for pr
 
 ## Multi-Agent Execution
 
-Maestro doesn't pick one AI — it uses them together:
+Maestro-Flow doesn't pick one AI — it uses them together:
 
 ```
               ┌────────────────────────────────┐
@@ -221,8 +221,8 @@ Maestro doesn't pick one AI — it uses them together:
 ### Install
 
 ```bash
-git clone https://github.com/catlog22/maestro.git
-cd maestro
+git clone https://github.com/catlog22/Maestro-Flow.git
+cd Maestro-Flow
 npm install && npm run build
 
 # Dashboard
@@ -244,7 +244,7 @@ cd dashboard && npm install && npm run dev
 
 ### MCP Server
 
-Expose Maestro tools to Claude Desktop and other MCP clients:
+Expose Maestro-Flow tools to Claude Desktop and other MCP clients:
 
 ```bash
 npm run mcp  # stdio transport
@@ -294,22 +294,17 @@ maestro/
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Command Usage Guide](docs/command-usage-guide.md) | All 36 commands with workflow diagrams |
-| [Issue-Kanban Integration](docs/issue-kanban-integration.md) | Data model, lifecycle, API, WebSocket, Commander |
-| [Fusion Architecture](docs/fusion-design.md) | System design (directory structure, schemas, principles) |
-| [GSD Architecture Reference](docs/gsd-architecture-reference.md) | Original GSD architecture reference |
+- **[Command Usage Guide](guide/command-usage-guide.md)** — All 36 commands with workflow diagrams, pipeline chaining, Issue closed-loop, and quick channels
 
 ---
 
 ## Acknowledgments
 
-Maestro stands on the shoulders of two projects:
+Maestro-Flow stands on the shoulders of two projects:
 
-- **[GET SHIT DONE](https://github.com/gsd-build/get-shit-done)** by TACHES — The spec-driven development model, context engineering philosophy, and atomic commit discipline that shaped Maestro's pipeline design. GSD proved that structured meta-prompting is the right way to drive AI agents at scale.
+- **[GET SHIT DONE](https://github.com/gsd-build/get-shit-done)** by TACHES — The spec-driven development model, context engineering philosophy, and atomic commit discipline that shaped Maestro-Flow's pipeline design. GSD proved that structured meta-prompting is the right way to drive AI agents at scale.
 
-- **[Claude-Code-Workflow](https://github.com/catlog22/Claude-Code-Workflow)** — The predecessor to Maestro. CCW pioneered multi-CLI orchestration (Gemini + Codex + Qwen + Claude), skill-based workflow routing, and team agent architecture. Maestro is CCW rebuilt from scratch — faster, leaner, with a visual dashboard and autonomous commander.
+- **[Claude-Code-Workflow](https://github.com/catlog22/Claude-Code-Workflow)** — The predecessor to Maestro-Flow. CCW pioneered multi-CLI orchestration (Gemini + Codex + Qwen + Claude), skill-based workflow routing, and team agent architecture. Maestro-Flow is CCW rebuilt from scratch — faster, leaner, with a visual dashboard and autonomous commander.
 
 ## Contributors
 

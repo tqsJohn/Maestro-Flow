@@ -1,6 +1,6 @@
-# Maestro Dashboard
+# Maestro-Flow Dashboard
 
-Real-time project orchestration dashboard with Linear-style Kanban board, multi-agent execution control, and autonomous Commander supervision. Runs at `http://127.0.0.1:3001`.
+Real-time project orchestration dashboard for Maestro-Flow. Linear-style Kanban board, multi-agent execution control, and autonomous Commander supervision. Runs at `http://127.0.0.1:3001`.
 
 ## Views
 
