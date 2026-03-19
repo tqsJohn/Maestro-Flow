@@ -17,32 +17,36 @@ const AVATAR_CONFIG: Record<AgentType, { label: string; color: string; className
   'agent-sdk':   { label: 'S', color: 'var(--color-accent-purple)', className: 'claude' },
 };
 
-export function AssistantMessage({ entry }: { entry: AssistantMessageEntry }) {
+export function AssistantMessage({ entry, isGroupContinuation }: { entry: AssistantMessageEntry; isGroupContinuation?: boolean }) {
   const process = useAgentStore((s) => s.processes[entry.processId]);
   const agentType = process?.type;
   const isActive = process?.status === 'running' || process?.status === 'spawning';
   const cfg = AVATAR_CONFIG[agentType ?? 'claude-code'] ?? AVATAR_CONFIG['claude-code'];
 
   return (
-    <div className="flex gap-[10px] py-[10px]">
-      {/* Agent avatar — text label with optional active pulse */}
-      <div
-        className="relative shrink-0 w-7 h-7 rounded-[8px] flex items-center justify-center mt-[2px] text-[11px] font-bold text-white"
-        style={{ backgroundColor: cfg.color }}
-      >
-        {cfg.label}
-        {isActive && (
-          <span
-            className="absolute inset-[-3px] rounded-[10px] pointer-events-none"
-            style={{
-              border: '1.5px solid currentColor',
-              color: cfg.color,
-              opacity: 0.3,
-              animation: 'avatar-pulse 2.5s ease-in-out infinite',
-            }}
-          />
-        )}
-      </div>
+    <div className="flex gap-[10px]" style={{ paddingTop: isGroupContinuation ? 0 : 10, paddingBottom: 10 }}>
+      {/* Agent avatar — hidden for continuation messages in a group */}
+      {isGroupContinuation ? (
+        <div className="shrink-0 w-7" />
+      ) : (
+        <div
+          className="relative shrink-0 w-7 h-7 rounded-[8px] flex items-center justify-center mt-[2px] text-[11px] font-bold text-white"
+          style={{ backgroundColor: cfg.color }}
+        >
+          {cfg.label}
+          {isActive && (
+            <span
+              className="absolute inset-[-3px] rounded-[10px] pointer-events-none"
+              style={{
+                border: '1.5px solid currentColor',
+                color: cfg.color,
+                opacity: 0.3,
+                animation: 'avatar-pulse 2.5s ease-in-out infinite',
+              }}
+            />
+          )}
+        </div>
+      )}
       <div className="flex-1 min-w-0 flex flex-col gap-2 contain-content">
         {entry.partial ? (
           <div className="text-text-primary text-[13px] leading-[1.75] whitespace-pre-wrap break-words">

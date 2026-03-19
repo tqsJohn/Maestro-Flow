@@ -15,12 +15,12 @@ import { TokenUsage } from './TokenUsage.js';
 // EntryRenderer -- dispatches NormalizedEntry.type to the correct component
 // ---------------------------------------------------------------------------
 
-export function EntryRenderer({ entry }: { entry: NormalizedEntry }) {
+export function EntryRenderer({ entry, isGroupContinuation }: { entry: NormalizedEntry; isGroupContinuation?: boolean }) {
   switch (entry.type) {
     case 'user_message':
       return <UserMessage entry={entry} />;
     case 'assistant_message':
-      return <AssistantMessage entry={entry} />;
+      return <AssistantMessage entry={entry} isGroupContinuation={isGroupContinuation} />;
     case 'thinking':
       return <ThinkingBlock entry={entry} />;
     case 'tool_use':

@@ -30,6 +30,10 @@ const SpecsPage = lazy(() =>
   import('@/client/pages/SpecsPage.js').then((m) => ({ default: m.SpecsPage })),
 );
 
+const TeamsPage = lazy(() =>
+  import('@/client/pages/TeamsPage.js').then((m) => ({ default: m.TeamsPage })),
+);
+
 // ---------------------------------------------------------------------------
 // App — root component with React Router v6 layout routes
 // ---------------------------------------------------------------------------
@@ -93,6 +97,14 @@ export function App() {
             element={
               <Suspense fallback={<LazyFallback />}>
                 <SpecsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="teams"
+            element={
+              <Suspense fallback={<LazyFallback />}>
+                <TeamsPage />
               </Suspense>
             }
           />

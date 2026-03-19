@@ -66,13 +66,26 @@ export function MessageArea({ processId }: { processId: string | null }) {
           atBottomThreshold={60}
           className="h-full"
           style={{ height: '100%' }}
-          itemContent={(_index, entry) => (
-            <div className="max-w-[780px] mx-auto px-6">
-              <EntryContextMenu entry={entry} onCreateIssue={handleCreateIssue}>
-                <EntryRenderer entry={entry} />
-              </EntryContextMenu>
-            </div>
-          )}
+          itemContent={(index, entry) => {
+            // Check if this assistant_message continues a group from the previous assistant_message
+            // (skipping non-visual entries like tool_use, error, status_change between them)
+            let isGroupContinuation = false;
+            if (entry.type === 'assistant_message' && index > 0) {
+              for (let i = index - 1; i >= 0; i--) {
+                const prev = entries[i];
+                if (prev.type === 'assistant_message') { isGroupContinuation = true; break; }
+                if (prev.type === 'user_message') break;
+                // Skip tool_use, error, status_change, token_usage — they don't break the visual group
+              }
+            }
+            return (
+              <div className="max-w-[780px] mx-auto px-6">
+                <EntryContextMenu entry={entry} onCreateIssue={handleCreateIssue}>
+                  <EntryRenderer entry={entry} isGroupContinuation={isGroupContinuation} />
+                </EntryContextMenu>
+              </div>
+            );
+          }}
         />
 
         {/* Floating scroll-to-bottom button */}

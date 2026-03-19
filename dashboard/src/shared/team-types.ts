@@ -1,0 +1,117 @@
+// ---------------------------------------------------------------------------
+// Team Session Types — shared between server and client
+// ---------------------------------------------------------------------------
+
+export interface PipelineNode {
+  id: string;
+  name: string;
+  status: 'done' | 'in_progress' | 'pending' | 'skipped';
+  wave?: number;
+}
+
+export interface TeamRole {
+  name: string;
+  prefix: string;
+  status: 'done' | 'active' | 'pending' | 'injected';
+  taskCount: number;
+  innerLoop: boolean;
+  injected?: boolean;
+  injectionReason?: string;
+}
+
+export interface TeamMessage {
+  id: string;
+  ts: string;
+  from: string;
+  to: string;
+  type: string;
+  summary: string;
+  data?: Record<string, unknown>;
+}
+
+export interface SessionFileEntry {
+  id: string;
+  path: string;
+  name: string;
+  category: 'artifacts' | 'role-specs' | 'session' | 'wisdom' | 'message-bus';
+  status?: string;
+  isNew?: boolean;
+}
+
+export interface TeamSessionSummary {
+  sessionId: string;
+  title: string;
+  description: string;
+  status: 'active' | 'completed' | 'failed' | 'archived';
+  skill: string;
+  roles: string[];
+  taskProgress: { completed: number; total: number };
+  messageCount: number;
+  duration: string;
+  createdAt: string;
+  updatedAt: string;
+  pipelineStages: PipelineNode[];
+}
+
+export interface TeamSessionDetail extends TeamSessionSummary {
+  roleDetails: TeamRole[];
+  messages: TeamMessage[];
+  files: SessionFileEntry[];
+  pipeline: { waves: { number: number; nodes: PipelineNode[] }[] };
+}
+
+// ---------------------------------------------------------------------------
+// Skill prefix → label mapping
+// ---------------------------------------------------------------------------
+
+export const SKILL_PREFIX_MAP: Record<string, string> = {
+  'TC-': 'Coordinate',
+  'TLV4-': 'Lifecycle',
+  'QA-': 'QA',
+  'RV-': 'Review',
+  'TST-': 'Testing',
+  'TFD-': 'Frontend Debug',
+  'TPO-': 'Perf Opt',
+  'TTD-': 'Tech Debt',
+  'TPX-': 'Plan & Execute',
+  'TBS-': 'Brainstorm',
+  'TRD-': 'Roadmap Dev',
+  'TIS-': 'Issue',
+  'TID-': 'Iter Dev',
+  'TUA-': 'Ultra Analyze',
+  'TUX-': 'UX Improve',
+  'TUI-': 'UI Design',
+  'TAO-': 'Arch Opt',
+} as const;
+
+export function inferSkill(sessionId: string): string {
+  for (const [prefix, label] of Object.entries(SKILL_PREFIX_MAP)) {
+    if (sessionId.startsWith(prefix)) return label;
+  }
+  return 'Team';
+}
+
+// ---------------------------------------------------------------------------
+// Status colors for team sessions
+// ---------------------------------------------------------------------------
+
+export const TEAM_STATUS_COLORS: Record<TeamSessionSummary['status'], string> = {
+  active: '#B89540',
+  completed: '#5A9E78',
+  failed: '#C46555',
+  archived: '#A09D97',
+} as const;
+
+export const PIPELINE_STATUS_COLORS: Record<PipelineNode['status'], string> = {
+  done: '#5A9E78',
+  in_progress: '#B89540',
+  pending: '#A09D97',
+  skipped: '#D1CEC8',
+} as const;
+
+export const ROLE_STATUS_COLORS: Record<TeamRole['status'], string> = {
+  done: '#5A9E78',
+  active: '#B89540',
+  pending: '#A09D97',
+  injected: '#8B6BBF',
+} as const;

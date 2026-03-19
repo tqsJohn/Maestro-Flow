@@ -193,6 +193,17 @@ export const LINEAR_API_ENDPOINTS = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Team API endpoint paths
+// ---------------------------------------------------------------------------
+
+export const TEAM_API_ENDPOINTS = {
+  SESSIONS: '/api/teams/sessions',
+  SESSION: '/api/teams/sessions/:sessionId',
+  SESSION_MESSAGES: '/api/teams/sessions/:sessionId/messages',
+  SESSION_FILE: '/api/teams/sessions/:sessionId/files',
+} as const;
+
+// ---------------------------------------------------------------------------
 // WebSocket endpoint
 // ---------------------------------------------------------------------------
 

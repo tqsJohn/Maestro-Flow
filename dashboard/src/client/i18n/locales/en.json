@@ -6,6 +6,7 @@
     "workflow": "Workflow Viewer",
     "mcp": "MCP Manager",
     "specs": "Specs Manager",
+    "teams": "Team Sessions",
     "views": "Views"
   },
   "sidebar": {
@@ -20,6 +21,7 @@
     "workflow_tooltip": "Workflow",
     "mcp_tooltip": "MCP Manager",
     "specs_tooltip": "Specs Manager",
+    "teams_tooltip": "Teams",
     "views_label": "Views",
     "phases_label": "Phases",
     "phase_dot_aria": "Phase {{phase}}: {{title}} — {{status}}"

@@ -80,10 +80,13 @@ function TabButton({
   const dotColor = AGENT_DOT_COLORS[process.type] ?? 'var(--color-text-tertiary)';
   const label = AGENT_LABELS[process.type] ?? process.type;
 
+  const tooltipText = `${label} · ${STATUS_LABELS[process.status] ?? process.status}\n${process.config.prompt.slice(0, 100)}${process.config.prompt.length > 100 ? '…' : ''}\n${formatTime(process.startedAt)} · ${process.type}`;
+
   return (
     <button
       type="button"
       onClick={onClick}
+      title={tooltipText}
       className="group/tab flex items-center gap-[6px] px-3 py-[5px] rounded-[9px] border-none text-[11px] font-medium cursor-pointer transition-all duration-150 shrink-0 relative"
       style={{
         backgroundColor: isActive ? 'var(--color-text-primary)' : 'transparent',
@@ -124,43 +127,6 @@ function TabButton({
           <X size={10} strokeWidth={2} />
         </span>
       )}
-
-      {/* Hover tooltip with detailed info */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2 top-full mt-2 opacity-0 group-hover/tab:opacity-100 pointer-events-none transition-opacity duration-150 z-[200]"
-        style={{ width: 220 }}
-      >
-        <div
-          className="rounded-[8px] p-[10px] text-[11px]"
-          style={{
-            backgroundColor: 'var(--color-text-primary)',
-            color: '#fff',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          }}
-        >
-          <div className="flex items-center gap-[6px] mb-[4px]">
-            <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-            <span className="font-semibold">{label}</span>
-            <span
-              className="ml-auto text-[10px] px-[5px] py-[1px] rounded"
-              style={{
-                backgroundColor: process.status === 'running' ? 'rgba(90,158,120,0.3)' : 'rgba(255,255,255,0.15)',
-                color: process.status === 'running' ? '#8fd4a8' : 'rgba(255,255,255,0.7)',
-              }}
-            >
-              {STATUS_LABELS[process.status] ?? process.status}
-            </span>
-          </div>
-          <div className="text-[10px] mb-[4px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {process.config.prompt.slice(0, 80)}{process.config.prompt.length > 80 ? '…' : ''}
-          </div>
-          <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            <span>{formatTime(process.startedAt)}</span>
-            <span>·</span>
-            <span>{process.type}</span>
-          </div>
-        </div>
-      </div>
     </button>
   );
 }

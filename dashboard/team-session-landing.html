@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Session — Coordinate Detail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.5; background: #FAF8F5; color: #2D2A26; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg: #FAF8F5; --bg2: #F3F0EA; --bg3: #EBE8E1; --card: #FFFFFF;
+      --hover: rgba(45,42,38,0.04); --active: rgba(45,42,38,0.07);
+      --t1: #2D2A26; --t2: #78756F; --t3: #A09D97; --t4: #D1CEC8;
+      --bdr: #E8E5DE; --bdr2: #ECEAE4;
+      --blue: #4A90D9; --green: #3D9B6F; --orange: #D4832E; --yellow: #C99B2D;
+      --purple: #8B6BBF; --red: #D05454; --gray: #A09D97; --cyan: #3BA0B5;
+      --tint-green: #EEF7F2; --tint-yellow: #FDF6E4; --tint-orange: #FDF0E4;
+      --tint-purple: #F3EEF9; --tint-gray: #F2F1EE; --tint-blue: #EDF4FC;
+      --tint-cyan: #E8F6F9; --tint-red: #FCEEEE;
+      --mono: 'JetBrains Mono', 'Consolas', monospace;
+    }
+
+    /* ========== Layout Shell ========== */
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ========== Top Bar ========== */
+    .topbar {
+      display: flex; align-items: center; height: 46px; padding: 0 16px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0; z-index: 200;
+    }
+    .topbar-back {
+      width: 28px; height: 28px; border-radius: 6px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center; justify-content: center;
+      font-size: 16px; transition: all 100ms; margin-right: 8px;
+    }
+    .topbar-back:hover { background: var(--hover); color: var(--t1); }
+    .topbar-title { font-size: 14px; font-weight: 700; color: var(--t1); margin-right: 10px; }
+    .topbar-id { font-size: 10px; font-family: var(--mono); color: var(--t3); background: var(--bg3); padding: 2px 8px; border-radius: 5px; }
+    .topbar-spacer { flex: 1; }
+    .topbar-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--yellow); margin-right: 12px; }
+    .topbar-elapsed { font-size: 11px; color: var(--t3); font-family: var(--mono); }
+
+    /* ========== Shared Tokens ========== */
+    .pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 5px; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s ease infinite; display: inline-block; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+    .st-done { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-running { background: rgba(201,155,45,0.12); color: var(--yellow); }
+    .st-pending { background: rgba(160,157,151,0.12); color: var(--gray); }
+    .st-blocked { background: rgba(208,84,84,0.12); color: var(--red); }
+
+    /* ========== IDE Layout ========== */
+    .ide { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+    /* --- Left Sidebar --- */
+    .sidebar {
+      width: 272px; flex-shrink: 0; background: var(--bg2);
+      border-right: 1px solid var(--bdr); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sb-header {
+      padding: 12px 14px; border-bottom: 1px solid var(--bdr);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .sb-title { font-size: 12px; font-weight: 700; color: var(--t1); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-tag { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 100px; }
+
+    /* Mini DAG overview */
+    .sb-dag { padding: 10px 14px; border-bottom: 1px solid var(--bdr); }
+    .sb-dag-title { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t4); margin-bottom: 6px; }
+    .sb-dag-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 11px; }
+    .sb-dag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .sb-dag-line { width: 1px; height: 8px; background: var(--bdr); margin-left: 3.5px; }
+    .sb-dag-name { flex: 1; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-dag-name.active { color: var(--t1); font-weight: 600; }
+    .sb-dag-st { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+    .sb-dag-parallel {
+      display: flex; gap: 6px; padding-left: 14px; align-items: center;
+    }
+    .sb-dag-parallel::before {
+      content: ''; width: 2px; align-self: stretch; background: var(--yellow); border-radius: 1px; margin-right: 2px; flex-shrink: 0;
+    }
+
+    /* File tree */
+    .sb-scroll { flex: 1; overflow-y: auto; }
+    .sb-section { padding: 8px 0; }
+    .sb-section + .sb-section { border-top: 1px solid var(--bdr2); }
+    .sb-label {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--t4); padding: 0 14px; margin-bottom: 3px;
+      display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+    }
+    .sb-label .caret { font-size: 8px; transition: transform 150ms; }
+    .sb-label .cnt { font-size: 9px; font-weight: 600; background: var(--bg3); padding: 0 5px; border-radius: 100px; color: var(--t3); }
+    .sb-file {
+      display: flex; align-items: center; gap: 7px; padding: 4px 14px 4px 22px;
+      cursor: pointer; font-size: 11px; color: var(--t2); transition: all 100ms;
+      border: none; background: none; width: 100%; text-align: left;
+    }
+    .sb-file:hover { background: var(--hover); color: var(--t1); }
+    .sb-file.active { background: var(--active); color: var(--t1); font-weight: 600; }
+    .sb-file-icon { width: 14px; height: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .sb-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-file-badge { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; flex-shrink: 0; }
+
+    /* Sidebar stats footer */
+    .sb-stats {
+      padding: 8px 14px; border-top: 1px solid var(--bdr);
+      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; flex-shrink: 0;
+    }
+    .sb-stat-label { font-size: 8px; font-weight: 600; text-transform: uppercase; color: var(--t4); }
+    .sb-stat-val { font-size: 13px; font-weight: 700; color: var(--t1); }
+
+    /* --- Main Area --- */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; position: relative; }
+
+    /* Tab bar + Team Status trigger */
+    .tab-bar {
+      display: flex; align-items: center; gap: 0; padding: 0 4px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0; overflow-x: auto;
+    }
+    .tab {
+      display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+      font-size: 11px; font-weight: 500; color: var(--t3);
+      cursor: pointer; border: none; background: none;
+      border-bottom: 2px solid transparent; transition: all 100ms;
+      white-space: nowrap; max-width: 200px;
+    }
+    .tab:hover { color: var(--t1); background: var(--hover); }
+    .tab.active { color: var(--t1); font-weight: 600; background: var(--card); border-bottom-color: var(--blue); }
+    .tab-icon { width: 12px; height: 12px; flex-shrink: 0; }
+    .tab-name { overflow: hidden; text-overflow: ellipsis; }
+    .tab-close {
+      width: 16px; height: 16px; border-radius: 4px; border: none; background: none;
+      cursor: pointer; color: var(--t4); display: flex; align-items: center;
+      justify-content: center; font-size: 12px; flex-shrink: 0;
+    }
+    .tab-close:hover { background: var(--hover); color: var(--t1); }
+    .tab-spacer { flex: 1; }
+
+    /* Team Status trigger button */
+    .status-trigger {
+      display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+      border-radius: 7px; border: 1px solid var(--bdr); background: var(--card);
+      cursor: pointer; font-size: 11px; font-weight: 600; color: var(--t1);
+      transition: all 120ms; margin: 5px 10px; flex-shrink: 0;
+    }
+    .status-trigger:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .status-trigger .tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); animation: pulse 2s ease infinite; }
+
+    /* Viewer area */
+    .viewer { flex: 1; overflow: auto; padding: 24px 32px; background: var(--card); }
+
+    /* Breadcrumb */
+    .breadcrumb { display: flex; align-items: center; gap: 4px; margin-bottom: 16px; font-size: 11px; color: var(--t3); }
+    .breadcrumb span { color: var(--t4); }
+    .breadcrumb a { color: var(--t3); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--t1); }
+    .breadcrumb .current { color: var(--t1); font-weight: 600; }
+
+    /* ========== Markdown Renderer ========== */
+    .md-render { font-size: 13px; color: var(--t1); line-height: 1.7; }
+    .md-render h1 { font-size: 20px; font-weight: 700; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--bdr2); }
+    .md-render h2 { font-size: 16px; font-weight: 700; margin: 20px 0 8px; color: var(--t1); }
+    .md-render h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; color: var(--t1); }
+    .md-render p { margin: 0 0 10px; color: var(--t2); }
+    .md-render ul, .md-render ol { margin: 0 0 10px 20px; color: var(--t2); }
+    .md-render li { margin-bottom: 4px; }
+    .md-render li::marker { color: var(--t4); }
+    .md-render code { font-family: var(--mono); font-size: 12px; background: var(--bg2); padding: 1px 5px; border-radius: 4px; color: var(--red); }
+    .md-render pre { background: #2D2A26; color: #E8E5DE; padding: 14px 16px; border-radius: 8px; margin: 0 0 12px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+    .md-render table { width: 100%; border-collapse: collapse; margin: 0 0 12px; font-size: 12px; }
+    .md-render th { text-align: left; padding: 8px 10px; background: var(--bg2); font-weight: 600; color: var(--t1); border-bottom: 1px solid var(--bdr); }
+    .md-render td { padding: 8px 10px; border-bottom: 1px solid var(--bdr2); color: var(--t2); }
+    .md-render tr:hover td { background: var(--hover); }
+    .md-render blockquote { border-left: 3px solid var(--blue); padding: 6px 14px; margin: 0 0 10px; background: var(--tint-blue); border-radius: 0 6px 6px 0; color: var(--t2); font-size: 12px; }
+    .md-render hr { border: none; border-top: 1px solid var(--bdr2); margin: 16px 0; }
+    .md-render strong { color: var(--t1); }
+
+    /* ========== JSON Renderer ========== */
+    .json-render {
+      font-family: var(--mono); font-size: 12px; line-height: 1.7;
+      background: #1E1D1B; color: #D4D0C8; padding: 16px 18px; border-radius: 10px;
+      overflow: auto; white-space: pre; tab-size: 2;
+    }
+    .json-render .jk { color: #8BB9FE; }
+    .json-render .js { color: #A8D4A2; }
+    .json-render .jn { color: #D4A76A; }
+    .json-render .jb { color: #E8A0BF; }
+    .json-render .jnull { color: #A09D97; }
+    .json-render .jp { color: #78756F; }
+
+
+    /* ================================================================ */
+    /*  Slide-down Status Dashboard (V3)                                 */
+    /* ================================================================ */
+    .v3-backdrop {
+      position: absolute; inset: 0; z-index: 40;
+      background: rgba(45,42,38,0.18); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity 200ms;
+    }
+    .v3-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .v3-panel {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+      background: var(--card); border-bottom: 1px solid var(--bdr);
+      border-radius: 0 0 14px 14px;
+      box-shadow: 0 12px 40px rgba(45,42,38,0.12);
+      transform: translateY(-100%); transition: transform 280ms cubic-bezier(0.34,1.56,0.64,1);
+      max-height: 68vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .v3-backdrop.open .v3-panel { transform: translateY(0); }
+
+    .v3-header {
+      display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+      border-bottom: 1px solid var(--bdr2); flex-shrink: 0;
+    }
+    .v3-title { font-size: 14px; font-weight: 700; color: var(--t1); }
+    .v3-id { font-size: 10px; font-family: var(--mono); color: var(--t3); }
+    .v3-header-spacer { flex: 1; }
+    .v3-close {
+      width: 26px; height: 26px; border-radius: 7px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center;
+      justify-content: center; font-size: 16px; transition: all 100ms;
+    }
+    .v3-close:hover { background: var(--hover); color: var(--t1); }
+
+    .v3-body {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+      flex: 1; overflow: auto;
+    }
+    .v3-col { padding: 14px 18px; }
+    .v3-col + .v3-col { border-left: 1px solid var(--bdr2); }
+    .v3-col-title {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--t4); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .v3-col-title .cnt { background: var(--bg2); padding: 0 5px; border-radius: 100px; font-size: 9px; color: var(--t3); }
+
+    /* Pipeline column */
+    .v3-stats-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .v3-stat-box { flex: 1; text-align: center; padding: 7px; background: var(--bg2); border-radius: 8px; }
+    .v3-stat-val { font-size: 16px; font-weight: 700; color: var(--t1); }
+    .v3-stat-label { font-size: 9px; font-weight: 600; color: var(--t3); text-transform: uppercase; }
+    .v3-dag-wave { margin-bottom: 8px; }
+    .v3-dag-wave-label { font-size: 9px; font-weight: 600; color: var(--t4); margin-bottom: 4px; }
+    .v3-dag-nodes { display: flex; gap: 6px; flex-wrap: wrap; }
+    .v3-dag-node {
+      display: flex; align-items: center; gap: 5px; padding: 5px 10px;
+      border-radius: 8px; border: 1.5px solid var(--bdr); font-size: 10px; cursor: default; transition: all 100ms;
+    }
+    .v3-dag-node:hover { border-color: var(--blue); }
+    .v3-dag-node .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .v3-dag-node .nid { font-family: var(--mono); font-size: 9px; color: var(--t3); }
+    .v3-dag-node .nn { font-weight: 600; color: var(--t1); }
+    .v3-dag-arrow-row { display: flex; align-items: center; gap: 4px; padding: 2px 0 2px 12px; color: var(--t4); font-size: 9px; }
+
+    /* Roles column */
+    .v3-role { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .v3-role + .v3-role { border-top: 1px solid var(--bdr2); }
+    .v3-role-ava {
+      width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center;
+      justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .v3-role-body { flex: 1; min-width: 0; }
+    .v3-role-name { font-size: 12px; font-weight: 600; color: var(--t1); }
+    .v3-role-meta { font-size: 10px; color: var(--t3); }
+    .v3-role-tags { display: flex; gap: 3px; flex-shrink: 0; }
+    .v3-role-tag { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+
+    /* Messages column */
+    .v3-msg { display: flex; gap: 8px; padding: 6px 0; font-size: 11px; align-items: flex-start; }
+    .v3-msg + .v3-msg { border-top: 1px solid var(--bdr2); }
+    .v3-msg-icon {
+      width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px;
+    }
+    .v3-msg-body { flex: 1; min-width: 0; }
+    .v3-msg-head { display: flex; align-items: center; gap: 6px; }
+    .v3-msg-from { font-size: 10px; font-weight: 600; color: var(--t1); }
+    .v3-msg-type-tag { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 100px; }
+    .v3-msg-time { font-size: 9px; font-family: var(--mono); color: var(--t4); margin-left: auto; }
+    .v3-msg-text { font-size: 11px; color: var(--t2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .v3-handle {
+      display: flex; justify-content: center; padding: 5px 0; border-top: 1px solid var(--bdr2); flex-shrink: 0; cursor: pointer;
+    }
+    .v3-handle:hover { background: var(--hover); }
+    .v3-handle-bar { width: 40px; height: 4px; border-radius: 2px; background: var(--t4); }
+
+    /* ========== Scrollbar ========== */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--t4); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== Top Bar ===== -->
+  <nav class="topbar">
+    <button class="topbar-back" title="Back to sessions">&#8592;</button>
+    <span class="topbar-title">Refactor Authentication Module</span>
+    <span class="topbar-id">TC-refactor-auth-module-20260319</span>
+    <div class="topbar-spacer"></div>
+    <span class="topbar-status"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+    <span class="topbar-elapsed">28m elapsed</span>
+  </nav>
+
+  <!-- ===== IDE Layout ===== -->
+  <div class="ide">
+
+    <!-- ===== Left Sidebar ===== -->
+    <aside class="sidebar">
+      <div class="sb-header">
+        <span class="sb-title">Session Explorer</span>
+        <span class="sb-tag st-running" style="font-size:9px">Active</span>
+      </div>
+
+      <!-- Mini DAG overview -->
+      <div class="sb-dag">
+        <div class="sb-dag-title">Pipeline DAG</div>
+        <div class="sb-dag-row">
+          <div class="sb-dag-dot" style="background:var(--green)"></div>
+          <span class="sb-dag-name">RESEARCH-001 Analysis</span>
+          <span class="sb-dag-st st-done">Done</span>
+        </div>
+        <div class="sb-dag-line"></div>
+        <div class="sb-dag-row">
+          <div class="sb-dag-dot" style="background:var(--green)"></div>
+          <span class="sb-dag-name">PLAN-001 Plan</span>
+          <span class="sb-dag-st st-done">Done</span>
+        </div>
+        <div class="sb-dag-line"></div>
+        <div class="sb-dag-parallel">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div class="sb-dag-row" style="padding:1px 0">
+              <div class="sb-dag-dot" style="background:var(--yellow);width:7px;height:7px"></div>
+              <span class="sb-dag-name active">IMPL-001 OAuth2</span>
+              <span class="sb-dag-st st-running" style="font-size:8px">Run</span>
+            </div>
+            <div class="sb-dag-row" style="padding:1px 0">
+              <div class="sb-dag-dot" style="background:var(--yellow);width:7px;height:7px"></div>
+              <span class="sb-dag-name active">IMPL-002 Redis</span>
+              <span class="sb-dag-st st-running" style="font-size:8px">Run</span>
+            </div>
+          </div>
+        </div>
+        <div class="sb-dag-line"></div>
+        <div class="sb-dag-row" style="opacity:0.5">
+          <div class="sb-dag-dot" style="background:var(--gray)"></div>
+          <span class="sb-dag-name">TEST-001 Tests</span>
+          <span class="sb-dag-st st-pending">Wait</span>
+        </div>
+        <div class="sb-dag-line"></div>
+        <div class="sb-dag-row" style="opacity:0.5">
+          <div class="sb-dag-dot" style="background:var(--gray);outline:1.5px dashed var(--purple);outline-offset:1px"></div>
+          <span class="sb-dag-name" style="color:var(--purple)">SEC-001 Audit</span>
+          <span class="sb-dag-st" style="background:rgba(139,107,191,0.12);color:var(--purple);font-size:8px">New</span>
+        </div>
+      </div>
+
+      <!-- File tree -->
+      <div class="sb-scroll">
+        <!-- Artifacts -->
+        <div class="sb-section">
+          <div class="sb-label"><span class="caret">&#9660;</span> ARTIFACTS <span class="cnt">2</span></div>
+          <button class="sb-file active" onclick="openFile('research-md', this)">
+            <div class="sb-file-icon" style="color:var(--blue)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <span class="sb-file-name">RESEARCH-001-analysis.md</span>
+            <span class="sb-file-badge st-done">D</span>
+          </button>
+          <button class="sb-file" onclick="openFile('plan-md', this)">
+            <div class="sb-file-icon" style="color:var(--purple)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <span class="sb-file-name">PLAN-001-impl-plan.md</span>
+            <span class="sb-file-badge st-done">D</span>
+          </button>
+        </div>
+
+        <!-- Role-Specs -->
+        <div class="sb-section">
+          <div class="sb-label"><span class="caret">&#9660;</span> ROLE-SPECS <span class="cnt">4</span></div>
+          <button class="sb-file" onclick="openFile('rs-researcher', this)">
+            <div class="sb-file-icon" style="color:var(--cyan)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg></div>
+            <span class="sb-file-name">researcher.md</span>
+          </button>
+          <button class="sb-file" onclick="openFile('rs-planner', this)">
+            <div class="sb-file-icon" style="color:var(--cyan)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg></div>
+            <span class="sb-file-name">planner.md</span>
+          </button>
+          <button class="sb-file" onclick="openFile('rs-developer', this)">
+            <div class="sb-file-icon" style="color:var(--cyan)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg></div>
+            <span class="sb-file-name">developer.md</span>
+          </button>
+          <button class="sb-file" onclick="openFile('rs-security', this)">
+            <div class="sb-file-icon" style="color:var(--purple)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg></div>
+            <span class="sb-file-name" style="color:var(--purple)">security-expert.md</span>
+            <span class="sb-file-badge" style="background:rgba(139,107,191,0.12);color:var(--purple)">new</span>
+          </button>
+        </div>
+
+        <!-- Session -->
+        <div class="sb-section">
+          <div class="sb-label"><span class="caret">&#9660;</span> SESSION <span class="cnt">2</span></div>
+          <button class="sb-file" onclick="openFile('session-json', this)">
+            <div class="sb-file-icon" style="color:var(--orange)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+            <span class="sb-file-name">team-session.json</span>
+          </button>
+          <button class="sb-file" onclick="openFile('analysis-json', this)">
+            <div class="sb-file-icon" style="color:var(--orange)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+            <span class="sb-file-name">task-analysis.json</span>
+          </button>
+        </div>
+
+        <!-- Wisdom -->
+        <div class="sb-section">
+          <div class="sb-label"><span class="caret">&#9660;</span> WISDOM <span class="cnt">2</span></div>
+          <button class="sb-file" onclick="openFile('wisdom-decisions', this)">
+            <div class="sb-file-icon" style="color:var(--green)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <span class="sb-file-name">decisions.md</span>
+          </button>
+          <button class="sb-file" onclick="openFile('wisdom-learnings', this)">
+            <div class="sb-file-icon" style="color:var(--green)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <span class="sb-file-name">learnings.md</span>
+          </button>
+        </div>
+
+        <!-- Messages -->
+        <div class="sb-section">
+          <div class="sb-label"><span class="caret">&#9660;</span> MESSAGES <span class="cnt">2</span></div>
+          <button class="sb-file" onclick="openFile('msg-meta', this)">
+            <div class="sb-file-icon" style="color:var(--yellow)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+            <span class="sb-file-name">meta.json</span>
+          </button>
+          <button class="sb-file" onclick="openFile('msg-log', this)">
+            <div class="sb-file-icon" style="color:var(--yellow)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <span class="sb-file-name">messages.jsonl</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats footer -->
+      <div class="sb-stats">
+        <div><div class="sb-stat-label">Tasks</div><div class="sb-stat-val">3/6</div></div>
+        <div><div class="sb-stat-label">Roles</div><div class="sb-stat-val">4</div></div>
+        <div><div class="sb-stat-label">Duration</div><div class="sb-stat-val">28m</div></div>
+        <div><div class="sb-stat-label">Files</div><div class="sb-stat-val">12</div></div>
+      </div>
+    </aside>
+
+    <!-- ===== Main Content ===== -->
+    <div class="main">
+
+      <!-- Tab bar -->
+      <div class="tab-bar" id="tab-bar">
+        <button class="tab active" data-file="research-md" onclick="switchTab(this)">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="tab-name">RESEARCH-001-analysis.md</span>
+          <span class="tab-close" onclick="event.stopPropagation();closeTab(this.parentElement)">&times;</span>
+        </button>
+        <div class="tab-spacer"></div>
+        <button class="status-trigger" onclick="toggleStatus()">
+          <span class="tdot"></span>
+          Team Status
+          <span style="font-size:9px;color:var(--t3);font-weight:500">3/6</span>
+          <span style="color:var(--t4);font-size:10px">&#9662;</span>
+        </button>
+      </div>
+
+      <!-- Document Viewer (switchable content panels) -->
+      <div class="viewer" id="viewer">
+
+        <!-- ===== FILE: RESEARCH-001-analysis.md ===== -->
+        <div class="file-content active" id="file-research-md">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">artifacts</a> <span>/</span>
+            <span class="current">RESEARCH-001-analysis.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Authentication Module — Codebase Analysis</h1>
+            <blockquote>Produced by <strong>researcher</strong> role | RESEARCH-001 | self-validated</blockquote>
+            <h2>Executive Summary</h2>
+            <p>The current authentication module uses a custom JWT implementation with in-memory session storage. The module has 14 integration points across 6 services and 3 middleware layers.</p>
+            <h2>Architecture Findings</h2>
+            <h3>Current Session Flow</h3>
+<pre>Client -> auth/middleware.ts -> session/store.ts (in-memory Map)
+       -> jwt/verify.ts -> user/resolver.ts</pre>
+            <h3>Integration Points</h3>
+            <table>
+              <thead><tr><th>Service</th><th>File</th><th>Coupling</th><th>Risk</th></tr></thead>
+              <tbody>
+                <tr><td>API Gateway</td><td><code>src/gateway/auth.ts</code></td><td>Direct import</td><td>High</td></tr>
+                <tr><td>User Service</td><td><code>src/users/auth-check.ts</code></td><td>Token validation</td><td>Medium</td></tr>
+                <tr><td>Payment Service</td><td><code>src/payments/verify.ts</code></td><td>Session lookup</td><td>High</td></tr>
+                <tr><td>WebSocket Hub</td><td><code>src/ws/auth-handler.ts</code></td><td>Token + session</td><td>Medium</td></tr>
+                <tr><td>Admin Panel</td><td><code>src/admin/middleware.ts</code></td><td>RBAC check</td><td>Low</td></tr>
+                <tr><td>Webhook Handler</td><td><code>src/webhooks/auth.ts</code></td><td>API key validation</td><td>Low</td></tr>
+              </tbody>
+            </table>
+            <h2>Breaking Change Risks</h2>
+            <ul>
+              <li><strong>Risk 1</strong>: <code>SessionStore.get()</code> is synchronous — Redis adapter requires async conversion across 8 call sites</li>
+              <li><strong>Risk 2</strong>: JWT payload structure change (adding <code>refresh_token_id</code>) affects all token consumers</li>
+              <li><strong>Risk 3</strong>: Payment service depends on session data shape — needs migration path</li>
+            </ul>
+            <h2>Recommended Approach</h2>
+            <p>Implement adapter pattern for SessionStore to support both sync (in-memory, for tests) and async (Redis) backends. Introduce refresh token rotation with a separate <code>refresh_tokens</code> table rather than embedding in JWT claims.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: PLAN-001-impl-plan.md ===== -->
+        <div class="file-content" id="file-plan-md">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">artifacts</a> <span>/</span>
+            <span class="current">PLAN-001-impl-plan.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Implementation Plan — Auth Refactor</h1>
+            <blockquote>Produced by <strong>planner</strong> role | PLAN-001 | validated against RESEARCH-001</blockquote>
+            <h2>Parallel Track Design</h2>
+            <p>Split into two independent implementation streams to maximize throughput while minimizing merge conflicts:</p>
+            <table>
+              <thead><tr><th>Task</th><th>Track</th><th>Dependencies</th><th>Estimated</th></tr></thead>
+              <tbody>
+                <tr><td>IMPL-001</td><td>OAuth2 + Refresh Tokens</td><td>PLAN-001</td><td>~15m</td></tr>
+                <tr><td>IMPL-002</td><td>Redis Session Storage</td><td>PLAN-001</td><td>~12m</td></tr>
+                <tr><td>TEST-001</td><td>Integration Tests</td><td>IMPL-001, IMPL-002</td><td>~8m</td></tr>
+              </tbody>
+            </table>
+            <h2>Migration Strategy</h2>
+            <p>Adapter pattern for <code>SessionStore</code> — dual backend support (in-memory for tests, Redis for production). No breaking changes to consumer APIs.</p>
+            <h3>Phase 1: OAuth2 Provider Routing</h3>
+            <ul>
+              <li>Create <code>OAuthProviderRegistry</code> with strategy pattern</li>
+              <li>Implement Google, GitHub providers with unified callback handler</li>
+              <li>Add refresh token rotation with configurable TTL</li>
+            </ul>
+            <h3>Phase 2: Redis Session Backend</h3>
+            <ul>
+              <li>Create <code>RedisSessionAdapter</code> implementing <code>SessionStore</code> interface</li>
+              <li>Convert all 8 sync call sites to async/await</li>
+              <li>Add connection pooling and failover to in-memory</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===== FILE: researcher.md ===== -->
+        <div class="file-content" id="file-rs-researcher">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">role-specs</a> <span>/</span>
+            <span class="current">researcher.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Role Spec: researcher</h1>
+            <blockquote>Dynamic role generated by coordinator at session start</blockquote>
+            <table>
+              <thead><tr><th>Property</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Tag</td><td><code>[researcher]</code></td></tr>
+                <tr><td>Prefix</td><td><code>RESEARCH-*</code></td></tr>
+                <tr><td>Inner Loop</td><td>false</td></tr>
+                <tr><td>CLI Tools</td><td>gemini (analysis), qwen (analysis)</td></tr>
+                <tr><td>Message Types</td><td>state_update, impl_complete</td></tr>
+              </tbody>
+            </table>
+            <h2>Responsibility</h2>
+            <p>Explore existing auth module, map all dependencies and integration points, identify breaking change risks and recommend migration approach.</p>
+            <h2>Phase 2: Context Loading</h2>
+            <p>Load upstream state via <code>team_msg(get_state)</code>. Read <code>wisdom/*.md</code> for prior decisions.</p>
+            <h2>Phase 3: Exploration</h2>
+            <p>Map all auth integration points. Identify breaking change risks. Document session storage patterns. Use Grep/Glob for codebase scanning.</p>
+            <h2>Phase 4: Verification</h2>
+            <p>Verify artifact exists with expected content. Update shared state with key findings via <code>team_msg(state_update)</code>.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: planner.md ===== -->
+        <div class="file-content" id="file-rs-planner">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">role-specs</a> <span>/</span>
+            <span class="current">planner.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Role Spec: planner</h1>
+            <blockquote>Dynamic role generated by coordinator at session start</blockquote>
+            <table>
+              <thead><tr><th>Property</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Tag</td><td><code>[planner]</code></td></tr>
+                <tr><td>Prefix</td><td><code>PLAN-*</code></td></tr>
+                <tr><td>Inner Loop</td><td>false</td></tr>
+                <tr><td>Message Types</td><td>state_update, impl_complete</td></tr>
+              </tbody>
+            </table>
+            <h2>Responsibility</h2>
+            <p>Design parallel implementation tracks based on researcher findings. Create migration strategy with zero breaking changes.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: developer.md ===== -->
+        <div class="file-content" id="file-rs-developer">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">role-specs</a> <span>/</span>
+            <span class="current">developer.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Role Spec: developer</h1>
+            <blockquote>Dynamic role generated by coordinator at session start</blockquote>
+            <table>
+              <thead><tr><th>Property</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Tag</td><td><code>[developer]</code></td></tr>
+                <tr><td>Prefix</td><td><code>IMPL-*</code></td></tr>
+                <tr><td>Inner Loop</td><td>true</td></tr>
+                <tr><td>CLI Tools</td><td>gemini (write), qwen (write), codex (write)</td></tr>
+                <tr><td>Message Types</td><td>state_update, impl_complete, capability_gap</td></tr>
+              </tbody>
+            </table>
+            <h2>Responsibility</h2>
+            <p>Implement OAuth2 provider routing and Redis session storage according to implementation plan. May flag <code>capability_gap</code> for specialist injection.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: security-expert.md ===== -->
+        <div class="file-content" id="file-rs-security">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">role-specs</a> <span>/</span>
+            <span class="current">security-expert.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Role Spec: security-expert</h1>
+            <blockquote style="border-left-color:var(--purple);background:var(--tint-purple)"><strong>Injected role</strong> — created at runtime via <code>capability_gap</code> message from developer</blockquote>
+            <table>
+              <thead><tr><th>Property</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Tag</td><td><code>[security-expert]</code></td></tr>
+                <tr><td>Prefix</td><td><code>SECURITY-*</code></td></tr>
+                <tr><td>Inner Loop</td><td>false</td></tr>
+                <tr><td>Trigger</td><td>capability_gap (token storage pattern review)</td></tr>
+                <tr><td>Message Types</td><td>state_update, impl_complete</td></tr>
+              </tbody>
+            </table>
+            <h2>Responsibility</h2>
+            <p>OWASP security audit of token storage implementation. Review refresh token rotation, session fixation prevention, and secure cookie configuration.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: team-session.json ===== -->
+        <div class="file-content" id="file-session-json">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <span class="current">team-session.json</span>
+          </div>
+          <div class="json-render">{
+  <span class="jk">"session_id"</span><span class="jp">:</span> <span class="js">"TC-refactor-auth-module-20260319"</span><span class="jp">,</span>
+  <span class="jk">"skill"</span><span class="jp">:</span> <span class="js">"team-coordinate"</span><span class="jp">,</span>
+  <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"active"</span><span class="jp">,</span>
+  <span class="jk">"created_at"</span><span class="jp">:</span> <span class="js">"2026-03-19T14:02:00Z"</span><span class="jp">,</span>
+  <span class="jk">"objective"</span><span class="jp">:</span> <span class="js">"Refactor authentication module to support OAuth2 providers and Redis session storage"</span><span class="jp">,</span>
+  <span class="jk">"roles"</span><span class="jp">:</span> <span class="jp">[</span>
+    <span class="js">"researcher"</span><span class="jp">,</span> <span class="js">"planner"</span><span class="jp">,</span> <span class="js">"developer"</span><span class="jp">,</span> <span class="js">"security-expert"</span>
+  <span class="jp">],</span>
+  <span class="jk">"tasks"</span><span class="jp">:</span> <span class="jp">{</span>
+    <span class="jk">"total"</span><span class="jp">:</span> <span class="jn">6</span><span class="jp">,</span>
+    <span class="jk">"done"</span><span class="jp">:</span> <span class="jn">3</span><span class="jp">,</span>
+    <span class="jk">"running"</span><span class="jp">:</span> <span class="jn">2</span><span class="jp">,</span>
+    <span class="jk">"pending"</span><span class="jp">:</span> <span class="jn">1</span>
+  <span class="jp">},</span>
+  <span class="jk">"adaptations"</span><span class="jp">:</span> <span class="jp">[</span>
+    <span class="jp">{</span>
+      <span class="jk">"type"</span><span class="jp">:</span> <span class="js">"capability_gap"</span><span class="jp">,</span>
+      <span class="jk">"role_added"</span><span class="jp">:</span> <span class="js">"security-expert"</span><span class="jp">,</span>
+      <span class="jk">"reason"</span><span class="jp">:</span> <span class="js">"Token storage pattern needs OWASP review"</span><span class="jp">,</span>
+      <span class="jk">"at"</span><span class="jp">:</span> <span class="js">"2026-03-19T14:10:22Z"</span>
+    <span class="jp">}</span>
+  <span class="jp">]</span>
+<span class="jp">}</span></div>
+        </div>
+
+        <!-- ===== FILE: task-analysis.json ===== -->
+        <div class="file-content" id="file-analysis-json">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <span class="current">task-analysis.json</span>
+          </div>
+          <div class="json-render">{
+  <span class="jk">"tasks"</span><span class="jp">:</span> <span class="jp">[</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"RESEARCH-001"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"Codebase Analysis"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"researcher"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"done"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[]</span>
+    <span class="jp">},</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"PLAN-001"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"Implementation Plan"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"planner"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"done"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[</span><span class="js">"RESEARCH-001"</span><span class="jp">]</span>
+    <span class="jp">},</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"IMPL-001"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"OAuth2 + Refresh Tokens"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"developer"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"running"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[</span><span class="js">"PLAN-001"</span><span class="jp">]</span>
+    <span class="jp">},</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"IMPL-002"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"Redis Session Storage"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"developer"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"running"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[</span><span class="js">"PLAN-001"</span><span class="jp">]</span>
+    <span class="jp">},</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"TEST-001"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"Integration Tests"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"developer"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"pending"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[</span><span class="js">"IMPL-001"</span><span class="jp">,</span> <span class="js">"IMPL-002"</span><span class="jp">]</span>
+    <span class="jp">},</span>
+    <span class="jp">{</span>
+      <span class="jk">"id"</span><span class="jp">:</span> <span class="js">"SECURITY-001"</span><span class="jp">,</span>
+      <span class="jk">"name"</span><span class="jp">:</span> <span class="js">"Token Security Audit"</span><span class="jp">,</span>
+      <span class="jk">"role"</span><span class="jp">:</span> <span class="js">"security-expert"</span><span class="jp">,</span>
+      <span class="jk">"status"</span><span class="jp">:</span> <span class="js">"pending"</span><span class="jp">,</span>
+      <span class="jk">"depends_on"</span><span class="jp">:</span> <span class="jp">[</span><span class="js">"IMPL-001"</span><span class="jp">,</span> <span class="js">"IMPL-002"</span><span class="jp">]</span><span class="jp">,</span>
+      <span class="jk">"injected"</span><span class="jp">:</span> <span class="jb">true</span>
+    <span class="jp">}</span>
+  <span class="jp">]</span>
+<span class="jp">}</span></div>
+        </div>
+
+        <!-- ===== FILE: decisions.md ===== -->
+        <div class="file-content" id="file-wisdom-decisions">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">wisdom</a> <span>/</span>
+            <span class="current">decisions.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Decisions Log</h1>
+            <h2>D-001: Adapter Pattern for SessionStore</h2>
+            <p><strong>Context:</strong> Need to support both sync (in-memory) and async (Redis) session backends without breaking existing consumers.</p>
+            <p><strong>Decision:</strong> Use adapter pattern — unified interface with <code>SessionStore.create(type)</code> factory. Consumers use async API; in-memory adapter wraps sync in Promise.resolve().</p>
+            <p><strong>Rationale:</strong> Zero breaking changes. Test environments keep fast sync store. Production gets Redis with failover.</p>
+            <hr>
+            <h2>D-002: Separate Refresh Token Table</h2>
+            <p><strong>Context:</strong> Refresh tokens could be embedded in JWT claims or stored separately.</p>
+            <p><strong>Decision:</strong> Separate <code>refresh_tokens</code> table with rotation tracking. JWT contains only access claims + <code>refresh_token_id</code> reference.</p>
+            <p><strong>Rationale:</strong> Enables token revocation, rotation audit trail, and family-based leak detection.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: learnings.md ===== -->
+        <div class="file-content" id="file-wisdom-learnings">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">wisdom</a> <span>/</span>
+            <span class="current">learnings.md</span>
+          </div>
+          <div class="md-render">
+            <h1>Learnings</h1>
+            <h2>L-001: Hidden Sync Dependencies</h2>
+            <p>The <code>SessionStore.get()</code> synchronous API is deeply coupled — 8 call sites across 4 services assume sync return. Converting to async requires careful migration with backward-compatible shim.</p>
+            <h2>L-002: Payment Service Coupling</h2>
+            <p>Payment service directly reads session object shape (accessing <code>session.user.roles</code> and <code>session.metadata.cart_id</code>). Any session schema change must include payment service migration.</p>
+          </div>
+        </div>
+
+        <!-- ===== FILE: meta.json ===== -->
+        <div class="file-content" id="file-msg-meta">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">.msg</a> <span>/</span>
+            <span class="current">meta.json</span>
+          </div>
+          <div class="json-render">{
+  <span class="jk">"session_id"</span><span class="jp">:</span> <span class="js">"TC-refactor-auth-module-20260319"</span><span class="jp">,</span>
+  <span class="jk">"message_count"</span><span class="jp">:</span> <span class="jn">5</span><span class="jp">,</span>
+  <span class="jk">"participants"</span><span class="jp">:</span> <span class="jp">[</span>
+    <span class="js">"coordinator"</span><span class="jp">,</span> <span class="js">"researcher"</span><span class="jp">,</span> <span class="js">"planner"</span><span class="jp">,</span> <span class="js">"developer"</span>
+  <span class="jp">],</span>
+  <span class="jk">"message_types"</span><span class="jp">:</span> <span class="jp">{</span>
+    <span class="jk">"state_update"</span><span class="jp">:</span> <span class="jn">2</span><span class="jp">,</span>
+    <span class="jk">"impl_complete"</span><span class="jp">:</span> <span class="jn">2</span><span class="jp">,</span>
+    <span class="jk">"capability_gap"</span><span class="jp">:</span> <span class="jn">1</span>
+  <span class="jp">},</span>
+  <span class="jk">"last_message_at"</span><span class="jp">:</span> <span class="js">"2026-03-19T14:29:44Z"</span>
+<span class="jp">}</span></div>
+        </div>
+
+        <!-- ===== FILE: messages.jsonl ===== -->
+        <div class="file-content" id="file-msg-log">
+          <div class="breadcrumb">
+            <a href="#">TC-refactor-auth-module</a> <span>/</span>
+            <a href="#">.msg</a> <span>/</span>
+            <span class="current">messages.jsonl</span>
+          </div>
+          <div class="json-render"><span class="jp">{</span><span class="jk">"from"</span><span class="jp">:</span><span class="js">"researcher"</span><span class="jp">,</span> <span class="jk">"type"</span><span class="jp">:</span><span class="js">"impl_complete"</span><span class="jp">,</span> <span class="jk">"task"</span><span class="jp">:</span><span class="js">"RESEARCH-001"</span><span class="jp">,</span> <span class="jk">"at"</span><span class="jp">:</span><span class="js">"14:08:12Z"</span><span class="jp">}</span>
+<span class="jp">{</span><span class="jk">"from"</span><span class="jp">:</span><span class="js">"planner"</span><span class="jp">,</span> <span class="jk">"type"</span><span class="jp">:</span><span class="js">"impl_complete"</span><span class="jp">,</span> <span class="jk">"task"</span><span class="jp">:</span><span class="js">"PLAN-001"</span><span class="jp">,</span> <span class="jk">"at"</span><span class="jp">:</span><span class="js">"14:18:33Z"</span><span class="jp">}</span>
+<span class="jp">{</span><span class="jk">"from"</span><span class="jp">:</span><span class="js">"developer"</span><span class="jp">,</span> <span class="jk">"type"</span><span class="jp">:</span><span class="js">"state_update"</span><span class="jp">,</span> <span class="jk">"task"</span><span class="jp">:</span><span class="js">"IMPL-001"</span><span class="jp">,</span> <span class="jk">"msg"</span><span class="jp">:</span><span class="js">"OAuth2 provider routing started"</span><span class="jp">,</span> <span class="jk">"at"</span><span class="jp">:</span><span class="js">"14:25:11Z"</span><span class="jp">}</span>
+<span class="jp">{</span><span class="jk">"from"</span><span class="jp">:</span><span class="js">"developer"</span><span class="jp">,</span> <span class="jk">"type"</span><span class="jp">:</span><span class="js">"capability_gap"</span><span class="jp">,</span> <span class="jk">"msg"</span><span class="jp">:</span><span class="js">"Token storage needs security expert review"</span><span class="jp">,</span> <span class="jk">"at"</span><span class="jp">:</span><span class="js">"14:29:02Z"</span><span class="jp">}</span>
+<span class="jp">{</span><span class="jk">"from"</span><span class="jp">:</span><span class="js">"coordinator"</span><span class="jp">,</span> <span class="jk">"type"</span><span class="jp">:</span><span class="js">"state_update"</span><span class="jp">,</span> <span class="jk">"msg"</span><span class="jp">:</span><span class="js">"security-expert role-spec generated, SECURITY-001 created"</span><span class="jp">,</span> <span class="jk">"at"</span><span class="jp">:</span><span class="js">"14:29:44Z"</span><span class="jp">}</span></div>
+        </div>
+
+      </div><!-- /viewer -->
+
+      <!-- ===== V3 Slide-down Status Overlay ===== -->
+      <div class="v3-backdrop" id="v3-overlay" onclick="if(event.target===this)closeStatus()">
+        <div class="v3-panel">
+          <div class="v3-header">
+            <span class="v3-title">Team Status</span>
+            <span class="pill st-running" style="font-size:10px"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+            <span class="v3-id">TC-refactor-auth-module-20260319</span>
+            <div class="v3-header-spacer"></div>
+            <span style="font-size:11px;color:var(--t3)">28m elapsed</span>
+            <button class="v3-close" onclick="closeStatus()">&times;</button>
+          </div>
+
+          <div class="v3-body">
+            <!-- Col 1: Pipeline -->
+            <div class="v3-col">
+              <div class="v3-col-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Pipeline <span class="cnt">3/6</span>
+              </div>
+              <div class="v3-stats-row">
+                <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--green)">3</div><div class="v3-stat-label">Done</div></div>
+                <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--yellow)">2</div><div class="v3-stat-label">Running</div></div>
+                <div class="v3-stat-box"><div class="v3-stat-val" style="color:var(--gray)">1</div><div class="v3-stat-label">Pending</div></div>
+              </div>
+              <div>
+                <div class="v3-dag-wave">
+                  <div class="v3-dag-wave-label">Wave 0</div>
+                  <div class="v3-dag-nodes">
+                    <div class="v3-dag-node" style="border-color:var(--green)"><div class="dot" style="background:var(--green)"></div><span class="nid">RESEARCH-001</span><span class="nn">Analysis</span></div>
+                  </div>
+                </div>
+                <div class="v3-dag-arrow-row">&#8595; depends on</div>
+                <div class="v3-dag-wave">
+                  <div class="v3-dag-wave-label">Wave 1</div>
+                  <div class="v3-dag-nodes">
+                    <div class="v3-dag-node" style="border-color:var(--green)"><div class="dot" style="background:var(--green)"></div><span class="nid">PLAN-001</span><span class="nn">Plan</span></div>
+                  </div>
+                </div>
+                <div class="v3-dag-arrow-row">&#8595; depends on</div>
+                <div class="v3-dag-wave">
+                  <div class="v3-dag-wave-label">Wave 2 (parallel)</div>
+                  <div class="v3-dag-nodes">
+                    <div class="v3-dag-node" style="border-color:var(--yellow)"><div class="dot" style="background:var(--yellow)"></div><span class="nid">IMPL-001</span><span class="nn">OAuth2</span></div>
+                    <div class="v3-dag-node" style="border-color:var(--yellow)"><div class="dot" style="background:var(--yellow)"></div><span class="nid">IMPL-002</span><span class="nn">Redis</span></div>
+                  </div>
+                </div>
+                <div class="v3-dag-arrow-row">&#8595; all complete</div>
+                <div class="v3-dag-wave">
+                  <div class="v3-dag-wave-label">Wave 3-4</div>
+                  <div class="v3-dag-nodes">
+                    <div class="v3-dag-node" style="border-color:var(--bdr);opacity:0.5"><div class="dot" style="background:var(--gray)"></div><span class="nid">TEST-001</span><span class="nn">Tests</span></div>
+                    <div class="v3-dag-node" style="border-color:var(--purple);border-style:dashed;opacity:0.5"><div class="dot" style="background:var(--gray)"></div><span class="nid">SEC-001</span><span class="nn" style="color:var(--purple)">Audit</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Col 2: Roles -->
+            <div class="v3-col">
+              <div class="v3-col-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+                Dynamic Roles <span class="cnt">4</span>
+              </div>
+              <div class="v3-role">
+                <div class="v3-role-ava" style="background:var(--blue)">R</div>
+                <div class="v3-role-body">
+                  <div class="v3-role-name">researcher</div>
+                  <div class="v3-role-meta">RESEARCH-* | 1 task | inner_loop: false</div>
+                </div>
+                <div class="v3-role-tags"><span class="v3-role-tag st-done">Done</span></div>
+              </div>
+              <div class="v3-role">
+                <div class="v3-role-ava" style="background:var(--purple)">P</div>
+                <div class="v3-role-body">
+                  <div class="v3-role-name">planner</div>
+                  <div class="v3-role-meta">PLAN-* | 1 task | inner_loop: false</div>
+                </div>
+                <div class="v3-role-tags"><span class="v3-role-tag st-done">Done</span></div>
+              </div>
+              <div class="v3-role">
+                <div class="v3-role-ava" style="background:var(--yellow)">D</div>
+                <div class="v3-role-body">
+                  <div class="v3-role-name">developer</div>
+                  <div class="v3-role-meta">IMPL-* | 2 tasks | inner_loop: true</div>
+                </div>
+                <div class="v3-role-tags"><span class="v3-role-tag st-running">Active</span></div>
+              </div>
+              <div class="v3-role">
+                <div class="v3-role-ava" style="background:var(--red)">S</div>
+                <div class="v3-role-body">
+                  <div class="v3-role-name" style="color:var(--purple)">security-expert</div>
+                  <div class="v3-role-meta">SECURITY-* | 1 task | via capability_gap</div>
+                </div>
+                <div class="v3-role-tags"><span class="v3-role-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">Injected</span></div>
+              </div>
+
+              <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr2);">
+                <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t4);margin-bottom:6px;">Adaptation Log</div>
+                <div style="font-size:11px;color:var(--t2);display:flex;align-items:flex-start;gap:6px;">
+                  <span style="width:6px;height:6px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:5px"></span>
+                  <span><strong style="color:var(--t1)">+security-expert</strong> injected at 8m — developer flagged token storage pattern needs OWASP review</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Col 3: Messages -->
+            <div class="v3-col">
+              <div class="v3-col-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                Message Bus <span class="cnt">5</span>
+              </div>
+              <div class="v3-msg">
+                <div class="v3-msg-icon" style="background:rgba(139,107,191,0.12);color:var(--purple)">!</div>
+                <div class="v3-msg-body">
+                  <div class="v3-msg-head">
+                    <span class="v3-msg-from">developer</span>
+                    <span class="v3-msg-type-tag" style="background:rgba(139,107,191,0.12);color:var(--purple)">capability_gap</span>
+                    <span class="v3-msg-time">1m</span>
+                  </div>
+                  <div class="v3-msg-text">Token storage pattern needs security expert review</div>
+                </div>
+              </div>
+              <div class="v3-msg">
+                <div class="v3-msg-icon" style="background:var(--tint-blue);color:var(--blue)">&#8635;</div>
+                <div class="v3-msg-body">
+                  <div class="v3-msg-head">
+                    <span class="v3-msg-from">coordinator</span>
+                    <span class="v3-msg-type-tag" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                    <span class="v3-msg-time">1m</span>
+                  </div>
+                  <div class="v3-msg-text">New role-spec: security-expert. SECURITY-001 created.</div>
+                </div>
+              </div>
+              <div class="v3-msg">
+                <div class="v3-msg-icon" style="background:var(--tint-yellow);color:var(--yellow)">&#9654;</div>
+                <div class="v3-msg-body">
+                  <div class="v3-msg-head">
+                    <span class="v3-msg-from">developer</span>
+                    <span class="v3-msg-type-tag" style="background:var(--tint-blue);color:var(--blue)">state_update</span>
+                    <span class="v3-msg-time">5m</span>
+                  </div>
+                  <div class="v3-msg-text">IMPL-001 started — OAuth2 provider routing</div>
+                </div>
+              </div>
+              <div class="v3-msg">
+                <div class="v3-msg-icon" style="background:var(--tint-green);color:var(--green)">&#10003;</div>
+                <div class="v3-msg-body">
+                  <div class="v3-msg-head">
+                    <span class="v3-msg-from">planner</span>
+                    <span class="v3-msg-type-tag" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                    <span class="v3-msg-time">12m</span>
+                  </div>
+                  <div class="v3-msg-text">PLAN-001 complete. 2 parallel tracks designed.</div>
+                </div>
+              </div>
+              <div class="v3-msg">
+                <div class="v3-msg-icon" style="background:var(--tint-green);color:var(--green)">&#10003;</div>
+                <div class="v3-msg-body">
+                  <div class="v3-msg-head">
+                    <span class="v3-msg-from">researcher</span>
+                    <span class="v3-msg-type-tag" style="background:var(--tint-green);color:var(--green)">impl_complete</span>
+                    <span class="v3-msg-time">22m</span>
+                  </div>
+                  <div class="v3-msg-text">RESEARCH-001 complete. 14 integration points mapped.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="v3-handle" onclick="closeStatus()">
+            <div class="v3-handle-bar"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /ide -->
+</div><!-- /app -->
+
+<script>
+  // ===== File content data (for tab management) =====
+  const fileNames = {
+    'research-md': 'RESEARCH-001-analysis.md',
+    'plan-md': 'PLAN-001-impl-plan.md',
+    'rs-researcher': 'researcher.md',
+    'rs-planner': 'planner.md',
+    'rs-developer': 'developer.md',
+    'rs-security': 'security-expert.md',
+    'session-json': 'team-session.json',
+    'analysis-json': 'task-analysis.json',
+    'wisdom-decisions': 'decisions.md',
+    'wisdom-learnings': 'learnings.md',
+    'msg-meta': 'meta.json',
+    'msg-log': 'messages.jsonl',
+  };
+
+  const fileIcons = {
+    'research-md': 'var(--blue)', 'plan-md': 'var(--purple)',
+    'rs-researcher': 'var(--cyan)', 'rs-planner': 'var(--cyan)',
+    'rs-developer': 'var(--cyan)', 'rs-security': 'var(--purple)',
+    'session-json': 'var(--orange)', 'analysis-json': 'var(--orange)',
+    'wisdom-decisions': 'var(--green)', 'wisdom-learnings': 'var(--green)',
+    'msg-meta': 'var(--yellow)', 'msg-log': 'var(--yellow)',
+  };
+
+  let openTabs = ['research-md'];
+  let activeTab = 'research-md';
+
+  function openFile(fileId, sidebarBtn) {
+    // Highlight sidebar
+    document.querySelectorAll('.sb-file').forEach(f => f.classList.remove('active'));
+    if (sidebarBtn) sidebarBtn.classList.add('active');
+
+    // Add tab if not open
+    if (!openTabs.includes(fileId)) {
+      openTabs.push(fileId);
+      renderTabs();
+    }
+
+    // Activate
+    activeTab = fileId;
+    renderTabs();
+    showFileContent(fileId);
+  }
+
+  function switchTab(tabBtn) {
+    const fileId = tabBtn.dataset.file;
+    activeTab = fileId;
+
+    // Sync sidebar
+    document.querySelectorAll('.sb-file').forEach(f => f.classList.remove('active'));
+    const sbFile = document.querySelector(`.sb-file[onclick*="${fileId}"]`);
+    if (sbFile) sbFile.classList.add('active');
+
+    renderTabs();
+    showFileContent(fileId);
+  }
+
+  function closeTab(tabBtn) {
+    const fileId = tabBtn.dataset.file;
+    openTabs = openTabs.filter(t => t !== fileId);
+    if (activeTab === fileId) {
+      activeTab = openTabs[openTabs.length - 1] || null;
+    }
+    renderTabs();
+    if (activeTab) showFileContent(activeTab);
+  }
+
+  function renderTabs() {
+    const bar = document.getElementById('tab-bar');
+    const isJson = (id) => id.includes('json') || id.includes('jsonl');
+    let html = '';
+    openTabs.forEach(id => {
+      const isActive = id === activeTab;
+      const color = fileIcons[id] || 'var(--t3)';
+      const icon = isJson(id)
+        ? `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>`
+        : `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      html += `<button class="tab${isActive ? ' active' : ''}" data-file="${id}" onclick="switchTab(this)">
+        ${icon}
+        <span class="tab-name">${fileNames[id]}</span>
+        <span class="tab-close" onclick="event.stopPropagation();closeTab(this.parentElement)">&times;</span>
+      </button>`;
+    });
+    html += `<div class="tab-spacer"></div>
+      <button class="status-trigger" onclick="toggleStatus()">
+        <span class="tdot"></span>
+        Team Status
+        <span style="font-size:9px;color:var(--t3);font-weight:500">3/6</span>
+        <span style="color:var(--t4);font-size:10px">&#9662;</span>
+      </button>`;
+    bar.innerHTML = html;
+  }
+
+  function showFileContent(fileId) {
+    document.querySelectorAll('.file-content').forEach(fc => fc.classList.remove('active'));
+    const target = document.getElementById('file-' + fileId);
+    if (target) target.classList.add('active');
+  }
+
+  // ===== Status overlay =====
+  function toggleStatus() {
+    document.getElementById('v3-overlay').classList.toggle('open');
+  }
+  function closeStatus() {
+    document.getElementById('v3-overlay').classList.remove('open');
+  }
+
+  // ===== Sidebar section collapse =====
+  document.querySelectorAll('.sb-label').forEach(label => {
+    label.addEventListener('click', () => {
+      const section = label.closest('.sb-section');
+      const files = section.querySelectorAll('.sb-file');
+      const caret = label.querySelector('.caret');
+      const isCollapsed = files[0] && files[0].style.display === 'none';
+      files.forEach(f => f.style.display = isCollapsed ? 'flex' : 'none');
+      if (caret) caret.textContent = isCollapsed ? '\u25BC' : '\u25B6';
+    });
+  });
+
+  // Hide inactive file contents
+  document.querySelectorAll('.file-content').forEach(fc => {
+    if (!fc.classList.contains('active')) fc.style.display = 'none';
+  });
+  // Override display with class-based toggle
+  const style = document.createElement('style');
+  style.textContent = '.file-content { display: none; } .file-content.active { display: block; }';
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

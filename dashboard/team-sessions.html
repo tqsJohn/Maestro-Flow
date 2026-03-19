@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Sessions — Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.5; background: #FAF8F5; color: #2D2A26; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg: #FAF8F5; --bg2: #F3F0EA; --bg3: #EBE8E1; --card: #FFFFFF;
+      --hover: rgba(45,42,38,0.04); --active: rgba(45,42,38,0.07);
+      --t1: #2D2A26; --t2: #78756F; --t3: #A09D97; --t4: #D1CEC8;
+      --bdr: #E8E5DE; --bdr2: #ECEAE4;
+      --blue: #4A90D9; --green: #3D9B6F; --orange: #D4832E; --yellow: #C99B2D;
+      --purple: #8B6BBF; --red: #D05454; --gray: #A09D97; --cyan: #3BA0B5;
+      --tint-green: #EEF7F2; --tint-yellow: #FDF6E4; --tint-orange: #FDF0E4;
+      --tint-purple: #F3EEF9; --tint-gray: #F2F1EE; --tint-blue: #EDF4FC;
+      --tint-cyan: #E8F6F9; --tint-red: #FCEEEE;
+      --rail-w: 48px;
+      --mono: 'JetBrains Mono', 'Consolas', monospace;
+    }
+
+    /* ========== Shell ========== */
+    .shell { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ========== TopBar ========== */
+    .topbar {
+      display: flex; align-items: center; height: 48px; padding: 0 20px;
+      background: var(--bg2); border-bottom: 1px solid var(--bdr); flex-shrink: 0; z-index: 100;
+    }
+    .topbar-l { display: flex; align-items: center; gap: 12px; }
+    .brand { font-weight: 700; font-size: 15px; color: var(--t1); }
+    .topbar-sep { color: var(--t4); }
+    .topbar-page { font-size: 13px; font-weight: 600; color: var(--t2); }
+    .topbar-spacer { flex: 1; }
+    .topbar-r { display: flex; align-items: center; gap: 10px; }
+
+    /* ========== Icon Rail ========== */
+    .body { display: flex; flex: 1; overflow: hidden; }
+    .rail {
+      width: var(--rail-w); background: var(--bg2); border-right: 1px solid var(--bdr);
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+      padding-top: 8px; gap: 2px; z-index: 50;
+    }
+    .rail-btn {
+      width: 36px; height: 36px; border-radius: 8px; border: none; background: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--t3); transition: all 150ms; position: relative;
+    }
+    .rail-btn:hover { background: var(--hover); color: var(--t1); }
+    .rail-btn.active { background: var(--active); color: var(--t1); }
+    .rail-btn svg { width: 18px; height: 18px; stroke-width: 1.8; }
+    .rail-btn .tip {
+      position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+      background: var(--t1); color: #fff; font-size: 11px; font-weight: 500;
+      padding: 3px 8px; border-radius: 6px; white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 150ms; z-index: 60;
+    }
+    .rail-btn:hover .tip { opacity: 1; }
+    .rail-sep { width: 24px; height: 1px; background: var(--bdr2); margin: 6px 0; }
+
+    /* ========== Main area ========== */
+    .main { flex: 1; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; min-width: 0; }
+
+    /* ========== Toolbar ========== */
+    .toolbar {
+      display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+      border-bottom: 1px solid var(--bdr2); background: var(--bg); flex-shrink: 0;
+    }
+    .toolbar-title { font-size: 16px; font-weight: 700; color: var(--t1); margin-right: 8px; }
+    .toolbar-cnt { font-size: 11px; color: var(--t3); background: var(--bg2); padding: 2px 8px; border-radius: 100px; font-weight: 600; }
+
+    /* Search */
+    .search-box {
+      display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+      background: var(--card); border: 1px solid var(--bdr); border-radius: 8px;
+      margin-left: 12px; min-width: 200px; transition: border-color 150ms;
+    }
+    .search-box:focus-within { border-color: var(--blue); }
+    .search-box svg { width: 14px; height: 14px; color: var(--t4); flex-shrink: 0; }
+    .search-input {
+      border: none; outline: none; background: none; font-size: 12px; font-family: inherit;
+      color: var(--t1); width: 100%;
+    }
+    .search-input::placeholder { color: var(--t4); }
+
+    .toolbar-spacer { flex: 1; }
+
+    /* Filter chips */
+    .filter-group { display: flex; gap: 4px; align-items: center; }
+    .filter-chip {
+      font-size: 11px; font-weight: 500; padding: 4px 10px;
+      border-radius: 100px; border: 1px solid var(--bdr);
+      background: var(--card); color: var(--t2); cursor: pointer; transition: all 150ms;
+    }
+    .filter-chip:hover { border-color: var(--t3); color: var(--t1); }
+    .filter-chip.active { background: var(--t1); color: #fff; border-color: var(--t1); }
+    .filter-sep { width: 1px; height: 18px; background: var(--bdr2); margin: 0 4px; }
+
+    /* View switch */
+    .view-switch { display: flex; gap: 2px; background: var(--bg2); border-radius: 8px; padding: 2px; margin-left: 8px; }
+    .view-btn {
+      width: 30px; height: 28px; border-radius: 6px; border: none; background: none;
+      cursor: pointer; color: var(--t3); display: flex; align-items: center;
+      justify-content: center; transition: all 120ms;
+    }
+    .view-btn:hover { color: var(--t1); }
+    .view-btn.active { background: var(--card); color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .view-btn svg { width: 16px; height: 16px; }
+
+    /* ========== Content area ========== */
+    .content { flex: 1; overflow: auto; padding: 16px 20px; }
+
+    /* ========== Shared tokens ========== */
+    .pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 5px; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 2s ease infinite; display: inline-block; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+
+    /* Status pills */
+    .st-active { background: rgba(201,155,45,0.12); color: var(--yellow); }
+    .st-done { background: rgba(61,155,111,0.12); color: var(--green); }
+    .st-failed { background: rgba(208,84,84,0.12); color: var(--red); }
+    .st-paused { background: rgba(160,157,151,0.12); color: var(--gray); }
+
+    /* Skill type pills */
+    .sk-tc { background: rgba(74,144,217,0.12); color: var(--blue); }
+    .sk-tlv4 { background: rgba(139,107,191,0.12); color: var(--purple); }
+    .sk-qa { background: rgba(61,155,111,0.12); color: var(--green); }
+    .sk-rv { background: rgba(212,131,46,0.12); color: var(--orange); }
+    .sk-tst { background: rgba(59,160,181,0.12); color: var(--cyan); }
+
+
+    /* ================================================================ */
+    /*  CARD VIEW                                                        */
+    /* ================================================================ */
+    .card-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+    .card-view.hidden { display: none; }
+
+    .session-card {
+      background: var(--card); border-radius: 14px; border: 1px solid var(--bdr2);
+      padding: 16px 18px; cursor: pointer; transition: all 180ms;
+      display: flex; flex-direction: column; gap: 10px; position: relative;
+    }
+    .session-card:hover { border-color: var(--blue); box-shadow: 0 4px 16px rgba(0,0,0,0.06); transform: translateY(-1px); }
+
+    /* Card header row */
+    .sc-head { display: flex; align-items: center; gap: 8px; }
+    .sc-skill-icon {
+      width: 34px; height: 34px; border-radius: 10px; display: flex;
+      align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+      color: #fff; flex-shrink: 0;
+    }
+    .sc-info { flex: 1; min-width: 0; }
+    .sc-title {
+      font-size: 14px; font-weight: 600; color: var(--t1);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sc-id { font-size: 10px; font-family: var(--mono); color: var(--t3); margin-top: 1px; }
+    .sc-status { flex-shrink: 0; }
+
+    /* Card body: objective */
+    .sc-desc {
+      font-size: 12px; color: var(--t2); line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    /* Pipeline mini bar */
+    .sc-pipeline { display: flex; align-items: center; gap: 3px; }
+    .sc-pipe-node {
+      flex: 1; height: 6px; border-radius: 3px; transition: all 200ms;
+    }
+
+    /* Card meta row */
+    .sc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .sc-meta-item {
+      font-size: 10px; color: var(--t3); display: flex; align-items: center; gap: 3px;
+    }
+    .sc-meta-item svg { width: 12px; height: 12px; }
+    .sc-meta-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--t4); }
+
+    /* Card roles row */
+    .sc-roles { display: flex; gap: 4px; }
+    .sc-role-ava {
+      width: 22px; height: 22px; border-radius: 6px; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff;
+      border: 2px solid var(--card);
+    }
+    .sc-role-ava + .sc-role-ava { margin-left: -6px; }
+    .sc-roles-more {
+      width: 22px; height: 22px; border-radius: 6px; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 700; color: var(--t3);
+      background: var(--bg2); border: 2px solid var(--card); margin-left: -6px;
+    }
+
+    /* Card footer */
+    .sc-footer { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--bdr2); }
+    .sc-footer-item { font-size: 10px; color: var(--t3); display: flex; align-items: center; gap: 4px; }
+    .sc-footer-item svg { width: 11px; height: 11px; }
+    .sc-footer-spacer { flex: 1; }
+    .sc-arrow { color: var(--t4); font-size: 14px; transition: color 150ms; }
+    .session-card:hover .sc-arrow { color: var(--blue); }
+
+
+    /* ================================================================ */
+    /*  TABLE VIEW                                                       */
+    /* ================================================================ */
+    .table-view { width: 100%; }
+    .table-view.hidden { display: none; }
+
+    .tbl {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      background: var(--card); border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--bdr2);
+    }
+    .tbl th {
+      text-align: left; padding: 10px 14px; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em; color: var(--t3);
+      background: var(--bg2); border-bottom: 1px solid var(--bdr);
+      position: sticky; top: 0; z-index: 5; white-space: nowrap;
+    }
+    .tbl td {
+      padding: 10px 14px; border-bottom: 1px solid var(--bdr2);
+      font-size: 12px; color: var(--t2); vertical-align: middle;
+    }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr { cursor: pointer; transition: background 100ms; }
+    .tbl tbody tr:hover { background: var(--hover); }
+    .tbl tbody tr:hover td { color: var(--t1); }
+
+    /* Table-specific cells */
+    .tbl-session { display: flex; align-items: center; gap: 10px; min-width: 240px; }
+    .tbl-skill-icon {
+      width: 28px; height: 28px; border-radius: 8px; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .tbl-session-info { flex: 1; min-width: 0; }
+    .tbl-session-name { font-size: 13px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tbl-session-id { font-size: 10px; font-family: var(--mono); color: var(--t4); }
+    .tbl-objective {
+      max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tbl-progress { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+    .tbl-prog-track { flex: 1; height: 5px; background: var(--bg2); border-radius: 100px; overflow: hidden; min-width: 60px; }
+    .tbl-prog-fill { height: 100%; border-radius: 100px; }
+    .tbl-prog-text { font-size: 11px; font-weight: 600; color: var(--t3); white-space: nowrap; min-width: 36px; }
+    .tbl-roles { display: flex; gap: 2px; }
+    .tbl-role-dot {
+      width: 18px; height: 18px; border-radius: 5px; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 700; color: #fff;
+    }
+    .tbl-duration { font-family: var(--mono); font-size: 11px; color: var(--t3); white-space: nowrap; }
+    .tbl-arrow { color: var(--t4); font-size: 14px; }
+    .tbl tbody tr:hover .tbl-arrow { color: var(--blue); }
+
+    /* ========== Summary stats bar ========== */
+    .stats-bar {
+      display: flex; gap: 12px; margin-bottom: 16px;
+    }
+    .stat-card {
+      background: var(--card); border-radius: 12px; padding: 12px 16px;
+      border: 1px solid var(--bdr2); flex: 1; min-width: 0;
+    }
+    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t3); margin-bottom: 2px; }
+    .stat-value { font-size: 22px; font-weight: 700; color: var(--t1); }
+    .stat-sub { font-size: 11px; color: var(--t3); margin-top: 1px; }
+
+    /* ========== Scrollbar ========== */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--t4); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ===== TopBar ===== -->
+  <header class="topbar">
+    <div class="topbar-l">
+      <span class="brand">Maestro</span>
+      <span class="topbar-sep">&middot;</span>
+      <span class="topbar-page">Team Sessions</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-r">
+      <span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> 3 Active</span>
+    </div>
+  </header>
+
+  <div class="body">
+    <!-- ===== Icon Rail ===== -->
+    <nav class="rail">
+      <button class="rail-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="tip">Kanban</span>
+      </button>
+      <button class="rail-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="tip">Specs</span>
+      </button>
+      <button class="rail-btn active" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+        <span class="tip">Teams</span>
+      </button>
+      <button class="rail-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        <span class="tip">Chat</span>
+      </button>
+      <button class="rail-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="tip">Workflow</span>
+      </button>
+      <div class="rail-sep"></div>
+      <button class="rail-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.34-7.66l-1.42 1.42M6.34 17.66l-1.42 1.42m0-14.14l1.42 1.42m11.32 11.32l1.42 1.42"/></svg>
+        <span class="tip">Settings</span>
+      </button>
+    </nav>
+
+    <!-- ===== Main Content ===== -->
+    <div class="main">
+
+      <!-- Toolbar: search, filters, view switch -->
+      <div class="toolbar">
+        <span class="toolbar-title">Sessions</span>
+        <span class="toolbar-cnt">8</span>
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="search-input" type="text" placeholder="Search sessions..." oninput="filterSessions(this.value)">
+        </div>
+        <div class="toolbar-spacer"></div>
+
+        <!-- Status filters -->
+        <div class="filter-group">
+          <button class="filter-chip active" onclick="filterStatus('all', this)">All</button>
+          <button class="filter-chip" onclick="filterStatus('active', this)">Active</button>
+          <button class="filter-chip" onclick="filterStatus('done', this)">Done</button>
+          <button class="filter-chip" onclick="filterStatus('failed', this)">Failed</button>
+        </div>
+        <div class="filter-sep"></div>
+
+        <!-- Skill type filters -->
+        <div class="filter-group">
+          <button class="filter-chip" onclick="filterSkill('tc', this)">TC</button>
+          <button class="filter-chip" onclick="filterSkill('tlv4', this)">TLV4</button>
+          <button class="filter-chip" onclick="filterSkill('qa', this)">QA</button>
+          <button class="filter-chip" onclick="filterSkill('rv', this)">Review</button>
+          <button class="filter-chip" onclick="filterSkill('tst', this)">Test</button>
+        </div>
+        <div class="filter-sep"></div>
+
+        <!-- View switch -->
+        <div class="view-switch">
+          <button class="view-btn active" title="Card view" onclick="switchView('card', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+          <button class="view-btn" title="Table view" onclick="switchView('table', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== Scrollable content ===== -->
+      <div class="content">
+
+        <!-- Summary stats -->
+        <div class="stats-bar">
+          <div class="stat-card">
+            <div class="stat-label">Total Sessions</div>
+            <div class="stat-value">8</div>
+            <div class="stat-sub">across 5 skill types</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Active</div>
+            <div class="stat-value" style="color:var(--yellow)">3</div>
+            <div class="stat-sub">running now</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Completed</div>
+            <div class="stat-value" style="color:var(--green)">4</div>
+            <div class="stat-sub">last 7 days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Roles Spawned</div>
+            <div class="stat-value">28</div>
+            <div class="stat-sub">avg 3.5 per session</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Avg Duration</div>
+            <div class="stat-value">34m</div>
+            <div class="stat-sub">median: 28m</div>
+          </div>
+        </div>
+
+        <!-- ===== CARD VIEW ===== -->
+        <div class="card-view" id="card-view">
+
+          <!-- Card 1: TC Active -->
+          <div class="session-card" data-status="active" data-skill="tc" data-name="Refactor Authentication Module" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--blue)">TC</div>
+              <div class="sc-info">
+                <div class="sc-title">Refactor Authentication Module</div>
+                <div class="sc-id">TC-refactor-auth-module-20260319</div>
+              </div>
+              <span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+            </div>
+            <div class="sc-desc">Refactor authentication module to support OAuth2 providers and Redis session storage with zero breaking changes.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--yellow)"></div>
+              <div class="sc-pipe-node" style="background:var(--yellow)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> 3/6 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 28m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> 5 msgs</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">R</div>
+                <div class="sc-role-ava" style="background:var(--purple)">P</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">D</div>
+                <div class="sc-role-ava" style="background:var(--red)">S</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> +1 injected</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 2: TLV4 Active -->
+          <div class="session-card" data-status="active" data-skill="tlv4" data-name="E-Commerce Platform v2.0" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--purple)">LV</div>
+              <div class="sc-info">
+                <div class="sc-title">E-Commerce Platform v2.0</div>
+                <div class="sc-id">TLV4-ecommerce-platform-20260318</div>
+              </div>
+              <span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+            </div>
+            <div class="sc-desc">Full lifecycle specification and implementation of modern e-commerce platform with product catalog, order management, payment processing.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--yellow)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> 5/8 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 42m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">full-lifecycle</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">A</div>
+                <div class="sc-role-ava" style="background:var(--green)">W</div>
+                <div class="sc-role-ava" style="background:var(--purple)">P</div>
+                <div class="sc-role-ava" style="background:var(--orange)">E</div>
+                <div class="sc-roles-more">+3</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item">7 roles</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 3: QA Active -->
+          <div class="session-card" data-status="active" data-skill="qa" data-name="QA Payment Gateway" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--green)">QA</div>
+              <div class="sc-info">
+                <div class="sc-title">QA Payment Gateway</div>
+                <div class="sc-id">QA-payment-gateway-20260319</div>
+              </div>
+              <span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span>
+            </div>
+            <div class="sc-desc">Full QA pass on payment gateway integration — scan, strategy, test generation, execution, analysis.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--yellow)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> 2/5 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 18m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">L2 coverage: 64%</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">Sc</div>
+                <div class="sc-role-ava" style="background:var(--purple)">St</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">G</div>
+                <div class="sc-role-ava" style="background:var(--orange)">E</div>
+                <div class="sc-role-ava" style="background:var(--green)">An</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item">GC loop: 2</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 4: TC Done -->
+          <div class="session-card" data-status="done" data-skill="tc" data-name="API Rate Limiting" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--blue)">TC</div>
+              <div class="sc-info">
+                <div class="sc-title">API Rate Limiting</div>
+                <div class="sc-id">TC-api-rate-limiting-20260318</div>
+              </div>
+              <span class="pill st-done">Done</span>
+            </div>
+            <div class="sc-desc">Implement per-endpoint rate limiting with Redis sliding window and configurable thresholds.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item">4/4 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">22m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">3 roles</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">R</div>
+                <div class="sc-role-ava" style="background:var(--purple)">P</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">D</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--green)">completed 2h ago</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 5: Review Done -->
+          <div class="session-card" data-status="done" data-skill="rv" data-name="Review Auth Refactor" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--orange)">RV</div>
+              <div class="sc-info">
+                <div class="sc-title">Review Auth Refactor</div>
+                <div class="sc-id">RV-auth-refactor-20260318</div>
+              </div>
+              <span class="pill st-done">Done</span>
+            </div>
+            <div class="sc-desc">3-role code review pipeline: scan for issues, deep review with severity classification, auto-fix critical findings.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item">3/3 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">15m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">4 findings fixed</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">Sc</div>
+                <div class="sc-role-ava" style="background:var(--orange)">Rv</div>
+                <div class="sc-role-ava" style="background:var(--green)">Fx</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--green)">PASS</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 6: Testing Done -->
+          <div class="session-card" data-status="done" data-skill="tst" data-name="Test Coverage Payment" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--cyan)">TS</div>
+              <div class="sc-info">
+                <div class="sc-title">Test Coverage Payment</div>
+                <div class="sc-id">TST-payment-coverage-20260317</div>
+              </div>
+              <span class="pill st-done">Done</span>
+            </div>
+            <div class="sc-desc">Progressive test coverage from L1 (happy path) to L3 (edge cases + error paths) for payment module.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item">4/4 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">38m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">L3 coverage: 91%</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--purple)">St</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">G</div>
+                <div class="sc-role-ava" style="background:var(--orange)">E</div>
+                <div class="sc-role-ava" style="background:var(--green)">An</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--green)">GC converged</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 7: TC Done -->
+          <div class="session-card" data-status="done" data-skill="tc" data-name="WebSocket Connection Manager" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--blue)">TC</div>
+              <div class="sc-info">
+                <div class="sc-title">WebSocket Connection Manager</div>
+                <div class="sc-id">TC-ws-connection-mgr-20260316</div>
+              </div>
+              <span class="pill st-done">Done</span>
+            </div>
+            <div class="sc-desc">Implement WebSocket connection pooling, heartbeat monitoring, and automatic reconnection with backoff.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item">5/5 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">35m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">3 roles</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">R</div>
+                <div class="sc-role-ava" style="background:var(--purple)">A</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">D</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--green)">completed 1d ago</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+          <!-- Card 8: TC Failed -->
+          <div class="session-card" data-status="failed" data-skill="tc" data-name="Migrate Legacy Cron Jobs" onclick="goDetail('team-session-landing.html')">
+            <div class="sc-head">
+              <div class="sc-skill-icon" style="background:var(--blue)">TC</div>
+              <div class="sc-info">
+                <div class="sc-title">Migrate Legacy Cron Jobs</div>
+                <div class="sc-id">TC-migrate-cron-jobs-20260315</div>
+              </div>
+              <span class="pill st-failed">Failed</span>
+            </div>
+            <div class="sc-desc">Migrate 12 legacy cron jobs to modern task queue architecture. Failed at database schema migration step.</div>
+            <div class="sc-pipeline">
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--green)"></div>
+              <div class="sc-pipe-node" style="background:var(--red)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+              <div class="sc-pipe-node" style="background:var(--bg3)"></div>
+            </div>
+            <div class="sc-meta">
+              <span class="sc-meta-item">2/5 tasks</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item">41m</span>
+              <span class="sc-meta-sep"></span>
+              <span class="sc-meta-item" style="color:var(--red)">error: schema conflict</span>
+            </div>
+            <div class="sc-footer">
+              <div class="sc-roles">
+                <div class="sc-role-ava" style="background:var(--blue)">R</div>
+                <div class="sc-role-ava" style="background:var(--purple)">P</div>
+                <div class="sc-role-ava" style="background:var(--yellow)">D</div>
+              </div>
+              <div class="sc-footer-spacer"></div>
+              <span class="sc-footer-item" style="color:var(--red)">failed 3d ago</span>
+              <span class="sc-arrow">&#8594;</span>
+            </div>
+          </div>
+
+        </div><!-- /card-view -->
+
+        <!-- ===== TABLE VIEW ===== -->
+        <div class="table-view hidden" id="table-view">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Skill</th>
+                <th>Status</th>
+                <th>Objective</th>
+                <th>Progress</th>
+                <th>Roles</th>
+                <th>Duration</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-status="active" data-skill="tc" data-name="Refactor Authentication Module" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--blue)">TC</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">Refactor Authentication Module</div>
+                      <div class="tbl-session-id">TC-refactor-auth-module-20260319</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tc" style="font-size:9px">team-coordinate</span></td>
+                <td><span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span></td>
+                <td class="tbl-objective">OAuth2 + Redis session storage with zero breaking changes</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:50%;background:var(--yellow)"></div></div>
+                    <span class="tbl-prog-text">3/6</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">R</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">P</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">D</div>
+                    <div class="tbl-role-dot" style="background:var(--red)">S</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">28m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="active" data-skill="tlv4" data-name="E-Commerce Platform v2.0" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--purple)">LV</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">E-Commerce Platform v2.0</div>
+                      <div class="tbl-session-id">TLV4-ecommerce-platform-20260318</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tlv4" style="font-size:9px">team-lifecycle-v4</span></td>
+                <td><span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span></td>
+                <td class="tbl-objective">Full lifecycle spec + impl for e-commerce platform</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:62%;background:var(--yellow)"></div></div>
+                    <span class="tbl-prog-text">5/8</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">A</div>
+                    <div class="tbl-role-dot" style="background:var(--green)">W</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">P</div>
+                    <div class="tbl-role-dot" style="background:var(--orange)">E</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">42m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="active" data-skill="qa" data-name="QA Payment Gateway" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--green)">QA</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">QA Payment Gateway</div>
+                      <div class="tbl-session-id">QA-payment-gateway-20260319</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-qa" style="font-size:9px">team-quality-assurance</span></td>
+                <td><span class="pill st-active"><span class="pulse-dot" style="background:var(--yellow)"></span> Active</span></td>
+                <td class="tbl-objective">Full QA pass on payment gateway integration</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:40%;background:var(--yellow)"></div></div>
+                    <span class="tbl-prog-text">2/5</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">Sc</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">St</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">G</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">18m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="done" data-skill="tc" data-name="API Rate Limiting" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--blue)">TC</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">API Rate Limiting</div>
+                      <div class="tbl-session-id">TC-api-rate-limiting-20260318</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tc" style="font-size:9px">team-coordinate</span></td>
+                <td><span class="pill st-done">Done</span></td>
+                <td class="tbl-objective">Per-endpoint rate limiting with Redis sliding window</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:100%;background:var(--green)"></div></div>
+                    <span class="tbl-prog-text">4/4</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">R</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">P</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">D</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">22m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="done" data-skill="rv" data-name="Review Auth Refactor" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--orange)">RV</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">Review Auth Refactor</div>
+                      <div class="tbl-session-id">RV-auth-refactor-20260318</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-rv" style="font-size:9px">team-review</span></td>
+                <td><span class="pill st-done">Done</span></td>
+                <td class="tbl-objective">3-role code review with severity classification</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:100%;background:var(--green)"></div></div>
+                    <span class="tbl-prog-text">3/3</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">Sc</div>
+                    <div class="tbl-role-dot" style="background:var(--orange)">Rv</div>
+                    <div class="tbl-role-dot" style="background:var(--green)">Fx</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">15m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="done" data-skill="tst" data-name="Test Coverage Payment" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--cyan)">TS</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">Test Coverage Payment</div>
+                      <div class="tbl-session-id">TST-payment-coverage-20260317</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tst" style="font-size:9px">team-testing</span></td>
+                <td><span class="pill st-done">Done</span></td>
+                <td class="tbl-objective">Progressive L1-L3 test coverage for payment module</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:100%;background:var(--green)"></div></div>
+                    <span class="tbl-prog-text">4/4</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--purple)">St</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">G</div>
+                    <div class="tbl-role-dot" style="background:var(--orange)">E</div>
+                    <div class="tbl-role-dot" style="background:var(--green)">An</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">38m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="done" data-skill="tc" data-name="WebSocket Connection Manager" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--blue)">TC</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">WebSocket Connection Manager</div>
+                      <div class="tbl-session-id">TC-ws-connection-mgr-20260316</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tc" style="font-size:9px">team-coordinate</span></td>
+                <td><span class="pill st-done">Done</span></td>
+                <td class="tbl-objective">WebSocket pooling, heartbeat, auto-reconnection</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:100%;background:var(--green)"></div></div>
+                    <span class="tbl-prog-text">5/5</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">R</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">A</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">D</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">35m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+              <tr data-status="failed" data-skill="tc" data-name="Migrate Legacy Cron Jobs" onclick="goDetail('team-session-landing.html')">
+                <td>
+                  <div class="tbl-session">
+                    <div class="tbl-skill-icon" style="background:var(--blue)">TC</div>
+                    <div class="tbl-session-info">
+                      <div class="tbl-session-name">Migrate Legacy Cron Jobs</div>
+                      <div class="tbl-session-id">TC-migrate-cron-jobs-20260315</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="pill sk-tc" style="font-size:9px">team-coordinate</span></td>
+                <td><span class="pill st-failed">Failed</span></td>
+                <td class="tbl-objective">Migrate 12 legacy cron jobs to task queue architecture</td>
+                <td>
+                  <div class="tbl-progress">
+                    <div class="tbl-prog-track"><div class="tbl-prog-fill" style="width:40%;background:var(--red)"></div></div>
+                    <span class="tbl-prog-text">2/5</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="tbl-roles">
+                    <div class="tbl-role-dot" style="background:var(--blue)">R</div>
+                    <div class="tbl-role-dot" style="background:var(--purple)">P</div>
+                    <div class="tbl-role-dot" style="background:var(--yellow)">D</div>
+                  </div>
+                </td>
+                <td class="tbl-duration">41m</td>
+                <td><span class="tbl-arrow">&#8594;</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- /content -->
+    </div><!-- /main -->
+  </div><!-- /body -->
+</div><!-- /shell -->
+
+<script>
+  // ===== View switch =====
+  function switchView(view, btn) {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const cardView = document.getElementById('card-view');
+    const tableView = document.getElementById('table-view');
+
+    if (view === 'card') {
+      cardView.classList.remove('hidden');
+      tableView.classList.add('hidden');
+    } else {
+      cardView.classList.add('hidden');
+      tableView.classList.remove('hidden');
+    }
+  }
+
+  // ===== Navigate to detail =====
+  function goDetail(url) {
+    window.location.href = url;
+  }
+
+  // ===== Status filter =====
+  let currentStatus = 'all';
+  let currentSkill = null;
+
+  function filterStatus(status, btn) {
+    currentStatus = status;
+    // Update chip UI
+    btn.closest('.filter-group').querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilters();
+  }
+
+  function filterSkill(skill, btn) {
+    if (btn.classList.contains('active')) {
+      btn.classList.remove('active');
+      currentSkill = null;
+    } else {
+      btn.closest('.filter-group').querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      currentSkill = skill;
+    }
+    applyFilters();
+  }
+
+  function filterSessions(query) {
+    const q = query.toLowerCase().trim();
+    // Apply to cards
+    document.querySelectorAll('.session-card').forEach(card => {
+      const name = (card.dataset.name || '').toLowerCase();
+      const matchesSearch = !q || name.includes(q);
+      const matchesStatus = currentStatus === 'all' || card.dataset.status === currentStatus;
+      const matchesSkill = !currentSkill || card.dataset.skill === currentSkill;
+      card.style.display = (matchesSearch && matchesStatus && matchesSkill) ? '' : 'none';
+    });
+    // Apply to table rows
+    document.querySelectorAll('.tbl tbody tr').forEach(row => {
+      const name = (row.dataset.name || '').toLowerCase();
+      const matchesSearch = !q || name.includes(q);
+      const matchesStatus = currentStatus === 'all' || row.dataset.status === currentStatus;
+      const matchesSkill = !currentSkill || row.dataset.skill === currentSkill;
+      row.style.display = (matchesSearch && matchesStatus && matchesSkill) ? '' : 'none';
+    });
+  }
+
+  function applyFilters() {
+    const searchInput = document.querySelector('.search-input');
+    filterSessions(searchInput ? searchInput.value : '');
+  }
+</script>
+</body>
+</html>

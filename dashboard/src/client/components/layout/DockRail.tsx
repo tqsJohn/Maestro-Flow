@@ -6,6 +6,7 @@ import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
 import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import Layers from 'lucide-react/dist/esm/icons/layers.js';
 import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Users from 'lucide-react/dist/esm/icons/users.js';
 import PanelLeft from 'lucide-react/dist/esm/icons/panel-left.js';
 import Plus from 'lucide-react/dist/esm/icons/plus.js';
 import { useBoardStore } from '@/client/store/board-store.js';
@@ -25,7 +26,7 @@ interface DockNavItem {
   labelKey: string;
   tooltipKey: string;
   path: string;
-  icon: 'kanban' | 'artifacts' | 'chat' | 'workflow' | 'mcp' | 'specs';
+  icon: 'kanban' | 'artifacts' | 'chat' | 'workflow' | 'mcp' | 'specs' | 'teams';
   shortcut?: string;
 }
 
@@ -36,6 +37,7 @@ const NAV_ITEMS: DockNavItem[] = [
   { labelKey: 'nav.workflow', tooltipKey: 'dock.workflow_tooltip', path: '/workflow', icon: 'workflow', shortcut: 'W' },
   { labelKey: 'nav.mcp', tooltipKey: 'dock.mcp_tooltip', path: '/mcp', icon: 'mcp', shortcut: 'M' },
   { labelKey: 'nav.specs', tooltipKey: 'dock.specs_tooltip', path: '/specs', icon: 'specs', shortcut: 'S' },
+  { labelKey: 'nav.teams', tooltipKey: 'dock.teams_tooltip', path: '/teams', icon: 'teams', shortcut: 'T' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -288,6 +290,7 @@ const NAV_ICON_MAP = {
   workflow: Clock,
   mcp: Layers,
   specs: BookOpen,
+  teams: Users,
 } as const;
 
 function NavIcon({ icon }: { icon: DockNavItem['icon'] }) {

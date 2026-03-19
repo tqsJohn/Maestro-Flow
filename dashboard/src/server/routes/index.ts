@@ -20,6 +20,7 @@ import { createCliHistoryRoutes } from './cli-history.js';
 import { createMcpRoutes } from './mcp.js';
 import { createSpecsRoutes } from './specs.js';
 import { createLinearRoutes } from './linear.js';
+import { createTeamRoutes } from './teams.js';
 import { createCommanderRoutes } from '../commander/commander-routes.js';
 
 /**
@@ -80,6 +81,9 @@ export function createRoutes(
 
   // Linear API proxy routes (needs workflowRoot for import/export)
   routes.route('/', createLinearRoutes(workflowRoot));
+
+  // Team session routes (reads from .workflow/.team/)
+  routes.route('/', createTeamRoutes(workflowRoot));
 
   // Commander routes (depends on CommanderAgent)
   if (commanderAgent) {
