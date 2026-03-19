@@ -35,4 +35,5 @@ Follow '~/.maestro/workflows/sync.md' completely.
 - [ ] Codebase docs refreshed for all affected components
 - [ ] doc-index.json reflects current file state
 - [ ] Changes tracked and logged
+- [ ] project-tech.json refreshed if dependency manifests changed
 </success_criteria>

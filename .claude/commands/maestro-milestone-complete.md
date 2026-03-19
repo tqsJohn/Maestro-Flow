@@ -48,5 +48,6 @@ Follow '~/.maestro/workflows/milestone-complete.md' completely.
 - [ ] Milestone marked complete in state.json with timestamp
 - [ ] Milestone summary generated with outcomes and learnings
 - [ ] Roadmap snapshot saved to milestones directory
+- [ ] project.md Context updated with milestone summary and key learnings
 - [ ] state.json updated with next milestone as current
 </success_criteria>

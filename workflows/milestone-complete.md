@@ -86,6 +86,28 @@ Check existing entries to avoid duplicates when appending in Step 3.
 
 ---
 
+## Step 3.5: Update project.md Context
+
+```
+Read .workflow/project.md
+
+a. Append milestone summary to "## Context" section:
+   - Milestone version, completion date
+   - Key learnings summary (top 3 from Step 3 aggregated learnings)
+   - Significant strategy adjustments that affect future work
+
+   Format:
+     **Milestone {milestone} ({date})**: {1-2 sentence summary of what was accomplished
+     and key insights that inform future work.}
+
+b. Update "Last updated" footer timestamp
+
+Write updated project.md
+Display: "project.md: Context updated with milestone {milestone} summary"
+```
+
+---
+
 ## Step 4: Update State
 
 1. Update `.workflow/state.json`:

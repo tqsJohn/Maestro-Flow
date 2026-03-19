@@ -80,6 +80,7 @@ Both modes (full + quick):
 - [ ] Decision Recording Protocol applied to all decisions
 - [ ] Scope creep redirected to Deferred section
 - [ ] Deferred items auto-created as issues (if any)
+- [ ] project.md Key Decisions updated with Locked decisions (phase mode)
 - [ ] Next step selection handled
 - [ ] index.json timestamps updated
 </success_criteria>

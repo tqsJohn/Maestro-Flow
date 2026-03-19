@@ -214,6 +214,37 @@ IF file exists ".workflow/issues/issues.jsonl":
     Display: "Auto-closed {count} non-critical issues on phase transition"
 ```
 
+### Step 5.2: Update Project Artifacts
+
+```
+a. Update project.md Requirements (Active → Validated):
+   Read .workflow/roadmap.md
+   Find the completed phase entry, extract its Requirements field (REQ-IDs)
+   Read .workflow/project.md
+
+   For each REQ-ID mapped to this phase:
+     In project.md "### Active" section:
+       Find the line containing the REQ-ID or its description
+       Change "- [ ]" to "- [x]"
+     Move the checked line to "### Validated" section
+       (append below the last entry or the "(None yet)" placeholder)
+     If "(None yet — ship to validate)" placeholder exists in Validated:
+       Remove the placeholder line
+
+   Write updated project.md
+   Display: "project.md: {count} requirements moved Active → Validated"
+
+b. Update roadmap.md phase status:
+   Read .workflow/roadmap.md
+   Find the completed phase heading or entry (Phase {NN})
+   Append status marker to the phase title line: " ✅ COMPLETED"
+     e.g., "### Phase 1: Authentication" → "### Phase 1: Authentication ✅ COMPLETED"
+   If the phase entry has a Status field: set to "completed"
+
+   Write updated roadmap.md
+   Display: "roadmap.md: Phase {NN} marked as completed"
+```
+
 ### Step 6: Report and Route
 
 ```
@@ -265,6 +296,8 @@ Route to next action:
 | `.workflow/phases/{NN}-{slug}/index.json` | Updated: status="completed", completed_at set |
 | `.workflow/state.json` | Updated: current_phase advanced, phases_summary updated |
 | `.workflow/specs/learnings.md` | Appended with extracted learnings |
+| `.workflow/project.md` | Updated: completed requirements moved Active → Validated |
+| `.workflow/roadmap.md` | Updated: completed phase marked with ✅ COMPLETED |
 
 ## State Transitions
 

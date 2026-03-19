@@ -258,6 +258,34 @@ Write .workflow/codebase/feature-maps/_index.md:
   *{count} features mapped*
 ```
 
+### Step 8.5: Update State and Project Artifacts
+
+```
+a. Update state.json:
+   Read .workflow/state.json
+   Set last_codebase_rebuild: "{ISO timestamp}"
+   Set last_updated: "{ISO timestamp}"
+   Write updated state.json
+
+b. Update project-tech.json (if exists):
+   Read .workflow/project-tech.json
+   Compare detected tech stack (from Step 2 scan) against existing entries:
+     - New languages, frameworks, databases, tools discovered
+     - Version changes detected (from package.json, go.mod, pyproject.toml, etc.)
+   If differences found:
+     Update project-tech.json with current detected stack
+     Display: "project-tech.json: updated with {count} changes"
+
+c. Update project.md Tech Stack (if exists):
+   Read .workflow/project.md
+   Compare "## Tech Stack" section against detected stack from Step 2
+   If new entries or changes detected:
+     Update the Tech Stack section with current values
+     Update the "Last updated" footer timestamp
+     Write updated project.md
+     Display: "project.md: Tech Stack section refreshed"
+```
+
 ### Step 9: Report and Commit
 
 ```
@@ -299,3 +327,6 @@ Suggest next:
 | `.workflow/codebase/tech-registry/{slug}.md` | Per-component documentation |
 | `.workflow/codebase/feature-maps/_index.md` | Feature index |
 | `.workflow/codebase/feature-maps/{slug}.md` | Per-feature documentation |
+| `.workflow/state.json` | Updated: last_codebase_rebuild timestamp |
+| `.workflow/project-tech.json` | Updated: detected tech stack changes |
+| `.workflow/project.md` | Updated: Tech Stack section refreshed |

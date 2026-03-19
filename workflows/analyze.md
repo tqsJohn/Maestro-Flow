@@ -518,7 +518,24 @@ Write to `OUTPUT_DIR/context.md`:
 {relevant code references from exploration or discussion}
 ```
 
-**8.6: Auto-create Issues from Deferred Items**
+**8.6: Update project.md Key Decisions** (phase mode only)
+
+```
+IF phase mode AND Locked decisions exist:
+  Read .workflow/project.md
+  Find "## Key Decisions" table
+
+  For each Locked decision from Step 8.4:
+    Check if decision already exists in Key Decisions table (by title match)
+    If not duplicate:
+      Append row to Key Decisions table:
+        | {decision title} | {rationale summary} | Phase {NN} — {date} |
+
+  Write updated project.md
+  Display: "project.md: {count} key decisions recorded"
+```
+
+**8.7: Auto-create Issues from Deferred Items**
 
 ```
 deferred_items = decisions.filter(d => d.classification == "Deferred")

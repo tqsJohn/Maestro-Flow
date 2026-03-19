@@ -53,4 +53,6 @@ Follow '~/.maestro/workflows/phase-transition.md' completely.
 - [ ] Next phase index.json initialized with status = "pending"
 - [ ] state.json current_phase updated to next phase number
 - [ ] Learnings extracted and appended to specs/learnings.md
+- [ ] project.md requirements moved Active → Validated for completed phase
+- [ ] roadmap.md phase marked as ✅ COMPLETED
 </success_criteria>
