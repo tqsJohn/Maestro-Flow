@@ -210,6 +210,36 @@ describe('Execution routes + Scheduler integration', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('rejects invalid executor in batch', async () => {
+      const { app } = createApp();
+      const res = await app.request('/api/execution/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueIds: ['ISS-001'], executor: 'invalid-tool' }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toContain('executor');
+    });
+
+    it('returns 500 when executeBatch throws', async () => {
+      const { app, scheduler } = createApp();
+      (scheduler.executeBatch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Batch execution failed'),
+      );
+
+      const res = await app.request('/api/execution/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueIds: ['ISS-001', 'ISS-002'] }),
+      });
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Batch execution failed');
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -283,6 +313,39 @@ describe('Execution routes + Scheduler integration', () => {
       expect(res.status).toBe(200);
       expect(calls.some((c) => c.method === 'updateConfig')).toBe(true);
       expect(calls.some((c) => c.method === 'startSupervisor')).toBe(true);
+    });
+
+    it('returns 500 when supervisor config throws', async () => {
+      const { app, scheduler } = createApp();
+      (scheduler.updateConfig as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('Invalid config value');
+      });
+
+      const res = await app.request('/api/execution/supervisor', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: { maxConcurrency: -999 } }),
+      });
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid config value');
+    });
+  });
+
+  // --- Cancel error handling ---
+  describe('POST /api/execution/cancel/:id — error paths', () => {
+    it('returns 500 when cancelIssue throws', async () => {
+      const { app, scheduler } = createApp();
+      (scheduler.cancelIssue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Issue not in running or queued state'),
+      );
+
+      const res = await app.request('/api/execution/cancel/ISS-unknown', { method: 'POST' });
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Issue not in running or queued state');
     });
   });
 });

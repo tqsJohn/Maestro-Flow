@@ -1,17 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { readFile } from 'node:fs/promises';
 
-// Mock the Agent SDK before importing CommanderAgent
+// Must mock BEFORE importing CommanderAgent
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }));
 
-// Mock fs/promises for readIssuesJsonl
-vi.mock('node:fs/promises', () => ({
-  readFile: vi.fn().mockRejectedValue(new Error('ENOENT')),
-}));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const orig = await importOriginal() as Record<string, unknown>;
+  return { ...orig, readFile: vi.fn().mockRejectedValue(new Error('ENOENT')) };
+});
 
-// Mock commander-config
 vi.mock('./commander-config.js', () => ({
   loadCommanderConfig: vi.fn().mockResolvedValue({}),
   PROFILES: {
@@ -20,6 +18,7 @@ vi.mock('./commander-config.js', () => ({
   },
 }));
 
+import { readFile } from 'node:fs/promises';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { CommanderAgent } from './commander-agent.js';
 import { DEFAULT_COMMANDER_CONFIG } from '../../shared/commander-types.js';
@@ -45,10 +44,14 @@ function createMockEventBus(): DashboardEventBus {
 function createMockStateManager(): StateManager {
   return {
     getProject: vi.fn().mockReturnValue({
-      name: 'test-project',
+      project_name: 'test-project',
+      status: 'active',
+      current_milestone: 'v1',
       current_phase: null,
+      accumulated_context: { blockers: [] },
     }),
     getPhase: vi.fn().mockReturnValue(undefined),
+    getBoard: vi.fn().mockReturnValue({}),
   } as unknown as StateManager;
 }
 
@@ -742,12 +745,7 @@ describe('CommanderAgent', () => {
   describe('tick: full flow', () => {
     it('runs full tick: gatherContext -> assess -> decide -> dispatch', async () => {
       const mockQuery = query as ReturnType<typeof vi.fn>;
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 
-      // Mock readFile to return empty issues JSONL
-      mockReadFile.mockRejectedValue(new Error('ENOENT'));
-
-      // Mock query to yield a result message with valid assessment JSON
       const assessmentResult: Assessment = {
         priority_actions: [
           { type: 'execute_issue', target: 'ISS-1', reason: 'Fix bug', risk: 'low', executor: 'claude-code' },
@@ -756,7 +754,7 @@ describe('CommanderAgent', () => {
         risks: [],
       };
 
-      mockQuery.mockReturnValue({
+      mockQuery.mockImplementation(() => ({
         [Symbol.asyncIterator]: () => {
           let done = false;
           return {
@@ -774,7 +772,7 @@ describe('CommanderAgent', () => {
             },
           };
         },
-      });
+      }));
 
       const { agent, scheduler, eventBus } = createAgent({
         autoApproveThreshold: 'high',
@@ -794,18 +792,15 @@ describe('CommanderAgent', () => {
 
     it('handles assessment failure and increments consecutiveFailures', async () => {
       const mockQuery = query as ReturnType<typeof vi.fn>;
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 
-      mockReadFile.mockRejectedValue(new Error('ENOENT'));
-
-      // Mock query to yield no result (empty assessment)
-      mockQuery.mockReturnValue({
+      // Mock query to yield no result (empty assessment → throws)
+      mockQuery.mockImplementation(() => ({
         [Symbol.asyncIterator]: () => ({
           async next() {
             return { done: true, value: undefined };
           },
         }),
-      });
+      }));
 
       const { agent } = createAgent();
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -813,7 +808,6 @@ describe('CommanderAgent', () => {
       await (agent as any).tick('test');
 
       // Assessment should have failed (no result text)
-      // consecutiveFailures should be incremented
       expect((agent as any).consecutiveFailures).toBe(1);
       expect(agent.getState().status).toBe('idle');
 
@@ -822,9 +816,6 @@ describe('CommanderAgent', () => {
 
     it('keeps last 5 decisions and shifts old ones', async () => {
       const mockQuery = query as ReturnType<typeof vi.fn>;
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
-
-      mockReadFile.mockRejectedValue(new Error('ENOENT'));
 
       const assessmentResult: Assessment = {
         priority_actions: [],
@@ -832,7 +823,8 @@ describe('CommanderAgent', () => {
         risks: [],
       };
 
-      mockQuery.mockReturnValue({
+      // Return a fresh async iterable for each call
+      mockQuery.mockImplementation(() => ({
         [Symbol.asyncIterator]: () => {
           let done = false;
           return {
@@ -846,7 +838,7 @@ describe('CommanderAgent', () => {
             },
           };
         },
-      });
+      }));
 
       const { agent } = createAgent({ autoApproveThreshold: 'high' });
 
@@ -861,9 +853,6 @@ describe('CommanderAgent', () => {
 
     it('resets consecutiveFailures on successful assessment', async () => {
       const mockQuery = query as ReturnType<typeof vi.fn>;
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
-
-      mockReadFile.mockRejectedValue(new Error('ENOENT'));
 
       const assessmentResult: Assessment = {
         priority_actions: [],
@@ -871,7 +860,7 @@ describe('CommanderAgent', () => {
         risks: [],
       };
 
-      mockQuery.mockReturnValue({
+      mockQuery.mockImplementation(() => ({
         [Symbol.asyncIterator]: () => {
           let done = false;
           return {
@@ -885,7 +874,7 @@ describe('CommanderAgent', () => {
             },
           };
         },
-      });
+      }));
 
       const { agent } = createAgent();
       (agent as any).consecutiveFailures = 2;
@@ -906,7 +895,7 @@ describe('CommanderAgent', () => {
         '{"id":"ISS-1","status":"open","title":"Bug"}\n{"id":"ISS-2","status":"closed","title":"Done"}\n'
       );
 
-      const { agent, stateManager } = createAgent();
+      const { agent } = createAgent();
 
       const context = await (agent as any).gatherContext();
 
@@ -917,9 +906,7 @@ describe('CommanderAgent', () => {
     });
 
     it('returns empty issues when JSONL file does not exist', async () => {
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
-      mockReadFile.mockRejectedValueOnce(new Error('ENOENT'));
-
+      // Default mock already rejects with ENOENT
       const { agent } = createAgent();
       const context = await (agent as any).gatherContext();
 
@@ -927,13 +914,13 @@ describe('CommanderAgent', () => {
     });
 
     it('includes currentPhase when project has current_phase', async () => {
-      const mockReadFile = readFile as ReturnType<typeof vi.fn>;
-      mockReadFile.mockRejectedValueOnce(new Error('ENOENT'));
-
       const { agent, stateManager } = createAgent();
       (stateManager.getProject as ReturnType<typeof vi.fn>).mockReturnValue({
-        name: 'test',
+        project_name: 'test',
+        status: 'active',
+        current_milestone: 'v1',
         current_phase: 'phase-1',
+        accumulated_context: { blockers: [] },
       });
       (stateManager.getPhase as ReturnType<typeof vi.fn>).mockReturnValue({ id: 'phase-1', name: 'Alpha' });
 
@@ -946,6 +933,21 @@ describe('CommanderAgent', () => {
 
   // --- assess ---
   describe('assess', () => {
+    const validContext = {
+      project: {
+        project_name: 'test',
+        status: 'active',
+        current_milestone: 'v1',
+        current_phase: 'p1',
+        accumulated_context: { blockers: [] },
+      },
+      openIssues: [],
+      runningWorkers: 0,
+      maxWorkers: 3,
+      recentDecisions: [],
+      workDir: '/tmp',
+    };
+
     it('throws when assessment returns no result', async () => {
       const mockQuery = query as ReturnType<typeof vi.fn>;
       mockQuery.mockReturnValue({
@@ -955,16 +957,8 @@ describe('CommanderAgent', () => {
       });
 
       const { agent } = createAgent();
-      const context = {
-        project: { name: 'test' },
-        openIssues: [],
-        runningWorkers: 0,
-        maxWorkers: 3,
-        recentDecisions: [],
-        workDir: '/tmp',
-      };
 
-      await expect((agent as any).assess(context)).rejects.toThrow('Assessment returned no result');
+      await expect((agent as any).assess(validContext)).rejects.toThrow('Assessment returned no result');
     });
 
     it('parses valid assessment JSON from query result', async () => {
@@ -992,7 +986,7 @@ describe('CommanderAgent', () => {
       });
 
       const { agent } = createAgent();
-      const result = await (agent as any).assess({});
+      const result = await (agent as any).assess(validContext);
 
       expect(result).toEqual(expected);
     });
@@ -1011,7 +1005,6 @@ describe('CommanderAgent', () => {
           async next() {
             call++;
             if (call === 1) {
-              // Non-result message (e.g., tool_use)
               return { done: false, value: { type: 'tool_use', name: 'Read' } };
             }
             if (call === 2) {
@@ -1026,7 +1019,7 @@ describe('CommanderAgent', () => {
       });
 
       const { agent } = createAgent();
-      const result = await (agent as any).assess({});
+      const result = await (agent as any).assess(validContext);
       expect(result).toEqual(expected);
     });
   });

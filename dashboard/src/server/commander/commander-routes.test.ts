@@ -160,4 +160,57 @@ describe('Commander Routes', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  // --- POST /api/commander/stop error handling ---
+  describe('POST /api/commander/stop — error paths', () => {
+    it('returns 500 when stop throws', async () => {
+      const { app, agent } = createApp();
+      (agent.stop as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('Timer cleanup failed');
+      });
+
+      const res = await app.request('/api/commander/stop', { method: 'POST' });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.error).toBe('Timer cleanup failed');
+    });
+  });
+
+  // --- POST /api/commander/pause error handling ---
+  describe('POST /api/commander/pause — error paths', () => {
+    it('returns 500 when pause throws', async () => {
+      const { app, agent } = createApp();
+      (agent.pause as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('Cannot pause in current state');
+      });
+
+      const res = await app.request('/api/commander/pause', { method: 'POST' });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.error).toBe('Cannot pause in current state');
+    });
+
+    it('returns 500 when resume throws', async () => {
+      const { app, agent } = createApp();
+      (agent.getState as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        status: 'paused',
+        lastTickAt: '',
+        lastDecision: null,
+        activeWorkers: 0,
+        sessionId: 'test',
+        tickCount: 0,
+      });
+      (agent.resume as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('Resume failed');
+      });
+
+      const res = await app.request('/api/commander/pause', { method: 'POST' });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.error).toBe('Resume failed');
+    });
+  });
 });
