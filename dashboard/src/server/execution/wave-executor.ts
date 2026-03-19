@@ -285,6 +285,9 @@ export class WaveExecutor {
   ): Promise<void> {
     const session = this.sessions.get(processId)!;
 
+    // Load settings once for the entire execution
+    const { settings, env } = await this.loadSettings();
+
     // --- Phase 1: Decompose ---
     this.emitEntry(processId, EntryNormalizer.assistantMessage(
       processId,
@@ -292,7 +295,7 @@ export class WaveExecutor {
       false,
     ));
 
-    const decomposition = await this.decompose(processId, issue, abortController);
+    const decomposition = await this.decompose(processId, issue, abortController, settings, env);
     if (!decomposition || abortController.signal.aborted) return;
 
     // Build WaveTask array
@@ -333,7 +336,7 @@ export class WaveExecutor {
       // Execute all tasks in this wave concurrently
       await Promise.allSettled(
         waveTasks.map((task) =>
-          this.executeTask(processId, task, issue, session.tasks, abortController),
+          this.executeTask(processId, task, issue, session.tasks, abortController, settings, env),
         ),
       );
 
@@ -383,6 +386,8 @@ export class WaveExecutor {
     processId: string,
     issue: Issue,
     abortController: AbortController,
+    settings: SavedAgentSettings | undefined,
+    env: Record<string, string> | undefined,
   ): Promise<DecompositionResult | null> {
     const prompt = buildDecomposePrompt(issue);
     let resultText = '';
@@ -391,8 +396,6 @@ export class WaveExecutor {
     this.emitEntry(processId, EntryNormalizer.toolUse(
       processId, 'AgentSDK:decompose', { issueId: issue.id }, 'running',
     ));
-
-    const { settings, env } = await this.loadSettings();
 
     try {
       for await (const message of query({
@@ -448,6 +451,8 @@ export class WaveExecutor {
     issue: Issue,
     allTasks: WaveTask[],
     abortController: AbortController,
+    settings: SavedAgentSettings | undefined,
+    env: Record<string, string> | undefined,
   ): Promise<void> {
     if (abortController.signal.aborted) return;
 
@@ -467,7 +472,6 @@ export class WaveExecutor {
     ));
 
     let resultText = '';
-    const { settings: taskSettings, env: taskEnv } = await this.loadSettings();
 
     try {
       for await (const message of query({
@@ -476,11 +480,11 @@ export class WaveExecutor {
           abortController,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
-          model: taskSettings?.model || 'sonnet',
+          model: settings?.model || 'sonnet',
           cwd: this.workDir,
           maxTurns: 10,
           persistSession: false,
-          ...(taskEnv ? { env: { ...process.env, ...taskEnv } } : {}),
+          ...(env ? { env: { ...process.env, ...env } } : {}),
         },
       })) {
         const msg = message as Record<string, unknown>;

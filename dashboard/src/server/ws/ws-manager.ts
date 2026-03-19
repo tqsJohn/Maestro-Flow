@@ -314,10 +314,10 @@ export class WebSocketManager {
       .then((saved) => {
         const mergedConfig = {
           ...config,
-          model: config.model || saved?.model || undefined,
-          approvalMode: config.approvalMode || saved?.approvalMode || undefined,
-          baseUrl: config.baseUrl || saved?.baseUrl || undefined,
-          apiKey: config.apiKey || saved?.apiKey || undefined,
+          model: (config.model ?? saved?.model) || undefined,
+          approvalMode: config.approvalMode ?? saved?.approvalMode ?? undefined,
+          baseUrl: (config.baseUrl ?? saved?.baseUrl) || undefined,
+          apiKey: (config.apiKey ?? saved?.apiKey) || undefined,
         };
         return this.agentManager.spawn(mergedConfig.type, mergedConfig);
       })
