@@ -58,6 +58,7 @@ Follow '~/.maestro/workflows/brainstorm.md' completely.
 | W002 | warning | Context-search-agent failed | Continue without project context |
 | W003 | warning | Role template not found | Use generic analysis structure |
 | W004 | warning | Validation score < 60 | Log warning, suggest manual review |
+| W005 | warning | External research agent failed | Continue without designResearchContext |
 </error_codes>
 
 <success_criteria>

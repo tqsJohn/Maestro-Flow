@@ -58,7 +58,56 @@ Ensure phases in Step 2 respect architectural constraints.
    - If yes: spawn `cli-explore-agent` for context discovery
    - Output: relevant files, patterns, tech stack
 
-3. **Assess Uncertainty**
+3. **External Research — API & Technology Details (Optional)**
+
+   Spawn `workflow-external-researcher` agent when requirement mentions specific technologies, APIs, or external services.
+
+   **Trigger**: Technology keywords detected in requirement or codebase exploration found external dependencies. Auto-trigger in auto mode (`-y`). Skip if requirement is purely organizational.
+
+   ```
+   // Extract technology keywords from requirement + codebase exploration
+   researchTopics = extract named technologies, APIs, frameworks, protocols
+
+   IF researchTopics is not empty:
+     Agent(
+       subagent_type="workflow-external-researcher",
+       prompt="""
+   <objective>
+   Research API details and technology specifics for: {requirement}
+   Mode: API Research
+   </objective>
+
+   <context>
+   Technologies identified: {researchTopics}
+   Codebase tech stack: {codebase_exploration.tech_stack or "none"}
+   </context>
+
+   <task>
+   For each identified technology/API:
+   1. Current stable version and key capabilities
+   2. Core API surface: key endpoints/methods, auth model
+   3. Integration patterns and recommended setup
+   4. Known limitations, breaking changes, or deprecations
+   5. Effort estimation signals (simple wrapper vs complex integration)
+
+   Focus on details that affect phase decomposition and dependency ordering.
+   Be prescriptive. Return structured markdown only — do NOT write files.
+   </task>
+       """,
+       run_in_background=false
+     )
+     apiResearchContext = agent_output
+   ELSE:
+     apiResearchContext = null
+   ```
+
+   `apiResearchContext` is passed into:
+   - Step 3 (Decomposition): technology complexity informs phase sizing and ordering
+   - Step 4 (Refinement): API constraints surface realistic dependency chains
+
+   If research fails: `apiResearchContext = null`, continue without external context.
+
+4. **Assess Uncertainty**
    ```
    Factors: scope_clarity, technical_risk, dependency_unknown,
             domain_familiarity, requirement_stability
@@ -66,7 +115,7 @@ Ensure phases in Step 2 respect architectural constraints.
    ≥3 high → progressive, ≥3 low → direct, else → ask
    ```
 
-4. **Strategy Selection** (skip if `-m` specified or `-y`)
+5. **Strategy Selection** (skip if `-m` specified or `-y`)
    - Present uncertainty assessment
    - User selects: Progressive or Direct
    - `-y`: use recommended strategy
@@ -77,7 +126,8 @@ Ensure phases in Step 2 respect architectural constraints.
 
 **Objective**: Break requirement into phases via CLI-assisted analysis.
 
-Spawn `cli-roadmap-plan-agent`:
+Spawn `cli-roadmap-plan-agent`.
+If `apiResearchContext` is set: include as "External API Research" context in the agent prompt — technology complexity, API constraints, and integration effort inform phase sizing and dependency ordering.
 
 **Progressive mode**:
 - 2-4 layers: MVP / Usable / Refined / Optimized

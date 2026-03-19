@@ -138,16 +138,74 @@ Output dir: .workflow/.spec/{session_id}/
 - If yes: spawn cli-explore-agent for context discovery
 - Output: `discovery-context.json` with relevant_files, patterns, tech_stack
 
-**Step 2.5: Spec Type Selection**
+**Step 2.5: External Research — API & Technology Details (Optional)**
+
+Spawn `workflow-external-researcher` agent to gather concrete API details, library versions, and integration patterns for the technologies identified in seed analysis and codebase exploration.
+
+**Trigger**: When seed analysis identifies specific technologies, APIs, or external services. Auto-trigger in auto mode (`-y`). Skip if topic is purely conceptual with no technology keywords.
+
+```
+// Step 2.5.1: Build research queries from seed analysis
+researchTopics = extract from seed_analysis:
+  - Named technologies/frameworks (e.g., "OAuth 2.0", "WebSocket", "PostgreSQL")
+  - External APIs/services mentioned (e.g., "Stripe API", "SendGrid")
+  - Domain-specific protocols or standards
+
+IF researchTopics is empty: skip to Step 2.6, set apiResearchContext = null
+
+// Step 2.5.2: Spawn external researcher
+Agent(
+  subagent_type="workflow-external-researcher",
+  prompt="""
+<objective>
+Research API details and technology specifics for: {seed_analysis.problem_statement}
+Mode: API Research
+</objective>
+
+<context>
+Technologies identified: {researchTopics}
+Domain: {seed_analysis.domain}
+Spec type: {spec_type or "TBD"}
+Codebase tech stack: {discovery_context.tech_stack or "none"}
+</context>
+
+<task>
+For each identified technology/API:
+1. Current stable version and key capabilities
+2. API surface: core endpoints/methods, authentication model, rate limits
+3. Integration patterns: recommended setup, configuration, common middleware
+4. Data models: key entities, request/response shapes
+5. Known limitations, deprecations, or migration paths
+
+Focus on CONCRETE details — versions, method signatures, config options.
+Be prescriptive. Return structured markdown only — do NOT write files.
+</task>
+  """,
+  run_in_background=false
+)
+
+// Step 2.5.3: Store as apiResearchContext (in-memory)
+apiResearchContext = agent_output
+```
+
+`apiResearchContext` is passed into:
+- Step 4 (Product Brief): technology feasibility assessment
+- Step 5 (Requirements): API-aware requirement writing with concrete constraints
+- Step 6 (Architecture): informed ADR decisions with version-specific details
+- Step 7 (Epics): realistic story sizing based on API complexity
+
+If research fails (W005): `apiResearchContext = null`, continue without external context.
+
+**Step 2.6: Spec Type Selection**
 - Interactive (AskUserQuestion): Service / API / Library / Platform
 - `--yes`: default to "service"
 - Each type loads a profile template for domain-specific sections
 
-**Step 2.6: User Confirmation (interactive)**
+**Step 2.7: User Confirmation (interactive)**
 - Confirm problem statement, select depth (Light/Standard/Comprehensive), select focus areas
 - `--yes`: accept all defaults
 
-**Output**: `spec-config.json` (session state), `discovery-context.json` (optional)
+**Output**: `spec-config.json` (session state), `discovery-context.json` (optional), `apiResearchContext` (in-memory, optional)
 
 ### Step 3: Requirement Expansion & Clarification (Phase 1.5)
 
@@ -190,6 +248,7 @@ Generate product brief through multi-perspective CLI analysis.
 **Step 4.3: Synthesis**
 - Extract convergent themes (all agree), conflicts (need resolution), unique insights
 - For brainstorm input: cross-reference with guidance-specification decisions
+- If `apiResearchContext` is set: inject API details into technical feasibility assessment, enrich technology recommendations with concrete versions and constraints
 
 **Step 4.4: Interactive Refinement**
 - Present synthesis, user adjusts scope/vision
@@ -246,6 +305,7 @@ Generate architecture decisions, component design, and technology selections.
 - **Observability**: key metrics (5+), structured log events, health checks
 - Spec type profile injection for domain-specific depth
 - Glossary injection for terminology consistency
+- If `apiResearchContext` is set: inject as "External API Research" context — concrete versions, API surfaces, integration patterns inform ADR decisions and technology stack selection
 
 **Step 6.2: Architecture Review via CLI (codex)**
 - Challenge each ADR, identify scalability bottlenecks
@@ -514,5 +574,7 @@ Init detects existing `.workflow/roadmap.md` and skips roadmap creation.
 | Phase 5 | Story generation fails | No | Generate epics only |
 | Phase 6 | Validation fails | No | Partial report |
 | Phase 6.5 | Max iterations (2) | No | Force handoff |
+
+| Step 2.5 | External research fails | No | apiResearchContext = null, continue |
 
 CLI Fallback Chain: Gemini → Codex → Claude → degraded mode (local only)

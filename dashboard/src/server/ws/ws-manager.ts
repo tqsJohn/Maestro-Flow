@@ -7,6 +7,7 @@ import type { WsServerMessage, WsClientMessage, WsEventType } from '../../shared
 import type { DashboardEventBus } from '../state/event-bus.js';
 import type { AgentManager } from '../agents/agent-manager.js';
 import type { ExecutionScheduler } from '../execution/execution-scheduler.js';
+import type { WaveExecutor } from '../execution/wave-executor.js';
 import type { CommanderAgent } from '../commander/commander-agent.js';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,7 @@ export class WebSocketManager {
     private readonly executionScheduler?: ExecutionScheduler,
     private readonly commanderAgent?: CommanderAgent,
     private readonly workflowRoot: string = process.cwd(),
+    private readonly waveExecutor?: WaveExecutor,
   ) {
     this.wss = new WebSocketServer({ noServer: true });
 
@@ -256,6 +258,15 @@ export class WebSocketManager {
           });
         break;
 
+      // --- Wave execution (Agent SDK wave mode) ---------------------------
+      case 'execute:wave':
+        if (this.waveExecutor) {
+          this.handleWaveExecute(ws, msg.issueId);
+        } else {
+          this.sendError(ws, 'execute:wave', 'WaveExecutor not available');
+        }
+        break;
+
       case 'supervisor:toggle':
         if (this.executionScheduler) {
           if (msg.config) {
@@ -307,6 +318,57 @@ export class WebSocketManager {
         console.log(`[WS] Unknown client action: ${(msg as { action: string }).action}`);
         break;
     }
+  }
+
+  /**
+   * Handle wave execution: read issue from JSONL, launch WaveExecutor.
+   */
+  private handleWaveExecute(ws: WebSocket, issueId: string): void {
+    if (!issueId) {
+      this.sendError(ws, 'execute:wave', 'Missing issueId');
+      return;
+    }
+
+    // Read issue from JSONL and launch wave execution
+    import('node:fs/promises').then(async ({ readFile }) => {
+      const { join } = await import('node:path');
+      const jsonlPath = join(this.workflowRoot, 'issues', 'issues.jsonl');
+      let raw: string;
+      try {
+        raw = await readFile(jsonlPath, 'utf-8');
+      } catch {
+        this.sendError(ws, 'execute:wave', 'Cannot read issues.jsonl');
+        return;
+      }
+
+      let issue: import('../../shared/issue-types.js').Issue | null = null;
+      for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const parsed = JSON.parse(trimmed) as import('../../shared/issue-types.js').Issue;
+          if (parsed.id === issueId) {
+            issue = parsed;
+            break;
+          }
+        } catch { /* skip */ }
+      }
+
+      if (!issue) {
+        this.sendError(ws, 'execute:wave', `Issue not found: ${issueId}`);
+        return;
+      }
+
+      try {
+        await this.waveExecutor!.execute(issue);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.sendError(ws, 'execute:wave', message);
+      }
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.sendError(ws, 'execute:wave', message);
+    });
   }
 
   /** Return the number of connected clients */

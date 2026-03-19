@@ -22,6 +22,7 @@ import { CodexAppServerAdapter } from './agents/codex-app-server-adapter.js';
 import { OpenCodeAdapter } from './agents/opencode-adapter.js';
 import { AgentSdkAdapter } from './agents/agent-sdk-adapter.js';
 import { ExecutionScheduler } from './execution/execution-scheduler.js';
+import { WaveExecutor } from './execution/wave-executor.js';
 import { CommanderAgent } from './commander/commander-agent.js';
 import { loadCommanderConfig } from './commander/commander-config.js';
 import { createRoutes } from './routes/index.js';
@@ -86,9 +87,15 @@ async function main(): Promise<void> {
   );
 
   // ---------------------------------------------------------------------------
+  // Wave Executor — CSV-wave-inspired parallel execution using Agent SDK
+  // ---------------------------------------------------------------------------
+  const projectRoot = resolve(workflowRoot, '..');
+  const waveExecutor = new WaveExecutor(eventBus, agentManager, projectRoot);
+
+  // ---------------------------------------------------------------------------
   // WebSocket Manager — broadcasts EventBus events to connected WS clients
   // ---------------------------------------------------------------------------
-  const wsManager = new WebSocketManager(eventBus, agentManager, executionScheduler, commanderAgent, workflowRoot);
+  const wsManager = new WebSocketManager(eventBus, agentManager, executionScheduler, commanderAgent, workflowRoot, waveExecutor);
 
   // ---------------------------------------------------------------------------
   // Hono application

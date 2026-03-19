@@ -67,7 +67,7 @@ function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 const VALID_EXECUTORS = new Set<string>([
-  'claude-code', 'codex', 'codex-server', 'gemini', 'qwen', 'opencode',
+  'claude-code', 'codex', 'codex-server', 'gemini', 'qwen', 'opencode', 'agent-sdk',
 ]);
 
 // ---------------------------------------------------------------------------

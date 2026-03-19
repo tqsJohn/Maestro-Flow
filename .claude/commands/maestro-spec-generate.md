@@ -71,6 +71,7 @@ Follow '~/.maestro/workflows/spec-generate.md' completely.
 | E004 | error | Phase 6 readiness Fail after 2 auto-fix iterations | Present manual fix options |
 | W001 | warning | CLI analysis failed, using fallback | Continue with available data |
 | W002 | warning | Codebase exploration failed | Continue without codebase context |
+| W005 | warning | External research agent failed | Continue without apiResearchContext |
 | W003 | warning | Glossary has < 5 terms | Note in readiness check |
 | W004 | warning | Review-level readiness score (60-79%) | Proceed with caveats |
 </error_codes>

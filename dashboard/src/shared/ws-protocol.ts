@@ -80,7 +80,8 @@ export type WsClientMessage =
   | WsClientCommanderStartMessage
   | WsClientCommanderStopMessage
   | WsClientCommanderPauseMessage
-  | WsClientCommanderConfigMessage;
+  | WsClientCommanderConfigMessage
+  | WsClientWaveExecuteMessage;
 
 export interface WsClientSpawnMessage {
   action: 'spawn';
@@ -179,6 +180,15 @@ export interface WsClientCommanderPauseMessage {
 export interface WsClientCommanderConfigMessage {
   action: 'commander:config';
   config: Partial<CommanderConfig>;
+}
+
+// ---------------------------------------------------------------------------
+// Wave execution client messages
+// ---------------------------------------------------------------------------
+
+export interface WsClientWaveExecuteMessage {
+  action: 'execute:wave';
+  issueId: string;
 }
 
 // ---------------------------------------------------------------------------

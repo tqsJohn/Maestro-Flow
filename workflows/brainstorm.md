@@ -162,7 +162,59 @@ Pass to conceptual-planning-agent in Step 4 for architecture-aware role analysis
 
 ---
 
-### Auto Mode Steps (Phase 1.5 → Phase 2 → Phase 3 → Phase 4)
+### Auto Mode Steps (Phase 1.5 → Phase 1.7 → Phase 2 → Phase 3 → Phase 4)
+
+### Step 1.7: External Research — Design Routes (Auto Mode, Optional)
+
+Spawn `workflow-external-researcher` agent to discover design alternatives, architecture patterns, and competitive approaches for the brainstorm topic. This enriches the framework generation and role analyses with external knowledge.
+
+**Trigger**: Always in auto mode. Skip if `--skip-questions` and no tech keywords detected.
+
+**Auto-suggest when**: Topic contains technology keywords, architecture terms, or "design" / "pattern" / "alternative" in the description.
+
+```
+// Step 1.7.1: Spawn external researcher for design routes
+Agent(
+  subagent_type="workflow-external-researcher",
+  prompt="""
+<objective>
+Research design alternatives and architecture patterns for: {topic}
+Mode: Design Research
+</objective>
+
+<context>
+Project specs: {specs_content or "none"}
+Topic keywords: {extracted_keywords}
+</context>
+
+<task>
+Search for:
+1. Existing solutions and design patterns for this type of system/feature
+2. Architecture approaches (at least 2-3 alternatives with trade-offs)
+3. UX/UI patterns if applicable (interaction models, layout strategies)
+4. Competitive/similar implementations for inspiration
+5. Common design pitfalls and anti-patterns to avoid
+
+Focus on design ROUTES — alternative approaches the brainstorm roles can evaluate.
+Be prescriptive where evidence is strong, present alternatives where trade-offs exist.
+Return structured markdown only — do NOT write files.
+</task>
+  """,
+  run_in_background=false
+)
+
+// Step 1.7.2: Store as designResearchContext (in-memory)
+designResearchContext = agent_output
+```
+
+`designResearchContext` is passed into:
+- Step 2 (Terminology): enriches domain term extraction
+- Step 3 Phase 1 (Topic Analysis): provides external design alternatives
+- Step 4 (Parallel Role Analysis): each role agent receives design research as additional context
+
+If research fails (W005): `designResearchContext = null`, continue without external context.
+
+---
 
 ### Step 2: Terminology & Boundary Definition (Auto Mode)
 
@@ -259,6 +311,7 @@ Each agent receives:
 - Feature list for feature-point organization
 - `--skip-questions` flag (context already gathered in Phase 2)
 - For ui-designer: `--style-skill {package}` if provided
+- If `designResearchContext` is set: include as "External Design Research" section in agent prompt (design alternatives, patterns, competitive analysis for the role to evaluate and reference)
 
 **Feature-Point Organization** (when feature list available):
 - `analysis.md` — Role overview INDEX only (< 1500 words)
@@ -400,6 +453,7 @@ Execute analysis for ONE specified role with optional interactive context gather
 
 ## Quality Criteria
 
+- If `designResearchContext` is set: guidance-specification.md references external design findings
 - guidance-specification.md uses RFC 2119 keywords (MUST/SHOULD/MAY)
 - Concepts & Terminology section with 5-10 core terms
 - Non-Goals section with rationale

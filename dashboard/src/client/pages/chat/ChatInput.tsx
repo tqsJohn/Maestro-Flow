@@ -14,7 +14,7 @@ import type { AgentType } from '@/shared/agent-types.js';
 // ChatInput -- composer with toolbar buttons matching design-chat-v1a
 // ---------------------------------------------------------------------------
 
-const AGENT_TYPES: AgentType[] = ['claude-code', 'codex', 'gemini', 'qwen', 'opencode'];
+const AGENT_TYPES: AgentType[] = ['claude-code', 'codex', 'gemini', 'qwen', 'opencode', 'agent-sdk'];
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/maestro-plan', desc: 'Create detailed phase plan', color: 'var(--color-accent-purple)', bg: 'var(--color-tint-planning)' },

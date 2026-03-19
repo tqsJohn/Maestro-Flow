@@ -72,6 +72,7 @@ Follow '~/.maestro/workflows/roadmap.md' completely.
 | E003 | error | Circular dependency detected in phases | Prompt user to re-decompose |
 | W001 | warning | CLI analysis failed, using fallback | Continue with available data |
 | W002 | warning | Max refinement rounds (5) reached | Force proceed with current roadmap |
+| W005 | warning | External research agent failed | Continue without apiResearchContext |
 </error_codes>
 
 <success_criteria>

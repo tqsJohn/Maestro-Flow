@@ -47,7 +47,9 @@ function createMockExecutionScheduler(): ExecutionScheduler {
 }
 
 function createMockAgentManager(): AgentManager {
-  return {} as AgentManager;
+  return {
+    spawn: vi.fn().mockResolvedValue({ processId: 'mock-proc-1' }),
+  } as unknown as AgentManager;
 }
 
 function createAgent(configOverride?: Partial<CommanderConfig>): {
@@ -55,6 +57,7 @@ function createAgent(configOverride?: Partial<CommanderConfig>): {
   eventBus: ReturnType<typeof createMockEventBus>;
   stateManager: ReturnType<typeof createMockStateManager>;
   scheduler: ReturnType<typeof createMockExecutionScheduler>;
+  agentManager: ReturnType<typeof createMockAgentManager>;
 } {
   const eventBus = createMockEventBus();
   const stateManager = createMockStateManager();
@@ -70,7 +73,7 @@ function createAgent(configOverride?: Partial<CommanderConfig>): {
     configOverride,
   );
 
-  return { agent, eventBus, stateManager, scheduler };
+  return { agent, eventBus, stateManager, scheduler, agentManager };
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +410,123 @@ describe('CommanderAgent', () => {
       expect(decision.assessment).toBe(assessment);
       expect(decision.actions).toBeInstanceOf(Array);
       expect(decision.deferred).toBeInstanceOf(Array);
+    });
+  });
+
+  // --- analyze_issue and plan_issue dispatch ---
+  describe('dispatch: analyze_issue and plan_issue', () => {
+    it('dispatches analyze_issue via agentManager.spawn', async () => {
+      const { agent, agentManager } = createAgent({ autoApproveThreshold: 'high' });
+
+      const decision: Decision = {
+        id: 'test-decision',
+        timestamp: new Date().toISOString(),
+        trigger: 'test',
+        assessment: { priority_actions: [], observations: [], risks: [] },
+        actions: [
+          { type: 'analyze_issue', target: 'ISS-123', reason: 'Needs analysis', risk: 'low', executor: 'claude-code' },
+        ],
+        deferred: [],
+      };
+
+      await (agent as any).dispatch(decision);
+
+      expect(agentManager.spawn).toHaveBeenCalledTimes(1);
+      expect(agentManager.spawn).toHaveBeenCalledWith(
+        'claude-code',
+        expect.objectContaining({
+          type: 'claude-code',
+          prompt: expect.stringContaining('ISS-123'),
+          workDir: '/tmp/test-workflow',
+          approvalMode: 'auto',
+        }),
+      );
+    });
+
+    it('dispatches plan_issue via agentManager.spawn with action.executor', async () => {
+      const { agent, agentManager } = createAgent({ autoApproveThreshold: 'high' });
+
+      const decision: Decision = {
+        id: 'test-decision',
+        timestamp: new Date().toISOString(),
+        trigger: 'test',
+        assessment: { priority_actions: [], observations: [], risks: [] },
+        actions: [
+          { type: 'plan_issue', target: 'ISS-456', reason: 'Needs plan', risk: 'low', executor: 'gemini' },
+        ],
+        deferred: [],
+      };
+
+      await (agent as any).dispatch(decision);
+
+      expect(agentManager.spawn).toHaveBeenCalledTimes(1);
+      expect(agentManager.spawn).toHaveBeenCalledWith(
+        'gemini',
+        expect.objectContaining({
+          type: 'gemini',
+          prompt: expect.stringContaining('ISS-456'),
+          workDir: '/tmp/test-workflow',
+        }),
+      );
+    });
+
+    it('analyze_issue and plan_issue do not consume worker slots in decide', () => {
+      const { agent } = createAgent({
+        autoApproveThreshold: 'high',
+        maxConcurrentWorkers: 1,
+      });
+
+      const assessment: Assessment = {
+        priority_actions: [
+          { type: 'analyze_issue', target: 'ISS-A', reason: 'Analyze', risk: 'low', executor: 'claude-code' },
+          { type: 'plan_issue', target: 'ISS-B', reason: 'Plan', risk: 'low', executor: 'gemini' },
+          { type: 'execute_issue', target: 'ISS-C', reason: 'Execute', risk: 'low', executor: 'claude-code' },
+        ],
+        observations: [],
+        risks: [],
+      };
+
+      const decide = (agent as any).decide.bind(agent);
+      const decision: Decision = decide('test', assessment, {
+        project: { name: 'test' },
+        openIssues: [],
+        runningWorkers: 0,
+        maxWorkers: 1,
+        recentDecisions: [],
+        workDir: '/tmp',
+      });
+
+      // analyze and plan don't consume slots, execute gets the 1 slot
+      expect(decision.actions).toHaveLength(3);
+      expect(decision.deferred).toHaveLength(0);
+    });
+
+    it('prioritizes actions: execute > analyze > plan', () => {
+      const { agent } = createAgent({ autoApproveThreshold: 'high' });
+
+      const assessment: Assessment = {
+        priority_actions: [
+          { type: 'plan_issue', target: 'ISS-P', reason: 'Plan', risk: 'low', executor: 'claude-code' },
+          { type: 'execute_issue', target: 'ISS-E', reason: 'Execute', risk: 'low', executor: 'claude-code' },
+          { type: 'analyze_issue', target: 'ISS-A', reason: 'Analyze', risk: 'low', executor: 'claude-code' },
+        ],
+        observations: [],
+        risks: [],
+      };
+
+      const decide = (agent as any).decide.bind(agent);
+      const decision: Decision = decide('test', assessment, {
+        project: { name: 'test' },
+        openIssues: [],
+        runningWorkers: 0,
+        maxWorkers: 5,
+        recentDecisions: [],
+        workDir: '/tmp',
+      });
+
+      const types = decision.actions.map(a => a.type);
+      expect(types.indexOf('execute_issue')).toBeLessThan(types.indexOf('analyze_issue'));
+      expect(types.indexOf('analyze_issue')).toBeLessThan(types.indexOf('plan_issue'));
     });
   });
 });

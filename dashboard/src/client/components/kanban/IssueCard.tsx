@@ -28,6 +28,7 @@ const EXECUTOR_OPTIONS: { value: AgentType; label: string }[] = [
   { value: 'claude-code', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
   { value: 'gemini', label: 'Gemini' },
+  { value: 'agent-sdk', label: 'Agent SDK' },
 ];
 
 const EXECUTION_STATUS_ICONS: Record<string, { icon: string; color: string; animate?: boolean }> = {

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Issue } from '@/shared/issue-types.js';
 import { getDisplayStatus, ISSUE_DISPLAY_STATUS_COLORS } from '@/shared/constants.js';
 import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
@@ -80,17 +81,23 @@ function PropRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-// Action buttons for issue lifecycle
+// Action buttons for issue lifecycle — navigate to chat after dispatching
 function ActionButtons({ issue }: { issue: Issue }) {
+  const navigate = useNavigate();
   const displayStatus = getDisplayStatus(issue);
   if (displayStatus !== 'open' && displayStatus !== 'analyzing' && displayStatus !== 'planned') return null;
+
+  const dispatchAndOpenChat = (action: Parameters<typeof sendWsMessage>[0]) => {
+    sendWsMessage(action);
+    navigate('/chat');
+  };
 
   return (
     <div className="flex gap-2 pt-3 border-t" style={{ borderColor: 'var(--color-border-divider)' }}>
       {!issue.analysis && (
         <button
           type="button"
-          onClick={() => sendWsMessage({ action: 'issue:analyze', issueId: issue.id })}
+          onClick={() => dispatchAndOpenChat({ action: 'issue:analyze', issueId: issue.id })}
           className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
           style={{ backgroundColor: 'var(--color-accent-blue)', color: 'white' }}
         >
@@ -100,7 +107,7 @@ function ActionButtons({ issue }: { issue: Issue }) {
       {issue.analysis && !issue.solution && (
         <button
           type="button"
-          onClick={() => sendWsMessage({ action: 'issue:plan', issueId: issue.id })}
+          onClick={() => dispatchAndOpenChat({ action: 'issue:plan', issueId: issue.id })}
           className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
           style={{ backgroundColor: 'var(--color-accent-blue)', color: 'white' }}
         >
@@ -110,13 +117,22 @@ function ActionButtons({ issue }: { issue: Issue }) {
       {issue.solution && (
         <button
           type="button"
-          onClick={() => sendWsMessage({ action: 'execute:issue', issueId: issue.id })}
+          onClick={() => dispatchAndOpenChat({ action: 'execute:issue', issueId: issue.id })}
           className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
           style={{ backgroundColor: '#5A9E78', color: 'white' }}
         >
           Execute
         </button>
       )}
+      {/* Wave Execute — decompose + parallel execution via Agent SDK */}
+      <button
+        type="button"
+        onClick={() => dispatchAndOpenChat({ action: 'execute:wave', issueId: issue.id })}
+        className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
+        style={{ backgroundColor: 'var(--color-accent-purple)', color: 'white' }}
+      >
+        Wave Execute
+      </button>
     </div>
   );
 }
