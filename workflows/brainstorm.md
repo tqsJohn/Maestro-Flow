@@ -216,11 +216,38 @@ If research fails (W005): `designResearchContext = null`, continue without exter
 
 ---
 
+### Step 1.8: Load Project Context (if `.workflow/` exists)
+
+Load existing project history to ground brainstorming in what's already been built:
+
+```
+IF .workflow/project.md exists:
+  Read project.md:
+    - "### Validated" → already_shipped (features already delivered)
+    - "### Active" → current_scope
+    - "## Context" → project_history (milestone summaries)
+
+IF .workflow/state.json exists:
+  Read state.json.accumulated_context:
+    - deferred[] → deferred_items (candidates for brainstorming focus)
+    - key_decisions[] → existing_constraints
+
+IF .workflow/specs/learnings.md exists:
+  Read top entries → lessons_learned
+```
+
+Pass `project_context` into Step 2 (terminology) and Step 3 (framework generation):
+- `already_shipped` informs what exists — brainstorm should explore extensions, not re-invent
+- `deferred_items` are high-value brainstorming seeds
+- `lessons_learned` surface pitfalls to avoid
+
+---
+
 ### Step 2: Terminology & Boundary Definition (Auto Mode)
 
 Extract core terminology and define scope boundaries before framework generation.
 
-1. Analyze topic description and any project context (project.md, roadmap.md)
+1. Analyze topic description and any project context (project.md, roadmap.md, project_context from Step 1.8)
 2. Extract 5-10 core domain terms:
    - term (canonical), definition, aliases, category (core|technical|business)
 3. AskUserQuestion for Non-Goals (multiSelect=true):

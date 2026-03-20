@@ -289,7 +289,8 @@ stateDiagram-v2
 ```
 
 - `milestone-audit`: 跨 Phase 集成验证，检查模块间依赖和接口一致性
-- `milestone-complete`: 归档里程碑，推进到下一个里程碑
+- `milestone-complete`: 归档里程碑，删除旧 roadmap.md，重置状态，推进到下一个里程碑
+- 归档后运行 `/maestro continue` → 协调器检测 post-milestone 状态，自动加载 deferred items 并启动新 roadmap 规划
 
 ### 1.5 使用 Maestro 协调器
 
@@ -316,6 +317,7 @@ stateDiagram-v2
 | `execute-verify` | execute→verify | 已有计划，直接执行 |
 | `quality-loop` | review→test→debug | 质量流水线 |
 | `milestone-close` | milestone-audit→milestone-complete | 关闭里程碑 |
+| `next-milestone` | maestro-roadmap→plan→execute→verify | 启动下一里程碑（自动加载 deferred items） |
 | `quick` | quick task | 即时小任务 |
 
 ---

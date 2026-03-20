@@ -131,6 +131,10 @@ Display: "project.md: Context updated with milestone {milestone} summary"
    - Remove `.workflow/phases/{NN}-{slug}/` for archived phases
    - Keep `.workflow/phases/` directory (empty, ready for new milestone)
 
+3. Remove stale roadmap:
+   - Delete `.workflow/roadmap.md` (already archived as `milestones/v{X.Y}/roadmap-snapshot.md`)
+   - This creates a clear "no roadmap" state that the maestro coordinator detects for next-milestone routing
+
 ---
 
 ## Step 5: Commit and Route
@@ -159,5 +163,5 @@ Display: "project.md: Context updated with milestone {milestone} summary"
 
 3. Route next steps:
    - Ask user: "Start planning next milestone?"
-     - YES → Suggest Skill({ skill: "maestro-init" }) or Skill({ skill: "maestro-plan" }) for next milestone phases
+     - YES → Suggest Skill({ skill: "maestro", args: "continue" }) — coordinator auto-detects post-milestone state, loads deferred items from accumulated_context, and routes to roadmap creation
      - NO → "Project is idle." Suggest Skill({ skill: "manage-status" }) to check state anytime.

@@ -35,13 +35,58 @@ const dateStr = getUtc8ISOString().substring(0, 10)
 
 ---
 
-## Step 1.5: Load Project Specs
+## Step 1.5: Load Project Context
 
+### 1.5.1: Load Specs
 ```
 specs_content = maestro spec load --category planning
 ```
-
 Ensure phases in Step 2 respect architectural constraints.
+
+### 1.5.2: Load Project History (if `.workflow/` exists)
+
+Read project artifacts to understand what has already been built and what carries forward:
+
+```
+IF .workflow/project.md exists:
+  Read project.md:
+    - "### Validated" section → already_shipped (completed features, DO NOT re-plan)
+    - "### Active" section → current_scope (features to plan for)
+    - "## Context" section → project_history (milestone summaries, prior work)
+    - "## Key Decisions" section → locked_decisions (constraints on new phases)
+
+IF .workflow/state.json exists:
+  Read state.json.accumulated_context:
+    - deferred[] → candidate_requirements (explicitly pushed to this milestone)
+    - key_decisions[] → architectural_constraints
+    - blockers[] → known_risks
+
+IF .workflow/specs/learnings.md exists:
+  Read learnings.md:
+    - Extract patterns, pitfalls, strategy adjustments from prior milestones
+    - Feed into Step 2 decomposition as "lessons learned" context
+
+IF .workflow/codebase/ exists (from spec-map or codebase-rebuild):
+  Read available codebase docs for feature inventory
+```
+
+**Context assembly** — pass to Step 2 as `project_context`:
+```json
+{
+  "already_shipped": ["REQ-001: User auth", "REQ-002: API layer"],
+  "current_scope": ["REQ-003: Payments", "REQ-004: i18n"],
+  "deferred_from_previous": ["Internationalization deferred from v1.0"],
+  "locked_decisions": ["JWT stateless auth", "PostgreSQL"],
+  "learnings": ["JWT has perf issues at scale — consider caching"],
+  "project_history": "Milestone v1.0 completed 2026-03-15: auth + API layer shipped"
+}
+```
+
+**Rules**:
+- NEVER re-plan features listed in `already_shipped` — they are done
+- `deferred_from_previous` items are HIGH PRIORITY candidates for new phases
+- `locked_decisions` constrain technology choices in decomposition
+- `learnings` inform risk assessment and phase sizing
 
 ---
 
@@ -52,11 +97,17 @@ Ensure phases in Step 2 respect architectural constraints.
 1. **Parse Requirement**
    - Extract: goal, constraints, stakeholders, keywords
    - If `--from-brainstorm`: enrich from guidance-specification.md
+   - If `project_context` loaded (Step 1.5.2): merge into requirement analysis
+     - Cross-reference requirement against `already_shipped` — flag overlaps as "already done"
+     - Promote `deferred_from_previous` items into active requirement scope
+     - Apply `locked_decisions` as constraints
 
 2. **Codebase Exploration (conditional)**
    - Detect if project has source files
    - If yes: spawn `cli-explore-agent` for context discovery
-   - Output: relevant files, patterns, tech stack
+     - If `project_context.already_shipped` exists: include as "feature audit" directive —
+       agent should verify which shipped features are present in code and identify integration points for new work
+   - Output: relevant files, patterns, tech stack, feature_audit (existing capabilities mapped to shipped requirements)
 
 3. **External Research — API & Technology Details (Optional)**
 

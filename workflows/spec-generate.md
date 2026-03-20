@@ -106,6 +106,31 @@ Used in Phase 3 (architecture doc) and Phase 6 (epic decomposition) for constrai
 
 These inform validation and output formatting for all subsequent phases.
 
+**Load project history (if `.workflow/` exists):**
+```
+IF .workflow/project.md exists:
+  Read project.md:
+    - "### Validated" → already_shipped (DO NOT re-specify)
+    - "### Active" → current_scope
+    - "## Context" → project_history (milestone summaries)
+    - "## Key Decisions" → locked_decisions
+
+IF .workflow/state.json exists:
+  Read state.json.accumulated_context:
+    - deferred[] → candidate_requirements (high priority for this iteration)
+    - key_decisions[] → architectural_constraints
+
+IF .workflow/specs/learnings.md exists:
+  Read learnings.md → lessons_learned (patterns, pitfalls from prior milestones)
+```
+
+**Rules**:
+- Features in `already_shipped` are EXCLUDED from spec generation scope — they are done
+- `deferred` items from previous milestone are HIGH PRIORITY candidates
+- `locked_decisions` constrain architecture choices in Phase 4
+- `lessons_learned` inform risk assessment in Phase 1 and architecture decisions in Phase 4
+- Pass assembled `project_context` to Phase 1 seed analysis and Phase 7 roadmap generation
+
 ### Step 2: Discovery & Seed Analysis (Phase 1)
 
 Parse input, analyze the seed idea, optionally explore codebase, establish session.

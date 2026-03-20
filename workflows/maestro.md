@@ -95,7 +95,7 @@ test -f .workflow/state.json && echo "exists" || echo "missing"
 ### Step 3: Analyze Intent
 
 **If `$FORCED_CHAIN` is set:**
-- Validate against known chains: `full-lifecycle`, `spec-driven`, `brainstorm-driven`, `ui-design-driven`, `analyze-plan-execute`, `execute-verify`, `quality-loop`, `milestone-close`, `quick`, `review`
+- Validate against known chains: `full-lifecycle`, `spec-driven`, `brainstorm-driven`, `ui-design-driven`, `analyze-plan-execute`, `execute-verify`, `quality-loop`, `milestone-close`, `next-milestone`, `quick`, `review`
 - If valid: skip pattern matching, jump to **Step 5**
 - If invalid: display valid chains, ask user to choose
 
@@ -245,7 +245,26 @@ function detectNextAction(state) {
   const ver = state.verification_status;
   const uat = state.uat_status;
 
-  // No phases exist
+  // Post-milestone state: initialized, no roadmap, has accumulated_context
+  // This happens after milestone-complete deletes roadmap.md
+  const hasRoadmap = fileExists('.workflow/roadmap.md');
+  if (state.phases_total === 0 && !hasRoadmap && state.accumulated_context) {
+    // Format deferred items and key decisions as context for new roadmap
+    const deferred = (state.accumulated_context.deferred || []).join('; ');
+    const decisions = (state.accumulated_context.key_decisions || []).join('; ');
+    const context = [
+      deferred ? `Deferred from previous milestone: ${deferred}` : '',
+      decisions ? `Key decisions carried forward: ${decisions}` : ''
+    ].filter(Boolean).join('. ');
+    return {
+      chain: 'next-milestone',
+      steps: [
+        { cmd: 'maestro-roadmap', args: `"Plan next milestone. ${context}"` }
+      ]
+    };
+  }
+
+  // No phases exist and no prior context — fresh start
   if (state.phases_total === 0) {
     return { chain: 'brainstorm-driven', steps: ['maestro-brainstorm', 'maestro-plan', 'maestro-execute', 'maestro-verify'] };
   }
@@ -419,6 +438,12 @@ const chainMap = {
   'milestone-close': [
     { cmd: 'maestro-milestone-audit' },
     { cmd: 'maestro-milestone-complete' }
+  ],
+  'next-milestone': [
+    { cmd: 'maestro-roadmap', args: '"{description}"' },
+    { cmd: 'maestro-plan', args: '{phase}' },
+    { cmd: 'maestro-execute', args: '{phase}' },
+    { cmd: 'maestro-verify', args: '{phase}' }
   ]
 };
 
@@ -678,6 +703,7 @@ Display completion report:
 | `execute-verify` | execute → verify | Resume after planning |
 | `quality-loop` | verify → review → test-gen → test → debug → plan --gaps → execute | Fix quality issues |
 | `milestone-close` | milestone-audit → milestone-complete | Close a milestone |
+| `next-milestone` | maestro-roadmap → plan → execute → verify | Start next milestone (auto-loads deferred items) |
 | *(single-step)* | Any individual command | Direct invocation |
 
 ---

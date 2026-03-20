@@ -64,6 +64,32 @@ For each phase directory in `.workflow/phases/*/`:
 
 ---
 
+## Step 2.5: Roadmap ↔ State Consistency Check
+
+Verify that `roadmap.md` and `state.json` agree on phase structure:
+
+```
+IF .workflow/roadmap.md exists:
+  roadmap_phases = parse phase headings from roadmap.md (count "### Phase N:" entries)
+  state_total = state.json.phases_summary.total
+  actual_dirs = count .workflow/phases/*/ directories
+
+  IF roadmap_phases != state_total OR roadmap_phases != actual_dirs:
+    Display WARNING:
+      ⚠️  STATE SYNC WARNING
+      Roadmap phases: {roadmap_phases}
+      State total:    {state_total}
+      Phase dirs:     {actual_dirs}
+      Run /maestro-roadmap or /maestro-phase-add to reconcile.
+
+ELSE IF NOT .workflow/roadmap.md exists AND state.json.phases_summary.total > 0:
+  Display WARNING:
+    ⚠️  Roadmap missing but state.json references {total} phases.
+    This may indicate a completed milestone. Run /maestro continue to plan next milestone.
+```
+
+---
+
 ## Step 3: Compute Progress
 
 1. Count by status:
