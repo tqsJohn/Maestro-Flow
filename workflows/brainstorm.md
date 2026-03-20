@@ -232,8 +232,6 @@ IF .workflow/state.json exists:
     - deferred[] → deferred_items (candidates for brainstorming focus)
     - key_decisions[] → existing_constraints
 
-IF .workflow/specs/learnings.md exists:
-  Read top entries → lessons_learned
 ```
 
 Pass `project_context` into Step 2 (terminology) and Step 3 (framework generation):

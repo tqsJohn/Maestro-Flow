@@ -137,11 +137,29 @@ a. Find next pending phase:
 
 b. Update state.json:
    current_phase: next_phase (or keep current if no next)
-   phases_summary.completed: increment by 1
-   phases_summary.in_progress: decrement by 1
+   phases_summary.completed: phases_summary.completed + 1
+   phases_summary.in_progress: phases_summary.in_progress - 1
+   Guard: if phases_summary.in_progress < 0 then phases_summary.in_progress = 0
    last_updated: "{ISO timestamp}"
 
-c. If all phases completed:
+c. Write structured deferred items to accumulated_context:
+   Collect deferred entries from Step 5b (deferred_from_fix_plans + deferred_from_gaps).
+   Note: Step 5 extracts these but they are written here as part of state update.
+
+   all_deferred = deferred_from_fix_plans + deferred_from_gaps (from verification.json)
+   IF all_deferred.length > 0:
+     FOR each entry IN all_deferred:
+       Append to state.accumulated_context.deferred[]:
+         {
+           "id": entry.id,
+           "severity": entry.severity,
+           "fix_direction": entry.fix_direction,
+           "description": entry.description
+         }
+     Note: Each deferred item is a structured object, NOT a plain string.
+           This matches the schema in templates/state.json.
+
+d. If all phases completed:
    status: "idle"
    (All phases done)
 
@@ -158,6 +176,26 @@ a. Read reflection-log.md (if exists in phase directory):
 b. Read verification.json (if exists):
    Extract resolved gaps — these represent patterns learned
    Extract successful verification strategies
+
+   Also read fix_plans[] (if present):
+   deferred_from_fix_plans = []
+   FOR each fix_plan IN verification.fix_plans[]:
+     deferred_from_fix_plans.push({
+       id: fix_plan.id or "FP-{index}",
+       severity: "high",
+       fix_direction: fix_plan.tasks.map(t => t.action or t.description).join("; "),
+       description: fix_plan.objective or fix_plan.description
+     })
+
+   Also read gaps[] and convert unresolved gaps to structured deferred entries:
+   deferred_from_gaps = []
+   FOR each gap IN verification.gaps[]:
+     deferred_from_gaps.push({
+       id: gap.id,
+       severity: gap.severity or "medium",
+       fix_direction: gap.fix_direction or "",
+       description: gap.description
+     })
 
 c. Read validation.json (if exists):
    Extract test patterns that worked well
@@ -176,10 +214,11 @@ d. Compile learnings:
 
 e. If learnings found:
    For each learning:
-     Append to .workflow/specs/learnings.md:
-       ### [{type}] {summary} (Phase {NN})
+     Append to .workflow/specs/learnings.md under "## Entries":
+       ### [YYYY-MM-DD HH:mm] {type}: {summary}
+
        {content}
-       *Extracted: {timestamp}*
+       Phase: {NN} | Source: phase-transition
 
    Display: "Extracted {count} learnings to specs/learnings.md"
 ```
@@ -193,10 +232,11 @@ IF file exists ".workflow/issues/issues.jsonl":
 
   // Extract pitfall learnings from completed issues with resolution
   FOR each issue in phase_issues where status == "completed" AND resolution != null:
-    Append to .workflow/specs/learnings.md:
-      ### [pitfall] {issue.title} (Phase {NN}, {issue.id})
+    Append to .workflow/specs/learnings.md under "## Entries":
+      ### [YYYY-MM-DD HH:mm] pitfall: {issue.title}
+
       {issue.resolution}
-      *Source: issue-resolution, Extracted: {timestamp}*
+      Phase: {NN} | Source: issue-resolution | Issue: {issue.id}
 
   // Auto-close remaining open non-critical issues
   FOR each issue in phase_issues where status NOT in ["completed", "failed", "deferred"]:

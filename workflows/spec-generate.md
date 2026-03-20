@@ -120,8 +120,6 @@ IF .workflow/state.json exists:
     - deferred[] → candidate_requirements (high priority for this iteration)
     - key_decisions[] → architectural_constraints
 
-IF .workflow/specs/learnings.md exists:
-  Read learnings.md → lessons_learned (patterns, pitfalls from prior milestones)
 ```
 
 **Rules**:

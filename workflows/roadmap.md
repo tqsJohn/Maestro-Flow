@@ -61,11 +61,6 @@ IF .workflow/state.json exists:
     - key_decisions[] → architectural_constraints
     - blockers[] → known_risks
 
-IF .workflow/specs/learnings.md exists:
-  Read learnings.md:
-    - Extract patterns, pitfalls, strategy adjustments from prior milestones
-    - Feed into Step 2 decomposition as "lessons learned" context
-
 IF .workflow/codebase/ exists (from spec-map or codebase-rebuild):
   Read available codebase docs for feature inventory
 ```

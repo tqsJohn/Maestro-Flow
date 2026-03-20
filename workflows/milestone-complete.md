@@ -70,18 +70,25 @@ Check existing entries to avoid duplicates when appending in Step 3.
    - Extract patterns discovered
    - Extract pitfalls encountered
 
-2. Aggregate learnings and append to `.workflow/specs/learnings.md`:
+2. Aggregate learnings and append to `.workflow/specs/learnings.md` under "## Entries", using spec-add entry format for each item:
    ```
-   ## Milestone {milestone} Learnings ({date})
+   For each strategy adjustment:
+     ### [YYYY-MM-DD HH:mm] decision: {summary}
 
-   ### Strategy Adjustments
-   - {from reflection-log entries}
+     {content}
+     Milestone: {milestone} | Source: milestone-complete
 
-   ### Patterns Discovered
-   - {from reflection-log entries}
+   For each pattern discovered:
+     ### [YYYY-MM-DD HH:mm] pattern: {summary}
 
-   ### Pitfalls Encountered
-   - {from reflection-log entries}
+     {content}
+     Milestone: {milestone} | Source: milestone-complete
+
+   For each pitfall encountered:
+     ### [YYYY-MM-DD HH:mm] bug: {summary}
+
+     {content}
+     Milestone: {milestone} | Source: milestone-complete
    ```
 
 ---
@@ -110,22 +117,43 @@ Display: "project.md: Context updated with milestone {milestone} summary"
 
 ## Step 4: Update State
 
-1. Update `.workflow/state.json`:
+1. Read existing `.workflow/state.json` to preserve accumulated values.
+
+2. Determine next milestone's phase count:
+   ```
+   next_milestone = "v{X.Y+1}"  // increment minor version
+
+   a. Read .workflow/roadmap.md
+   b. Scan for phases belonging to next_milestone
+      next_phase_count = count of phases in next milestone
+      (If roadmap has no next milestone yet, next_phase_count = 0)
+   ```
+
+3. Calculate updated phases_summary:
+   ```
+   Read current state.json.phases_summary
+
+   new_phases_summary = {
+     "total": next_phase_count,
+     "completed": 0,
+     "in_progress": 0,
+     "pending": next_phase_count
+   }
+   ```
+
+4. Write updated `.workflow/state.json`:
    ```json
    {
-     "current_milestone": "v{X.Y+1}",  // increment minor version
-     "current_phase": 1,                 // reset to 1
+     "current_milestone": "v{X.Y+1}",
+     "current_phase": 1,
      "status": "idle",
-     "phases_summary": {
-       "total": 0,
-       "completed": 0,
-       "in_progress": 0,
-       "pending": 0
-     },
+     "phases_summary": new_phases_summary,
+     "accumulated_context": existing_state.accumulated_context,
+     "milestones": existing_state.milestones,
      "last_updated": "{timestamp}"
    }
    ```
-   Preserve `accumulated_context` -- decisions and deferred items carry forward.
+   Preserve `accumulated_context` and `milestones` -- decisions, deferred items, and milestone history carry forward.
 
 2. Clean up completed phase directories:
    - Remove `.workflow/phases/{NN}-{slug}/` for archived phases

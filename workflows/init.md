@@ -108,13 +108,19 @@ CHECK .workflow/state.json exists?
 If `.workflow/specs/` does not exist:
 
 1. Create `.workflow/specs/` directory
-2. Auto-trigger `/workflow:specs-setup`:
+2. Auto-trigger `/workflow:specs-setup` — **MUST follow `specs-setup.md` templates exactly**:
    - Scan codebase for conventions
    - Generate `project-tech.json`
    - Generate `specs/coding-conventions.md`
    - Generate `specs/architecture-constraints.md`
    - Generate `specs/quality-rules.md`
+   - Generate `specs/debug-notes.md`
+   - Generate `specs/test-conventions.md`
+   - Generate `specs/review-standards.md`
+   - Generate `specs/validation-rules.md`
    - Create empty `specs/learnings.md`
+
+**CRITICAL: Every spec file MUST include YAML frontmatter** (`---` delimited block with `title`, `readMode`, `priority`, `category`, `keywords[]`). The frontmatter is consumed by `spec-load` (category/keyword filtering), `spec-add` (keyword auto-extraction), and `maestro spec load` CLI. Omitting it breaks the entire spec system. Copy the exact frontmatter structure from `specs-setup.md` templates.
 
 ---
 

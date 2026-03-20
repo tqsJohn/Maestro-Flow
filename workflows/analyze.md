@@ -112,13 +112,11 @@ Parse $ARGUMENTS to determine mode and flags:
 11. Load project specs: `specs_content = maestro spec load --category planning`
     Ensures analysis decisions don't conflict with existing architecture constraints.
 12. Read `.workflow/state.json` → `accumulated_context` (key_decisions, deferred items, blockers)
-13. Read `.workflow/specs/learnings.md` (if exists) — patterns and pitfalls from prior milestones
 
 **Load prior context** (scratch mode):
 1. Read `.workflow/project.md` (if exists) — project vision, Validated requirements, Active requirements, Key Decisions
 2. Read `.workflow/state.json` (if exists) → `accumulated_context` (key_decisions, deferred, blockers)
-3. Read `.workflow/specs/learnings.md` (if exists) — prior milestone learnings
-4. Load project specs: `specs_content = maestro spec load --category planning`
+3. Load project specs: `specs_content = maestro spec load --category planning`
 
 **Quick mode routing**: If QUICK_MODE, skip to Step 8 (Decision Extraction) after loading context.
 
