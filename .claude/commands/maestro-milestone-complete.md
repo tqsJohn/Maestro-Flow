@@ -33,6 +33,11 @@ Milestone: $ARGUMENTS (optional -- defaults to current_milestone from state.json
 
 <execution>
 Follow '~/.maestro/workflows/milestone-complete.md' completely.
+
+**Next-step routing on completion:**
+- Next milestone has phases → Skill({ skill: "maestro-plan", args: "{next_milestone_first_phase}" })
+- Need to capture learnings → Skill({ skill: "manage-memory-capture", args: "compact" })
+- View updated project state → Skill({ skill: "manage-status" })
 </execution>
 
 <error_codes>

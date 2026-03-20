@@ -46,4 +46,5 @@ Follow '~/.maestro/workflows/codebase-rebuild.md' completely.
 - [ ] state.json updated with rebuild timestamp
 - [ ] project-tech.json refreshed with detected tech stack
 - [ ] project.md Tech Stack section updated if changes detected
+- [ ] Next step routing: Skill({ skill: "manage-status" }) or Skill({ skill: "manage-codebase-refresh" }) for incremental updates later
 </success_criteria>

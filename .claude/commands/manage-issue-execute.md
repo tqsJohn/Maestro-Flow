@@ -61,5 +61,8 @@ Follow '~/.maestro/workflows/issue-execute.md' completely.
 - [ ] Execution mode detected (server UP or DOWN)
 - [ ] Solution executed (or dry-run displayed)
 - [ ] Issue status updated in issues.jsonl (in_progress -> resolved or open on failure)
-- [ ] Result summary displayed with next-step routing to manage-issue close
+- [ ] Result summary displayed with next-step routing:
+  - Execution succeeded → Skill({ skill: "manage-issue", args: "close <ISS-ID> --resolution fixed" })
+  - Execution failed → Skill({ skill: "quality-debug", args: "<failure description>" }) then retry
+  - Want verification → Skill({ skill: "maestro-verify", args: "{phase}" })
 </success_criteria>

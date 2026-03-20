@@ -49,6 +49,11 @@ Context files resolved from `.workflow/phases/{NN}-{slug}/`:
 
 <execution>
 Follow '~/.maestro/workflows/verify.md' completely.
+
+**Next-step routing on completion:**
+- All checks pass, no gaps → Skill({ skill: "quality-review", args: "{phase}" })
+- Gaps found (must-have failures or anti-pattern blockers) → Skill({ skill: "maestro-plan", args: "{phase} --gaps" })
+- Low test coverage (Nyquist gaps) → Skill({ skill: "quality-test-gen", args: "{phase}" })
 </execution>
 
 <error_codes>

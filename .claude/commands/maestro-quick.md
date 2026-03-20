@@ -31,6 +31,12 @@ Parse for:
 
 <execution>
 Follow '~/.maestro/workflows/quick.md' completely.
+
+**Next-step routing on completion:**
+- Task done, --full verification passed → Skill({ skill: "manage-status" })
+- Task done, verification found gaps → Skill({ skill: "quality-debug", args: "{issue}" })
+- Task done, want to sync docs → Skill({ skill: "quality-sync" })
+- Need a full phase workflow instead → Skill({ skill: "maestro-plan", args: "{phase}" })
 </execution>
 
 <error_codes>

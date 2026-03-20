@@ -21,6 +21,10 @@ $ARGUMENTS -- optional flags:
 
 <execution>
 Follow '~/.maestro/workflows/sync.md' completely.
+
+**Next-step routing on completion:**
+- Docs refreshed → Skill({ skill: "manage-status" })
+- Major structural changes detected → Skill({ skill: "manage-codebase-rebuild" }) (full rebuild recommended)
 </execution>
 
 <error_codes>

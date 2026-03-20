@@ -33,6 +33,13 @@ $ARGUMENTS -- phase number to transition from (optional, defaults to current_pha
 
 <execution>
 Follow '~/.maestro/workflows/phase-transition.md' completely.
+
+**Next-step routing on completion:**
+- Next phase exists, ready to plan → Skill({ skill: "maestro-plan", args: "{next_phase}" })
+- Next phase needs analysis first → Skill({ skill: "maestro-analyze", args: "{next_phase}" })
+- Next phase needs UI design → Skill({ skill: "maestro-ui-design", args: "{next_phase}" })
+- All phases in milestone complete → Skill({ skill: "maestro-milestone-audit" })
+- View updated dashboard → Skill({ skill: "manage-status" })
 </execution>
 
 <error_codes>

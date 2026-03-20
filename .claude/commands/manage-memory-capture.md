@@ -57,4 +57,5 @@ Follow '~/.maestro/workflows/memory.md' Part B (Memory Capture) completely.
 - [ ] Compact: all file paths are ABSOLUTE
 - [ ] Tip: content, tags, and context captured
 - [ ] Confirmation banner displayed with entry ID
+- [ ] Next step: Skill({ skill: "manage-status" }) to resume workflow, or Skill({ skill: "manage-memory", args: "view <entry_id>" }) to verify captured memory
 </success_criteria>

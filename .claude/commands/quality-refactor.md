@@ -31,6 +31,11 @@ If not provided, prompt user for scope.
 
 <execution>
 Follow '~/.maestro/workflows/refactor.md' completely.
+
+**Next-step routing on completion:**
+- All tests pass → Skill({ skill: "quality-sync" }) (update codebase docs)
+- Test failures after refactor → Skill({ skill: "quality-debug", args: "{scope}" })
+- No test suite available → Skill({ skill: "quality-test-gen", args: "{phase}" })
 </execution>
 
 <error_codes>

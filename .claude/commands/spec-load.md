@@ -55,4 +55,5 @@ Follow '~/.maestro/workflows/specs-load.md' completely.
 - [ ] Keyword filtering applied if provided
 - [ ] Results displayed with file:line references
 - [ ] Relevant specs loaded into agent context
+- [ ] Next step: proceed with current task using loaded specs as context
 </success_criteria>

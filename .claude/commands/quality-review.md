@@ -90,8 +90,14 @@ Files:
   {phase_dir}/review.json
 
 Next steps:
-  {suggested_next_command}
+  {verdict_based_routing}
 ```
+
+**Next-step routing by verdict:**
+- PASS → Skill({ skill: "quality-test", args: "{phase}" })
+- PASS + low test coverage → Skill({ skill: "quality-test-gen", args: "{phase}" })
+- WARN → Skill({ skill: "quality-test", args: "{phase}" }) (proceed with caveats)
+- BLOCK → Skill({ skill: "maestro-plan", args: "{phase} --gaps" }) (fix critical findings first)
 </execution>
 
 <error_codes>
@@ -115,5 +121,5 @@ Next steps:
 - [ ] review.json written with complete findings, severity distribution, verdict
 - [ ] Issues auto-created based on level thresholds
 - [ ] index.json updated with review status
-- [ ] Next steps suggested based on verdict
+- [ ] Next step routed by verdict (PASS→test, WARN→test with caveats, BLOCK→plan --gaps)
 </success_criteria>

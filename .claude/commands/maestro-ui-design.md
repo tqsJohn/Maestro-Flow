@@ -109,8 +109,9 @@ Design System:
   Compare:          {phase_dir}/design-ref/prototypes/compare.html
 
 Next steps:
-  Skill({ skill: "maestro-plan", args: "{phase}" })      -- Plan with design reference
+  Skill({ skill: "maestro-plan", args: "{phase}" })              -- Plan with design reference
   Skill({ skill: "maestro-ui-design", args: "{phase} --refine" }) -- Refine selected design
+  Skill({ skill: "maestro-analyze", args: "{phase}" })           -- Analyze before planning
 ```
 </execution>
 

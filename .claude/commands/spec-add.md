@@ -52,4 +52,5 @@ Follow '~/.maestro/workflows/specs-add.md' completely.
 - [ ] Entry appended to `.workflow/specs/learnings.md` with timestamp
 - [ ] Relevant spec file updated (if type is pattern/decision/rule)
 - [ ] Confirmation report displayed
+- [ ] Next step: Skill({ skill: "spec-load", args: "--category {type}" }) to verify, or continue current task
 </success_criteria>

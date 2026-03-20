@@ -53,6 +53,17 @@ $ARGUMENTS -- phase number for phase mode, topic text for scratch mode, with opt
 
 <execution>
 Follow '~/.maestro/workflows/analyze.md' completely.
+
+**Next-step routing on completion:**
+
+Phase mode:
+- Go recommendation, UI work needed → Skill({ skill: "maestro-ui-design", args: "{phase}" })
+- Go recommendation, ready to plan → Skill({ skill: "maestro-plan", args: "{phase}" })
+- No-Go recommendation → revisit requirements or Skill({ skill: "maestro-brainstorm", args: "{topic}" })
+
+Scratch mode:
+- Ready to plan → Skill({ skill: "maestro-plan", args: "--dir {scratch_dir}" })
+- Need more exploration → Skill({ skill: "maestro-analyze", args: "{topic} -c" })
 </execution>
 
 <error_codes>
@@ -81,6 +92,6 @@ Both modes (full + quick):
 - [ ] Scope creep redirected to Deferred section
 - [ ] Deferred items auto-created as issues (if any)
 - [ ] project.md Key Decisions updated with Locked decisions (phase mode)
-- [ ] Next step selection handled
+- [ ] Next step routed (ui-design/plan for Go, brainstorm for No-Go)
 - [ ] index.json timestamps updated
 </success_criteria>

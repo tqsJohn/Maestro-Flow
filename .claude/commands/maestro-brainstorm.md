@@ -46,6 +46,18 @@ $ARGUMENTS -- topic text for auto mode, or role name for single role mode.
 
 <execution>
 Follow '~/.maestro/workflows/brainstorm.md' completely.
+
+**Next-step routing on completion:**
+
+Auto mode:
+- Project not initialized → Skill({ skill: "maestro-init" })
+- Project initialized, need spec package → Skill({ skill: "maestro-spec-generate", args: "--from-brainstorm {session_id}" })
+- Project initialized, quick roadmap → Skill({ skill: "maestro-roadmap", args: "--from-brainstorm {session_id}" })
+- Need deeper analysis first → Skill({ skill: "maestro-analyze", args: "{topic}" })
+
+Single role mode:
+- More roles needed → Skill({ skill: "maestro-brainstorm", args: "{next_role} --session {session_id}" })
+- All roles done, run synthesis → Skill({ skill: "maestro-brainstorm", args: "{topic} --session {session_id}" })
 </execution>
 
 <error_codes>

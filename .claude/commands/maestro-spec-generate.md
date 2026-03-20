@@ -60,6 +60,12 @@ maestro-init → maestro-roadmap → roadmap.md directly
 
 <execution>
 Follow '~/.maestro/workflows/spec-generate.md' completely.
+
+**Next-step routing on completion:**
+- Roadmap generated, ready to plan → Skill({ skill: "maestro-plan", args: "1" })
+- Need UI design first → Skill({ skill: "maestro-ui-design", args: "1" })
+- Need analysis before planning → Skill({ skill: "maestro-analyze", args: "1" })
+- View project dashboard → Skill({ skill: "manage-status" })
 </execution>
 
 <error_codes>

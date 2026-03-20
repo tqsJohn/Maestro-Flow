@@ -47,6 +47,14 @@ Context files resolved from target directory:
 
 <execution>
 Follow '~/.maestro/workflows/test.md' completely.
+
+**Next-step routing on completion:**
+- All tests pass → Skill({ skill: "maestro-phase-transition", args: "{phase}" })
+- Issues found, --auto-fix ran and succeeded → Skill({ skill: "maestro-verify", args: "{phase}" })
+- Issues found, --auto-fix ran but gaps remain → Skill({ skill: "quality-debug", args: "--from-uat {phase}" })
+- Issues found, manual fix needed → Skill({ skill: "quality-debug", args: "--from-uat {phase}" })
+- Coverage below threshold → Skill({ skill: "quality-test-gen", args: "{phase}" })
+- Need integration tests → Skill({ skill: "quality-integration-test", args: "{phase}" })
 </execution>
 
 <error_codes>
@@ -74,5 +82,5 @@ Follow '~/.maestro/workflows/test.md' completely.
 - [ ] If issues: parallel debug agents spawned per gap cluster
 - [ ] Gaps updated with root_cause, fix_direction, affected_files
 - [ ] Gap-fix loop triggered if --auto-fix (max 2 iterations)
-- [ ] Next steps suggested based on results
+- [ ] Next step routed (phase-transition if pass, verify if auto-fix success, debug --from-uat if issues, test-gen if low coverage)
 </success_criteria>

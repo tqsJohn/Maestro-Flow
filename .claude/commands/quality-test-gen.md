@@ -44,6 +44,12 @@ Context files:
 
 <execution>
 Follow '~/.maestro/workflows/test-gen.md' completely.
+
+**Next-step routing on completion:**
+- All tests pass → Skill({ skill: "quality-test", args: "{phase}" })
+- Bugs discovered (failing tests) → Skill({ skill: "quality-debug", args: "{phase}" })
+- Regressions in existing tests → Skill({ skill: "quality-debug", args: "{phase}" })
+- Coverage still low → Skill({ skill: "quality-test-gen", args: "{phase} --layer {missing_layer}" })
 </execution>
 
 <error_codes>
@@ -66,5 +72,5 @@ Follow '~/.maestro/workflows/test-gen.md' completely.
 - [ ] test-gen-report.json written with full results
 - [ ] validation.json updated with new coverage status
 - [ ] Bugs discovered documented (not fixed)
-- [ ] Next steps suggested based on results
+- [ ] Next step routed (quality-test if pass, quality-debug if bugs discovered)
 </success_criteria>

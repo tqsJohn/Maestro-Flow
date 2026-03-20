@@ -33,6 +33,11 @@ Milestone: $ARGUMENTS (optional -- defaults to current_milestone from state.json
 
 <execution>
 Follow '~/.maestro/workflows/milestone-audit.md' completely.
+
+**Next-step routing on completion:**
+- Verdict PASS → Skill({ skill: "maestro-milestone-complete", args: "{milestone}" })
+- Verdict FAIL, integration gaps → Skill({ skill: "maestro-plan", args: "{affected_phase} --gaps" })
+- Verdict FAIL, incomplete phases → Skill({ skill: "maestro-execute", args: "{incomplete_phase}" })
 </execution>
 
 <error_codes>

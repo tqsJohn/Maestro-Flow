@@ -84,4 +84,5 @@ Follow '~/.maestro/workflows/memory.md' Part A (Memory Management) completely.
 - [ ] Delete: MEMORY.md protected, confirmation required, references checked
 - [ ] Prune: workflow-only, filters validated, index updated
 - [ ] Integrity check catches orphans and broken links
+- [ ] Next step: Skill({ skill: "manage-memory-capture", args: "compact" }) to save new memory, or Skill({ skill: "manage-status" }) to continue workflow
 </success_criteria>

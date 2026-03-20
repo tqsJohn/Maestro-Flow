@@ -60,4 +60,8 @@ Follow '~/.maestro/workflows/issue.md' completely.
 - [ ] Issue data read/written to correct JSONL file
 - [ ] Output displayed in appropriate format (table for list, detail for status)
 - [ ] Cross-references maintained (link creates bidirectional references)
+- [ ] Next step routing by subcommand:
+  - create → Skill({ skill: "manage-issue-analyze", args: "<ISS-ID>" }) or Skill({ skill: "manage-issue-plan", args: "<ISS-ID>" })
+  - list → Skill({ skill: "manage-issue-analyze", args: "<ISS-ID>" }) for any open issue
+  - close → Skill({ skill: "manage-status" })
 </success_criteria>

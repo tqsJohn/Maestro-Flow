@@ -50,5 +50,8 @@ Follow '~/.maestro/workflows/specs-setup.md' completely.
 - [ ] `quality-rules.md` written with auto-detected and manual sections
 - [ ] `learnings.md` initialized with format instructions
 - [ ] `project-tech.json` written with detected tech stack
-- [ ] Report displayed with summary and next steps
+- [ ] Report displayed with summary and next steps:
+  - Build codebase docs → Skill({ skill: "spec-map" })
+  - Load specs for task → Skill({ skill: "spec-load" })
+  - Add new knowledge → Skill({ skill: "spec-add", args: "<type> <content>" })
 </success_criteria>

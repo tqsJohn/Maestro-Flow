@@ -47,6 +47,12 @@ User's issue: $ARGUMENTS
 
 <execution>
 Follow '~/.maestro/workflows/debug.md' completely.
+
+**Next-step routing on completion:**
+- Root cause found, fix needed → Skill({ skill: "maestro-plan", args: "{phase} --gaps" })
+- Root cause found (from UAT), auto-fix → Skill({ skill: "quality-test", args: "{phase} --auto-fix" })
+- Inconclusive, need more info → Skill({ skill: "quality-debug", args: "{issue} -c" }) (resume session)
+- Standalone fix already applied → Skill({ skill: "maestro-verify", args: "{phase}" })
 </execution>
 
 <error_codes>
@@ -71,5 +77,5 @@ Follow '~/.maestro/workflows/debug.md' completely.
 - [ ] Root causes collected with fix_direction and affected_files
 - [ ] If --from-uat: uat.md gaps updated with diagnosis artifacts
 - [ ] Results unified into diagnosis summary
-- [ ] Next steps suggested based on diagnosis completeness
+- [ ] Next step routed (plan --gaps + execute if fix needed, verify if fix applied, resume if inconclusive)
 </success_criteria>
