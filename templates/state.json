@@ -23,7 +23,7 @@
       }
     ]
   },
-  "milestones": [
+  "milestone_history": [
     {
       "name": "{{MILESTONE_NAME}}",
       "slug": "{{MILESTONE_SLUG}}",

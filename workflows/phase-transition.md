@@ -130,16 +130,24 @@ Write updated index.json
 ```
 Read .workflow/state.json
 
-a. Find next pending phase:
+a. Find next pending phase (milestone-scoped):
+   Read current_milestone from state.json
+   Read .workflow/roadmap.md to identify which phase numbers belong to current_milestone
+     (parse milestone headings and their nested phase entries)
+   milestone_phases = list of phase numbers under current_milestone
+
    Scan .workflow/phases/*/index.json
+   Filter to only phases whose number is in milestone_phases
    Find first phase where status == "pending" or status == "exploring" or status == "planning"
-   next_phase = that phase number (or null if none)
+   next_phase = that phase number (or null if none within current milestone)
 
 b. Update state.json:
    current_phase: next_phase (or keep current if no next)
    phases_summary.completed: phases_summary.completed + 1
    phases_summary.in_progress: phases_summary.in_progress - 1
    Guard: if phases_summary.in_progress < 0 then phases_summary.in_progress = 0
+   phases_summary.pending: phases_summary.total - phases_summary.completed - phases_summary.in_progress
+   (pending is always derived, never independently incremented/decremented)
    last_updated: "{ISO timestamp}"
 
 c. Write structured deferred items to accumulated_context:
@@ -148,16 +156,31 @@ c. Write structured deferred items to accumulated_context:
 
    all_deferred = deferred_from_fix_plans + deferred_from_gaps (from verification.json)
    IF all_deferred.length > 0:
+     existing_deferred = state.accumulated_context.deferred[]
      FOR each entry IN all_deferred:
-       Append to state.accumulated_context.deferred[]:
-         {
-           "id": entry.id,
-           "severity": entry.severity,
-           "fix_direction": entry.fix_direction,
-           "description": entry.description
-         }
+       // Dedup check: extract key nouns from entry.description (content words, excluding stop words)
+       entry_nouns = extract_key_nouns(entry.description)
+       duplicate_found = false
+       FOR each existing IN existing_deferred:
+         existing_nouns = extract_key_nouns(existing.description)
+         shared_nouns = intersection(entry_nouns, existing_nouns)
+         IF shared_nouns.length >= 2:
+           // Merge instead of appending: keep higher severity, concatenate fix_direction
+           existing.severity = max_severity(existing.severity, entry.severity)
+           existing.fix_direction = existing.fix_direction + "; " + entry.fix_direction
+           duplicate_found = true
+           BREAK
+       IF NOT duplicate_found:
+         Append to state.accumulated_context.deferred[]:
+           {
+             "id": entry.id,
+             "severity": entry.severity,
+             "fix_direction": entry.fix_direction,
+             "description": entry.description
+           }
      Note: Each deferred item is a structured object, NOT a plain string.
            This matches the schema in templates/state.json.
+           Severity ranking: critical > high > medium > low.
 
 d. If all phases completed:
    status: "idle"
@@ -300,12 +323,16 @@ Display completion summary:
 
 Route to next action:
 
-  If next_phase exists:
+  If next_phase exists (within current milestone):
     "Next phase: {next_phase_number} - {next_phase_title}"
     Suggest: Skill({ skill: "maestro-plan", args: "{next_phase_number}" }) to begin planning,
              or Skill({ skill: "manage-status" }) to review
 
-  If no next phase (all done):
+  If no next_phase within current milestone (all milestone phases completed):
+    "All phases in milestone '{current_milestone}' completed!"
+    Suggest: Skill({ skill: "maestro-milestone-audit" }) to audit and close the milestone
+
+  If no next phase across all milestones (project done):
     "All phases completed!"
     Suggest: Skill({ skill: "maestro-milestone-audit" })
 
@@ -346,7 +373,8 @@ Phase index.json:
   any status -> "completed"
 
 Project state.json:
-  current_phase -> next pending phase
+  current_phase -> next pending phase (within current milestone)
   phases_summary.completed++
   phases_summary.in_progress--
+  phases_summary.pending = total - completed - in_progress (derived)
 ```

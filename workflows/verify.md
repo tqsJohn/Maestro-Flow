@@ -43,6 +43,133 @@ Pass specs_content to verifier agent as quality standards context.
 
 ---
 
+## V0.5: Tech Stack Constraint Validation
+
+**Purpose:** Validate that modified files comply with project tech stack constraints before running expensive goal-backward verification.
+
+**Skip if** specs_content contains no tech stack or constraint definitions.
+
+### Step 1: Extract Constraints from Specs
+
+```
+constraints = {
+  allowed_libs: [],
+  disallowed_imports: [],
+  required_patterns: []
+}
+
+Parse specs_content for constraint definitions:
+  - "tech_stack" / "technology" sections -> extract allowed libraries/frameworks
+  - "constraints" / "disallowed" / "forbidden" sections -> extract disallowed imports
+  - "required_patterns" / "conventions" sections -> extract required patterns
+
+IF constraints.allowed_libs is empty AND constraints.disallowed_imports is empty:
+  Print: "V0.5: No tech stack constraints found in specs, skipping."
+  constraint_violations = []
+  SKIP to V1
+```
+
+### Step 2: Collect Modified Files
+
+```
+modified_files = []
+
+# Method 1: Extract from task summaries
+FOR each summary IN ${PHASE_DIR}/.summaries/TASK-*-summary.md:
+  Parse "Files Modified" section
+  Extract file paths -> add to modified_files[]
+
+# Method 2: Fallback to git diff if no summaries or empty list
+IF modified_files is empty:
+  modified_files = git diff --name-only HEAD~{tasks_completed} -- "*.ts" "*.tsx" "*.js" "*.jsx" "*.py" "*.java" "*.go"
+
+# Deduplicate and filter to source files only
+modified_files = unique(modified_files).filter(f => !f.includes("node_modules") && !f.includes(".test.") && !f.includes(".spec."))
+```
+
+### Step 3: Scan Imports Against Constraints
+
+```
+constraint_violations = []
+
+FOR each file IN modified_files:
+  IF file does not exist: SKIP
+
+  # Extract import statements based on file type
+  IF file ends with .ts/.tsx/.js/.jsx:
+    imports = grep -n "^import .* from ['\"]" {file}
+    imports += grep -n "require(['\"]" {file}
+  ELSE IF file ends with .py:
+    imports = grep -n "^import \|^from .* import" {file}
+  ELSE IF file ends with .go:
+    imports = grep -n "\".*\"" {file}  # inside import block
+  ELSE IF file ends with .java:
+    imports = grep -n "^import " {file}
+
+  FOR each import_line IN imports:
+    # Check against disallowed imports
+    FOR each disallowed IN constraints.disallowed_imports:
+      IF import_line contains disallowed:
+        constraint_violations.push({
+          id: "CV-{NNN}",
+          type: "disallowed_import",
+          severity: "high",
+          file: file,
+          line: import_line.line_number,
+          import: import_line.text,
+          constraint: "Disallowed: " + disallowed,
+          fix_direction: "Replace " + disallowed + " with an allowed alternative"
+        })
+
+    # Check against allowed_libs (if allowlist is defined)
+    IF constraints.allowed_libs is not empty:
+      package_name = extract package/module name from import_line
+      IF package_name is external AND package_name NOT IN constraints.allowed_libs:
+        constraint_violations.push({
+          id: "CV-{NNN}",
+          type: "unlisted_dependency",
+          severity: "medium",
+          file: file,
+          line: import_line.line_number,
+          import: import_line.text,
+          constraint: "Not in allowed tech stack",
+          fix_direction: "Verify if " + package_name + " is approved, add to tech stack or replace"
+        })
+```
+
+### Step 4: Check Required Patterns
+
+```
+FOR each pattern IN constraints.required_patterns:
+  FOR each file IN modified_files matching pattern.file_glob:
+    IF file does not contain pattern.regex:
+      constraint_violations.push({
+        id: "CV-{NNN}",
+        type: "missing_required_pattern",
+        severity: pattern.severity || "medium",
+        file: file,
+        line: null,
+        import: null,
+        constraint: "Required pattern missing: " + pattern.description,
+        fix_direction: pattern.fix_hint || "Add required pattern to file"
+      })
+```
+
+### Step 5: Report
+
+```
+IF constraint_violations.length > 0:
+  Print: "V0.5: {constraint_violations.length} constraint violation(s) found"
+  FOR each violation IN constraint_violations:
+    Print: "  [{violation.severity}] {violation.file}:{violation.line} - {violation.constraint}"
+ELSE:
+  Print: "V0.5: All modified files comply with tech stack constraints"
+```
+
+The `constraint_violations[]` array is included in the final `verification.json` output in V3 aggregation.
+
+---
+
 ## V1: Goal-Backward Verification
 
 **Purpose:** Verify execution results match phase goals through 3-layer structural checking.
@@ -392,11 +519,11 @@ Write fix plans into verification.json `fix_plans[]` array.
 
 ### Aggregate All Verification Results
 
-Combine goal-backward, anti-pattern scan, and Nyquist results:
+Combine goal-backward, constraint validation, anti-pattern scan, and Nyquist results:
 
 **Overall status determination:**
-- **passed**: All truths VERIFIED, all artifacts pass L1-L3, all key links WIRED, no blocker anti-patterns
-- **gaps_found**: Any truth FAILED, artifact MISSING/STUB, key link NOT_WIRED, or blocker found
+- **passed**: All truths VERIFIED, all artifacts pass L1-L3, all key links WIRED, no blocker anti-patterns, no high/critical constraint violations
+- **gaps_found**: Any truth FAILED, artifact MISSING/STUB, key link NOT_WIRED, blocker found, or high/critical constraint violation detected
 - **human_needed**: All automated checks pass but human verification items remain
 
 **Score**: `verified_truths / total_truths`
@@ -421,6 +548,7 @@ IF has_existing:
 Write verification.json:
 - `must_haves[]` -- list of criteria with pass/fail status, evidence, and layer results
 - `gaps[]` -- unmet criteria with severity, layer, and suggested remediation (includes uat_gaps from Step 1 if available)
+- `constraint_violations[]` -- tech stack violations with severity, file:line, and fix direction (from V0.5)
 - `antipatterns[]` -- detected anti-patterns with severity and file:line
 - `fix_plans[]` -- clustered fix plans for gap closure
 - `human_verification[]` -- items needing manual testing
@@ -456,6 +584,7 @@ Phase:         {phase_name}
 Goal-Backward: {verified_count}/{total_truths} truths verified
   Artifacts:   {artifact_verified}/{artifact_total} (L1-L3)
   Wiring:      {links_wired}/{links_total} key links
+Constraints:   {constraint_violation_count} violations ({high_count} high, {medium_count} medium)
 Anti-patterns: {blocker_count} blockers, {warning_count} warnings
 Nyquist:       {coverage_pct}% coverage ({skip_tests ? "SKIPPED" : status})
 

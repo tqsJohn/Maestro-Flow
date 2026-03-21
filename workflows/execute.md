@@ -205,6 +205,114 @@ If all 3 fail:
 
 ---
 
+## E2.5: Post-Wave Validation
+
+**Purpose:** Validate execution integrity after all waves complete, before sync and reflection. Catches missing summaries, status inconsistencies, and tech stack constraint violations early.
+
+### Check 1: Summary Existence
+
+```
+For each task_id in index.json.plan.task_ids:
+  Read .task/${task_id}.json
+  If status == "completed":
+    If NOT file exists .summaries/${task_id}-summary.md:
+      violations.push({
+        type: "missing_summary",
+        severity: "warning",
+        task_id: task_id,
+        message: "Completed task ${task_id} has no summary file at .summaries/${task_id}-summary.md"
+      })
+```
+
+### Check 2: Task Status Consistency
+
+```
+For each task_id in index.json.plan.task_ids:
+  Read .task/${task_id}.json
+  task_status = task.status
+
+  # Verify completed tasks were actually in the execution results
+  If task_status == "completed":
+    If task_id NOT in wave_results (collected from E2):
+      violations.push({
+        type: "status_mismatch",
+        severity: "warning",
+        task_id: task_id,
+        message: "Task ${task_id} status is 'completed' but was not part of execution results"
+      })
+
+  # Verify tasks that ran successfully are marked completed
+  If task_id in wave_results AND wave_results[task_id].status == "completed":
+    If task_status != "completed":
+      violations.push({
+        type: "status_mismatch",
+        severity: "critical",
+        task_id: task_id,
+        message: "Task ${task_id} completed execution but .task/${task_id}.json status is '${task_status}'"
+      })
+```
+
+### Check 3: Tech Stack Constraint Compliance
+
+```
+# Load specs constraints from E1.5 specs_content (already loaded)
+tech_constraints = extract tech_stack constraints from specs_content
+  # e.g., allowed_languages, disallowed_imports, required_patterns
+
+If tech_constraints is not empty:
+  # Collect files modified during execution
+  modified_files = []
+  For each task_id in completed_tasks:
+    Read .task/${task_id}.json
+    For each file in task.files:
+      modified_files.push(file.path)
+
+  # Scan modified files for disallowed imports
+  For each file_path in modified_files:
+    If file exists ${file_path}:
+      file_content = Read ${file_path}
+      For each constraint in tech_constraints.disallowed_imports:
+        If file_content matches constraint.pattern:
+          violations.push({
+            type: "tech_stack_violation",
+            severity: "critical",
+            task_id: associated_task_id,
+            file: file_path,
+            message: "File ${file_path} contains disallowed import matching '${constraint.pattern}': ${constraint.reason}"
+          })
+```
+
+### Gate Logic
+
+```
+critical_violations = violations.filter(v => v.severity == "critical")
+warnings = violations.filter(v => v.severity == "warning")
+
+If warnings.length > 0:
+  Log "Post-wave validation: {warnings.length} warning(s)"
+  For each warning in warnings:
+    Log "  WARN: ${warning.message}"
+
+If critical_violations.length > 0:
+  Log "Post-wave validation: {critical_violations.length} critical violation(s)"
+  For each violation in critical_violations:
+    Log "  CRITICAL: ${violation.message}"
+
+  # Block execution
+  index.json.status = "blocked"
+  index.json.execution.blocked_reason = "Post-wave validation failed with critical violations"
+  index.json.execution.violations = violations
+  index.json.updated_at = now()
+  Write index.json
+
+  Abort: "Post-wave validation failed. Fix critical violations before proceeding."
+
+# No critical violations — continue to E3
+Log "Post-wave validation passed ({warnings.length} warnings, 0 critical)"
+```
+
+---
+
 ## E3: Auto Sync
 
 **Purpose:** Update codebase documentation after execution.

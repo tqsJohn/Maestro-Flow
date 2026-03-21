@@ -65,7 +65,8 @@ Agent({
     - Status: passed | gap_found
     - If gap: description, affected phases, severity (critical/high/medium/low), fix suggestion
 
-    Write audit report to .workflow/milestone-audit-{milestone}.md
+    Ensure directory exists: mkdir -p .workflow/milestones/{milestone}/
+    Write audit report to .workflow/milestones/{milestone}/audit-report.md
     Return: summary with gap count and severity breakdown.
   ",
   run_in_background: false

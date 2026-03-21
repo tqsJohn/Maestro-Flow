@@ -10,7 +10,7 @@ Archive completed milestone and prepare for next.
    - Determine target milestone (from $ARGUMENTS or current_milestone)
 
 2. Check milestone audit status:
-   - Read `.workflow/milestone-audit-{milestone}.md` if exists
+   - Read `.workflow/milestones/{milestone}/audit-report.md` if exists
    - If no audit report exists:
      - WARN: "No audit report found. Run `/workflow:milestone-audit` first."
      - Ask user: "Complete without audit?"
@@ -46,10 +46,9 @@ Archive completed milestone and prepare for next.
      cp -r .workflow/phases/{NN}-{slug}/ .workflow/milestones/v{X.Y}/phases/{NN}-{slug}/
    ```
 
-4. Copy audit report:
-   ```
-   cp .workflow/milestone-audit-{milestone}.md .workflow/milestones/v{X.Y}/audit-report.md
-   ```
+4. Audit report:
+   - Report already exists at `.workflow/milestones/{milestone}/audit-report.md` (written by milestone-audit)
+   - No copy needed; verify file is present in archive directory
 
 ---
 
@@ -119,49 +118,73 @@ Display: "project.md: Context updated with milestone {milestone} summary"
 
 1. Read existing `.workflow/state.json` to preserve accumulated values.
 
-2. Determine next milestone's phase count:
+2. Determine next milestone from roadmap (read BEFORE any delete):
    ```
-   next_milestone = "v{X.Y+1}"  // increment minor version
-
    a. Read .workflow/roadmap.md
-   b. Scan for phases belonging to next_milestone
-      next_phase_count = count of phases in next milestone
-      (If roadmap has no next milestone yet, next_phase_count = 0)
+   b. Scan for all milestone headings (e.g. ## Milestone: vX.Y, ## v1.0, etc.)
+   c. Locate the current milestone heading in the list
+   d. next_milestone = the milestone heading immediately after current
+      (If no next milestone exists in roadmap, next_milestone = null)
+   e. If next_milestone is not null:
+        Scan for phases belonging to next_milestone
+        next_phase_count = count of phases in next milestone
+      Else:
+        next_phase_count = 0
    ```
 
-3. Calculate updated phases_summary:
+3. Calculate updated phases_summary (derived pending):
    ```
-   Read current state.json.phases_summary
-
    new_phases_summary = {
      "total": next_phase_count,
      "completed": 0,
      "in_progress": 0,
-     "pending": next_phase_count
+     "pending": next_phase_count - 0 - 0  // total - completed - in_progress
    }
    ```
 
-4. Write updated `.workflow/state.json`:
+4. Clean up completed phase directories:
+   - Remove `.workflow/phases/{NN}-{slug}/` for archived phases
+   - Keep `.workflow/phases/` directory (empty, ready for new milestone)
+
+5. Remove stale roadmap:
+   - Delete `.workflow/roadmap.md` (already archived as `milestones/v{X.Y}/roadmap-snapshot.md`)
+   - This creates a clear "no roadmap" state that the maestro coordinator detects for next-milestone routing
+
+6. Update milestone_history entry for completed milestone:
+   ```
+   FOR each entry IN existing_state.milestone_history:
+     IF entry.name == completed_milestone OR entry.slug == completed_milestone:
+       entry.status = "completed"
+       entry.completed_at = "{timestamp}"
+       entry.archive_path = ".workflow/milestones/{completed_milestone}/"
+       BREAK
+   ```
+
+7. Write updated `.workflow/state.json`:
    ```json
+   // If next_milestone exists:
    {
-     "current_milestone": "v{X.Y+1}",
+     "current_milestone": "{next_milestone}",
      "current_phase": 1,
      "status": "idle",
      "phases_summary": new_phases_summary,
      "accumulated_context": existing_state.accumulated_context,
-     "milestones": existing_state.milestones,
+     "milestone_history": existing_state.milestone_history,
+     "last_updated": "{timestamp}"
+   }
+
+   // If next_milestone is null (project complete):
+   {
+     "current_milestone": "{completed_milestone}",
+     "current_phase": null,
+     "status": "completed",
+     "phases_summary": new_phases_summary,
+     "accumulated_context": existing_state.accumulated_context,
+     "milestone_history": existing_state.milestone_history,
      "last_updated": "{timestamp}"
    }
    ```
-   Preserve `accumulated_context` and `milestones` -- decisions, deferred items, and milestone history carry forward.
-
-2. Clean up completed phase directories:
-   - Remove `.workflow/phases/{NN}-{slug}/` for archived phases
-   - Keep `.workflow/phases/` directory (empty, ready for new milestone)
-
-3. Remove stale roadmap:
-   - Delete `.workflow/roadmap.md` (already archived as `milestones/v{X.Y}/roadmap-snapshot.md`)
-   - This creates a clear "no roadmap" state that the maestro coordinator detects for next-milestone routing
+   Preserve `accumulated_context` and `milestone_history` -- decisions, deferred items, and milestone history carry forward.
 
 ---
 
@@ -182,14 +205,18 @@ Display: "project.md: Context updated with milestone {milestone} summary"
      - {M} learnings extracted to specs/learnings.md
 
    State reset:
-     - Current milestone: v{X.Y+1}
-     - Current phase: 1
-     - Status: idle
+     - Current milestone: {next_milestone or completed_milestone}
+     - Current phase: {1 or null}
+     - Status: {idle or completed}
 
    ====================================================
    ```
 
 3. Route next steps:
-   - Ask user: "Start planning next milestone?"
-     - YES → Suggest Skill({ skill: "maestro", args: "continue" }) — coordinator auto-detects post-milestone state, loads deferred items from accumulated_context, and routes to roadmap creation
-     - NO → "Project is idle." Suggest Skill({ skill: "manage-status" }) to check state anytime.
+   - If next_milestone exists:
+     - Ask user: "Start planning next milestone?"
+       - YES → Suggest Skill({ skill: "maestro", args: "continue" }) — coordinator auto-detects post-milestone state, loads deferred items from accumulated_context, and routes to roadmap creation
+       - NO → "Project is idle." Suggest Skill({ skill: "manage-status" }) to check state anytime.
+   - If next_milestone is null (project complete):
+     - Display: "All milestones completed. Project is done."
+     - Suggest Skill({ skill: "manage-status" }) to review final state.
