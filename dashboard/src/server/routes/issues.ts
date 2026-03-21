@@ -29,6 +29,44 @@ import {
 } from '../utils/issue-store.js';
 
 // ---------------------------------------------------------------------------
+// Normalize legacy/sandbox issue schemas to canonical form
+// ---------------------------------------------------------------------------
+
+const STATUS_MAP: Record<string, IssueStatus> = {
+  registered: 'open',
+  deferred: 'open',
+  open: 'open',
+  in_progress: 'in_progress',
+  resolved: 'resolved',
+  closed: 'closed',
+};
+
+const PRIORITY_MAP: Record<string | number, IssuePriority> = {
+  1: 'urgent',
+  2: 'high',
+  3: 'medium',
+  4: 'low',
+  5: 'low',
+  urgent: 'urgent',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+};
+
+function normalizeIssue(issue: Issue): Issue {
+  const raw = issue as unknown as Record<string, unknown>;
+  return {
+    ...issue,
+    status: STATUS_MAP[String(raw.status)] ?? 'open',
+    priority: PRIORITY_MAP[raw.priority as string | number] ?? 'medium',
+    type: VALID_ISSUE_TYPES.has(String(raw.type)) ? (raw.type as IssueType) : 'task',
+    description: issue.description ?? '',
+    created_at: issue.created_at ?? new Date().toISOString(),
+    updated_at: issue.updated_at ?? new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Route factory
 // ---------------------------------------------------------------------------
 
@@ -163,7 +201,7 @@ export function createIssueRoutes(workflowRoot: string | (() => string)): Hono {
       if (!updated) {
         return c.json({ error: `Issue not found: ${id}` }, 404);
       }
-      return c.json(updated);
+      return c.json(normalizeIssue(updated));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);
@@ -179,7 +217,7 @@ export function createIssueRoutes(workflowRoot: string | (() => string)): Hono {
       if (!issue) {
         return c.json({ error: `Issue not found: ${id}` }, 404);
       }
-      return c.json(issue);
+      return c.json(normalizeIssue(issue));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);

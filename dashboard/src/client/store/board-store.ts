@@ -5,15 +5,27 @@ import type { BoardState, PhaseCard, TaskCard } from '@/shared/types.js';
 // Board store — global state for dashboard
 // ---------------------------------------------------------------------------
 
-function needsNormalization(p: PhaseCard): boolean {
-  const raw = p as Record<string, unknown>;
-  return !p.execution || !('verification' in raw) || !('validation' in raw) || !('uat' in raw) || !('reflection' in raw);
+/** Coerce gap entries (may be strings or {description} objects) to string[] */
+function normalizeGaps(gaps: unknown): string[] {
+  if (!Array.isArray(gaps)) return [];
+  return gaps.map((g) => {
+    if (typeof g === 'string') return g;
+    if (g && typeof g === 'object') {
+      const obj = g as Record<string, unknown>;
+      if (typeof obj.description === 'string') return obj.description;
+      if (typeof obj.text === 'string') return obj.text;
+      if (typeof obj.id === 'string') return `Gap ${obj.id}`;
+    }
+    return String(g);
+  });
 }
 
 /** Fill missing optional-in-practice fields so components never crash on partial data */
 function normalizePhase(p: PhaseCard): PhaseCard {
-  if (!needsNormalization(p)) return p;
-  const raw = p as Record<string, unknown>;
+  const raw = p as unknown as Record<string, unknown>;
+  const verification = (raw.verification as Record<string, unknown>) ?? {};
+  const validation = (raw.validation as Record<string, unknown>) ?? {};
+  const uat = (raw.uat as Record<string, unknown>) ?? {};
   return {
     ...p,
     goal: p.goal ?? '',
@@ -22,9 +34,23 @@ function normalizePhase(p: PhaseCard): PhaseCard {
     spec_ref: p.spec_ref ?? null,
     plan: p.plan ?? { task_ids: [], task_count: 0, complexity: null, waves: [] },
     execution: p.execution ?? { method: '', started_at: null, completed_at: null, tasks_completed: 0, tasks_total: 0, current_wave: 0, commits: [] },
-    verification: (raw.verification as PhaseCard['verification']) ?? { status: 'pending', verified_at: null, must_haves: [], gaps: [] },
-    validation: (raw.validation as PhaseCard['validation']) ?? { status: 'pending', test_coverage: null, gaps: [] },
-    uat: (raw.uat as PhaseCard['uat']) ?? { status: 'pending', test_count: 0, passed: 0, gaps: [] },
+    verification: {
+      status: String(verification.status ?? 'pending'),
+      verified_at: (verification.verified_at as string) ?? null,
+      must_haves: Array.isArray(verification.must_haves) ? verification.must_haves as string[] : [],
+      gaps: normalizeGaps(verification.gaps),
+    },
+    validation: {
+      status: String(validation.status ?? 'pending'),
+      test_coverage: typeof validation.test_coverage === 'number' ? validation.test_coverage : null,
+      gaps: normalizeGaps(validation.gaps),
+    },
+    uat: {
+      status: String(uat.status ?? 'pending'),
+      test_count: typeof uat.test_count === 'number' ? uat.test_count : 0,
+      passed: typeof uat.passed === 'number' ? uat.passed : 0,
+      gaps: normalizeGaps(uat.gaps),
+    },
     reflection: (raw.reflection as PhaseCard['reflection']) ?? { rounds: 0, strategy_adjustments: [] },
   };
 }
@@ -50,7 +76,7 @@ export const useBoardStore = create<BoardStore>((set) => ({
   workspace: null,
 
   setBoard: (board) => {
-    if (board && board.phases.some((p) => needsNormalization(p))) {
+    if (board) {
       board = {
         ...board,
         phases: board.phases.map((p) => normalizePhase(p)),
@@ -63,7 +89,7 @@ export const useBoardStore = create<BoardStore>((set) => ({
     set((state) => {
       if (!state.board) return state;
       const phases = state.board.phases.map((p) =>
-        p.phase === phase ? { ...p, ...data } : p,
+        p.phase === phase ? normalizePhase({ ...p, ...data }) : p,
       );
       return { board: { ...state.board, phases } };
     }),

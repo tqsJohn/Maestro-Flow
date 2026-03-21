@@ -63,8 +63,14 @@ const FILE_TYPE_MAP: Record<string, EntryType> = {
 /** Detect entry type from heading text or fall back to file-based default. */
 function detectEntryType(heading: string, fileName: string): SpecEntry['type'] {
   const lower = heading.toLowerCase();
+  // 1. Check [type] bracket format (exact, no substring issues)
   for (const t of ENTRY_TYPES) {
-    if (lower.includes(`[${t}]`) || lower.includes(`${t}:`)) return t;
+    if (lower.includes(`[${t}]`)) return t;
+  }
+  // 2. Check "type:" prefix with word boundary to avoid substring collisions
+  //    (e.g. "debug:" should not match "bug:", "preview:" should not match "review:")
+  for (const t of ENTRY_TYPES) {
+    if (new RegExp(`\\b${t}\\s*:`).test(lower)) return t;
   }
   const stem = basename(fileName, extname(fileName));
   return FILE_TYPE_MAP[stem] ?? 'general';
@@ -421,17 +427,31 @@ export function createSpecsRoutes(workflowRoot: string | (() => string)): Hono {
         found = true;
 
         // Remove the section from the raw file content.
-        // Match heading lines that contain the clean title text.
         const rawLines = raw.split('\n');
 
+        // Strategy 1: exact match with reconstructed unified-format heading
         let startLine = -1;
-        for (let i = 0; i < rawLines.length; i++) {
-          const trimmed = rawLines[i].trim();
-          if (!HEADING_RE.test(trimmed)) continue;
-          // Match by clean title: the raw heading should contain the title text
-          if (trimmed.includes(target.title)) {
-            startLine = i;
-            break;
+        if (target.timestamp && target.title) {
+          const exact3 = `### [${target.type}] [${target.timestamp}] ${target.title}`;
+          const exact2 = `## [${target.type}] [${target.timestamp}] ${target.title}`;
+          for (let i = 0; i < rawLines.length; i++) {
+            const trimmed = rawLines[i].trim();
+            if (trimmed === exact3 || trimmed === exact2) {
+              startLine = i;
+              break;
+            }
+          }
+        }
+
+        // Strategy 2: fallback — match heading containing clean title text
+        if (startLine === -1) {
+          for (let i = 0; i < rawLines.length; i++) {
+            const trimmed = rawLines[i].trim();
+            if (!HEADING_RE.test(trimmed)) continue;
+            if (trimmed.includes(target.title)) {
+              startLine = i;
+              break;
+            }
           }
         }
 

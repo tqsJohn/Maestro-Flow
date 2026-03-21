@@ -1,4 +1,5 @@
 import { useState, useContext, useEffect, useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { ViewSwitcherContext } from '@/client/hooks/useViewSwitcher.js';
 import type { ViewSwitcherConfig } from '@/client/hooks/useViewSwitcher.js';
 import { useBoardStore } from '@/client/store/board-store.js';
@@ -8,6 +9,8 @@ import { CommandCenterView } from '@/client/components/workflow/CommandCenterVie
 import { WfTableView } from '@/client/components/workflow/WfTableView.js';
 import { SetupChecklist } from '@/client/components/workflow/SetupChecklist.js';
 import { CoordinatePanel } from '@/client/components/workflow/CoordinatePanel.js';
+import { DetailPanel } from '@/client/components/common/DetailPanel.js';
+import { KanbanDetailPanel } from '@/client/components/kanban/KanbanDetailPanel.js';
 import ColumnsIcon from 'lucide-react/dist/esm/icons/columns-3.js';
 import ListIcon from 'lucide-react/dist/esm/icons/list.js';
 import ActivityIcon from 'lucide-react/dist/esm/icons/activity.js';
@@ -25,12 +28,17 @@ const VIEW_ORDER: ActiveView[] = ['board', 'timeline', 'center', 'table', 'coord
 export function WorkflowPage() {
   const [activeView, setActiveView] = useState<ActiveView>('board');
   const { register, unregister } = useContext(ViewSwitcherContext);
-  const phases = useBoardStore((s) => s.board?.phases ?? []);
-  const board = useBoardStore((s) => s.board);
+  const { phases, board, selectedPhase, setSelectedPhase } = useBoardStore(useShallow((s) => ({
+    phases: s.board?.phases ?? [],
+    board: s.board,
+    selectedPhase: s.selectedPhase,
+    setSelectedPhase: s.setSelectedPhase,
+  })));
 
   const handleSwitch = useCallback((index: number) => {
     setActiveView(VIEW_ORDER[index]);
-  }, []);
+    setSelectedPhase(null);
+  }, [setSelectedPhase]);
 
   const config: ViewSwitcherConfig = useMemo(() => ({
     items: [
@@ -52,6 +60,8 @@ export function WorkflowPage() {
     return () => unregister();
   }, [unregister]);
 
+  const detailOpen = selectedPhase !== null;
+
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden">
@@ -68,6 +78,17 @@ export function WorkflowPage() {
           </>
         )}
       </div>
+
+      {/* Phase detail panel */}
+      <DetailPanel
+        open={detailOpen}
+        onClose={() => setSelectedPhase(null)}
+        title="Phase Detail"
+      >
+        {selectedPhase !== null && (
+          <KanbanDetailPanel selectedItem={{ type: 'phase', phaseId: selectedPhase }} />
+        )}
+      </DetailPanel>
     </div>
   );
 }
