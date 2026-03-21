@@ -120,7 +120,6 @@ If `.workflow/specs/` does not exist:
    - Generate `specs/validation-rules.md`
    - Create empty `specs/learnings.md`
 
-**CRITICAL: Every spec file MUST include YAML frontmatter** (`---` delimited block with `title`, `readMode`, `priority`, `category`, `keywords[]`). The frontmatter is consumed by `spec-load` (category/keyword filtering), `spec-add` (keyword auto-extraction), and `maestro spec load` CLI. Omitting it breaks the entire spec system. Copy the exact frontmatter structure from `specs-setup.md` templates.
 
 ---
 

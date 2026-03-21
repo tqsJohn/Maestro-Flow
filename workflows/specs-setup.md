@@ -87,8 +87,6 @@ File naming:  kebab-case vs camelCase vs PascalCase for source files
 
 ### Step 5: Generate coding-conventions.md
 
-**CRITICAL: Every spec file generated in Steps 5-12 MUST include the YAML frontmatter block exactly as shown in the templates below. The `---` delimited frontmatter (with `title`, `readMode`, `priority`, `category`, `keywords[]`) is required by `spec-load`, `spec-add`, and `maestro spec load` CLI for category filtering, keyword matching, and priority ranking. Never omit or simplify the frontmatter.**
-
 Output: `.workflow/specs/coding-conventions.md`
 
 ```markdown

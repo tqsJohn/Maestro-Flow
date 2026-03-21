@@ -114,22 +114,6 @@ If the entry type has a secondary target file, update it:
 
 For pattern/decision/rule: read the target file, find the appropriate section, append the new entry in the file's existing format.
 
-**Frontmatter preservation**: When updating any spec file, preserve the existing YAML frontmatter block (`---` delimiters and all metadata fields). Only modify content below the frontmatter.
-
-### Step 5.5: Auto-Extract Keywords
-
-```
-Extract keywords from the entry content and update the target file's frontmatter:
-
-1. Tokenize content: split into words, filter stop words
-2. Extract meaningful terms (>= 2 chars, not purely numeric)
-3. For CJK text: extract character bigrams
-4. Compare extracted keywords against existing frontmatter keywords[]
-5. Append new unique keywords to the keywords[] array in frontmatter
-6. Limit total keywords to 15 per spec file
-
-If the target file has no frontmatter keywords field, skip this step.
-```
 
 ### Step 6: Confirm
 

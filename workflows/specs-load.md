@@ -1,52 +1,33 @@
 # Workflow: specs-load
 
-Load and display relevant spec files, optionally filtered by category and/or keyword.
+Load spec files from `.workflow/specs/`, filtered by category.
 
 ## Arguments
 
 ```
-$ARGUMENTS: "[--category <type>] [--required-only] [keyword]"
+$ARGUMENTS: "[--category <type>] [keyword]"
 
---category       -- optional filter by frontmatter category:
-                    general | exploration | planning | execution | debug | test | review | validation | all
---required-only  -- only load specs with readMode: required in frontmatter
-keyword          -- optional search term (matched against frontmatter keywords[] and content)
+--category  -- filter by category:
+               general | planning | execution | debug | test | review | validation
+keyword     -- optional, grep within loaded specs for matching sections
 ```
 
-## Category-to-File Mapping
+## Category → Files Mapping
 
-Categories map to spec files via frontmatter `category` field:
+Categories are resolved by **filename** (no frontmatter required):
 
-| Category | Files loaded | Typical consumers |
-|----------|-------------|-------------------|
-| `general` | `learnings.md` | All workflows (always included as fallback) |
-| `exploration` | _(reserved for future use)_ | brainstorm, analyze |
-| `planning` | `architecture-constraints.md` | plan, analyze |
-| `execution` | `coding-conventions.md`, `quality-rules.md` | execute, plan, quick, refactor |
-| `debug` | `debug-notes.md` | debug |
-| `test` | `test-conventions.md` | test-gen, integration-test |
-| `review` | `review-standards.md` | review |
-| `validation` | `validation-rules.md` | verify |
-| `all` (default) | All spec files | spec-load with no filter |
+| Category | Files loaded |
+|----------|-------------|
+| `execution` | `coding-conventions.md`, `architecture-constraints.md`, `quality-rules.md`, `learnings.md` |
+| `planning` | `architecture-constraints.md`, `learnings.md` |
+| `validation` | `validation-rules.md`, `learnings.md` |
+| `test` | `test-conventions.md`, `learnings.md` |
+| `review` | `review-standards.md`, `learnings.md` |
+| `debug` | `debug-notes.md`, `learnings.md` |
+| `general` | `learnings.md` + any unknown files |
+| _(no filter)_ | All `.md` files in specs/ |
 
-**Note:** `general` category specs are always included regardless of filter (see `spec-loader.ts` filter logic).
-
-## Prerequisites
-
-- `.workflow/specs/` directory must exist with spec files
-
-## Search Targets
-
-```
-.workflow/specs/coding-conventions.md      (category: execution)
-.workflow/specs/architecture-constraints.md (category: planning)
-.workflow/specs/learnings.md               (category: general)
-.workflow/specs/quality-rules.md           (category: execution)
-.workflow/specs/debug-notes.md             (category: debug)
-.workflow/specs/test-conventions.md        (category: test)
-.workflow/specs/review-standards.md        (category: review)
-.workflow/specs/validation-rules.md        (category: validation)
-```
+`learnings.md` is always included regardless of category filter.
 
 ## Execution Steps
 
@@ -54,121 +35,31 @@ Categories map to spec files via frontmatter `category` field:
 
 ```
 Parse $ARGUMENTS:
-  --category <type>  -> category filter (general|exploration|planning|execution|debug|test|review|validation|all)
-  remaining text     -> keyword for search filtering
-
-Examples:
-  ""                          -> category=all, keyword=none
-  "--category execution"      -> category=execution, keyword=none
-  "error handling"            -> category=all, keyword="error handling"
-  "--category test mock"      -> category=test, keyword="mock"
-  "--category debug"          -> category=debug, keyword=none
+  --category <type>  -> category filter
+  remaining text     -> keyword for grep filtering
 ```
 
-### Step 2: Detect Context and Verify Specs
-
-Determine what phase/task is currently active to provide context-aware loading.
+### Step 2: Load Specs via CLI
 
 ```bash
-# Check for active phase
-cat .workflow/state.json 2>/dev/null | grep -o '"current_phase":[^,}]*'
-
-# Check specs directory exists
-ls .workflow/specs/ 2>/dev/null || echo "E001"
+maestro spec load --category <category>
 ```
 
-If `.workflow/specs/` not initialized -> abort with E001.
-
-### Step 3: Load and Filter Specs
-
-**Frontmatter-based filtering (preferred):**
-
-Use `maestro spec load` CLI for programmatic access:
+If `maestro spec load` CLI is unavailable, read files directly:
 ```bash
-# By category (uses frontmatter category field)
-maestro spec load --category planning
-maestro spec load --category execution
-
-# By keywords (matched against frontmatter keywords[])
-maestro spec load --keywords "style,naming"
-
-# Required specs only
-maestro spec load --category planning   # readMode: required specs loaded by default
+cat .workflow/specs/<matched-files>
 ```
 
-**Fallback file resolution** (when `maestro spec load` CLI is unavailable):
+### Step 3: Keyword Filter (optional)
+
+If keyword provided, grep within loaded content:
 ```bash
-# Scan all .md files in specs/, filter by frontmatter category field
-FILES=""
-for f in .workflow/specs/*.md; do
-  file_category=$(head -10 "$f" | grep "^category:" | awk '{print $2}')
-  if [ "$CATEGORY" = "all" ] || [ "$file_category" = "$CATEGORY" ] || [ "$file_category" = "general" ]; then
-    FILES="$FILES $f"
-  fi
-done
+grep -n -i -C 3 "$KEYWORD" <loaded content>
 ```
 
-**If keyword provided:** Match against frontmatter `keywords[]` first, then fall back to content search.
-```bash
-# Programmatic: maestro spec load --keywords "$KEYWORD"
-# Fallback: grep -n -i -C 3 "$KEYWORD" $FILES
+### Step 4: Display Results
+
+Output loaded specs content. If no specs found, show:
 ```
-
-**If --required-only:** Filter to specs with `readMode: required` in frontmatter.
-
-**If no keyword:** Read and display full contents of resolved files.
-
-If keyword provided but no matches found -> warn W001.
-
-### Step 4: Rank Results
-
+(No specs found. Run "maestro spec init" or "/spec-setup" to initialize.)
 ```
-Ranking criteria (highest to lowest):
-  1. Exact match   -- keyword appears as a standalone word
-  2. Partial match  -- keyword appears as substring of a word
-  3. Related match  -- keyword appears in the section heading only
-
-Sort results by rank, then by priority (frontmatter):
-  critical > high > medium > low
-```
-
-### Step 5: Display Results
-
-**Output format (no keyword):**
-```
-== specs-load: [category] ==
---- .workflow/specs/coding-conventions.md ---
-[full content]
-
---- .workflow/specs/architecture-constraints.md ---
-[full content]
-...
-```
-
-**Output format (with keyword):**
-```
-== specs-load: "[keyword]" in [category] ==
-Results (ranked by relevance):
-
-1. .workflow/specs/coding-conventions.md:42
-   [matched section with context]
-
-2. .workflow/specs/learnings.md:15
-   [matched section with context]
-
-Total: N matches across M files
-```
-
-If no matches found:
-```
-No matches found for "{keyword}".
-
-Related headings in spec files:
-- {heading_1} (coding-conventions.md)
-- {heading_2} (architecture-constraints.md)
-- ...
-```
-
-## Output
-
-Formatted search results with file:line references and context.

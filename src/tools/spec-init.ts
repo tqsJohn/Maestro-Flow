@@ -224,14 +224,11 @@ export function initSpecSystem(projectPath: string): InitResult {
   const result: InitResult = { created: [], skipped: [], directories: [] };
 
   const specsDir = join(projectPath, '.workflow', 'specs');
-  const indexDir = join(projectPath, '.workflow', '.spec-index');
 
-  // Create directories
-  for (const dir of [specsDir, indexDir]) {
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-      result.directories.push(dir);
-    }
+  // Create directory
+  if (!existsSync(specsDir)) {
+    mkdirSync(specsDir, { recursive: true });
+    result.directories.push(specsDir);
   }
 
   // Write seed documents

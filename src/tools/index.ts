@@ -3,9 +3,8 @@ import type { Tool, ToolResult } from '../types/index.js';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSpecs } from './spec-loader.js';
+import { loadSpecs, type SpecCategory } from './spec-loader.js';
 import { initSpecSystem } from './spec-init.js';
-import type { SpecCategory } from './spec-index-builder.js';
 import {
   BRIDGE_PREFIX,
   AUTO_COMPACT_BUFFER_PCT,
@@ -67,27 +66,21 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
   registry.register({
     name: 'spec_load',
-    description: 'Load project specs filtered by category and keywords',
+    description: 'Load project specs filtered by category',
     inputSchema: {
       type: 'object',
       properties: {
         projectPath: { type: 'string', description: 'Project root path' },
-        category: { type: 'string', description: 'Filter: general|exploration|planning|execution|debug|test|review|validation' },
-        keywords: { type: 'string', description: 'Space-separated keywords for matching' },
+        category: { type: 'string', description: 'Filter: general|planning|execution|debug|test|review|validation' },
       },
       required: ['projectPath'],
     },
     async handler(input) {
-      const keywords = typeof input.keywords === 'string'
-        ? (input.keywords as string).split(/\s+/).filter(Boolean)
-        : undefined;
-      const result = loadSpecs({
-        projectPath: input.projectPath as string,
-        category: input.category as SpecCategory | undefined,
-        keywords,
-        outputFormat: 'cli',
-      });
-      return { content: [{ type: 'text', text: result.content }] };
+      const result = loadSpecs(
+        input.projectPath as string,
+        input.category as SpecCategory | undefined,
+      );
+      return { content: [{ type: 'text', text: result.content || '(No specs found)' }] };
     },
   });
 
