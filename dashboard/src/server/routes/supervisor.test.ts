@@ -430,4 +430,106 @@ describe('Supervisor REST Routes', () => {
       expect(data.extensions[1].name).toBe('claude-code');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // P0: Error path tests
+  // -------------------------------------------------------------------------
+  describe('POST /api/supervisor/prompts/preview - builder error', () => {
+    it('returns 400 when builder.build() throws', async () => {
+      const { app, prompts } = createApp();
+      // Add a broken builder
+      (prompts as any).builders.set('broken', {
+        build: async () => { throw new Error('Template render failed'); },
+      });
+
+      const res = await req(app, 'POST', '/api/supervisor/prompts/preview', {
+        builder: 'broken',
+        context: { mode: 'test' },
+      });
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('Builder failed:');
+      expect(data.error).toContain('Template render failed');
+    });
+  });
+
+  describe('POST /api/supervisor/schedules - service error', () => {
+    it('returns 500 when createTask throws', async () => {
+      const { app, scheduler } = createApp();
+      // Override createTask to throw
+      (scheduler as any).createTask = async () => {
+        throw new Error('Invalid cron expression: bad');
+      };
+
+      const res = await req(app, 'POST', '/api/supervisor/schedules', {
+        name: 'Fail Task',
+        cronExpression: 'bad',
+        taskType: 'custom',
+      });
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toContain('Invalid cron expression');
+    });
+  });
+
+  describe('PUT /api/supervisor/schedules/:id - non-error 500', () => {
+    it('returns 500 for generic service error', async () => {
+      const { app, scheduler } = createApp();
+      // Override updateTask to throw generic error
+      (scheduler as any).updateTask = async () => {
+        throw new Error('Database connection failed');
+      };
+
+      const res = await req(app, 'PUT', '/api/supervisor/schedules/some-id', {
+        name: 'Updated',
+      });
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toContain('Database connection failed');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P1: Input validation edge cases
+  // -------------------------------------------------------------------------
+  describe('POST /api/supervisor/schedules - input defaults', () => {
+    it('treats array config as empty object', async () => {
+      const { app } = createApp();
+      const res = await req(app, 'POST', '/api/supervisor/schedules', {
+        name: 'Array Config',
+        cronExpression: '0 * * * *',
+        taskType: 'custom',
+        config: [1, 2, 3], // array should be treated as {}
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.task.config).toEqual({});
+    });
+
+    it('treats non-boolean enabled as true', async () => {
+      const { app } = createApp();
+      const res = await req(app, 'POST', '/api/supervisor/schedules', {
+        name: 'String Enabled',
+        cronExpression: '0 * * * *',
+        taskType: 'custom',
+        enabled: 'yes', // not boolean, defaults to true
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.task.enabled).toBe(true);
+    });
+  });
+
+  describe('POST /api/supervisor/prompts/preview - validation', () => {
+    it('rejects non-string builder', async () => {
+      const { app } = createApp();
+      const res = await req(app, 'POST', '/api/supervisor/prompts/preview', {
+        builder: 123,
+        context: {},
+      });
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('builder');
+    });
+  });
 });

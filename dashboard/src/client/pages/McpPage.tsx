@@ -96,7 +96,8 @@ export function McpPage() {
         <button
           type="button"
           onClick={() => void fetchConfig()}
-          className="px-3 py-1 rounded-[var(--radius-md)] border border-border bg-bg-card text-[11px] font-semibold text-text-secondary hover:text-text-primary transition-all"
+          className="px-3 py-1 rounded-[var(--radius-md)] text-[11px] font-semibold text-text-secondary hover:text-text-primary transition-all"
+          style={{ border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
         >
           Retry
         </button>

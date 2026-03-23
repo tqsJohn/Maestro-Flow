@@ -19,14 +19,18 @@ export function FilterChipBar({ chips, active, onSelect }: FilterChipBarProps) {
             type="button"
             onClick={() => onSelect(chip)}
             className={[
-              'px-[var(--spacing-3)] py-[var(--spacing-1)] rounded-full',
+              'px-[var(--spacing-3)] py-[var(--spacing-1)]',
               'text-[length:var(--font-size-xs)] font-[var(--font-weight-medium)] whitespace-nowrap',
-              'border transition-all duration-[var(--duration-fast)] ease-[var(--ease-notion)]',
+              'transition-all duration-[var(--duration-fast)] ease-[var(--ease-notion)]',
               'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]',
               isActive
-                ? 'bg-text-primary text-text-inverse border-text-primary'
-                : 'bg-bg-card text-text-secondary border-border hover:border-text-tertiary hover:text-text-primary',
+                ? ''
+                : 'hover:text-text-primary',
             ].join(' ')}
+            style={isActive
+              ? { borderRadius: 'var(--style-chip-radius)', border: 'var(--style-chip-border)', backgroundColor: 'var(--style-chip-active-bg)', color: 'var(--style-chip-active-color)' }
+              : { borderRadius: 'var(--style-chip-radius)', border: 'var(--style-chip-border)', backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-secondary)' }
+            }
           >
             {chip}
           </button>

@@ -534,4 +534,273 @@ describe('TaskSchedulerService', () => {
       expect(result.result).toContain('disabled');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // P0: Error paths
+  // -------------------------------------------------------------------------
+  describe('task handler error paths', () => {
+    it('records failed status when task handler throws', async () => {
+      await service.start();
+      // learning-analysis with a throwing selfLearningService
+      const throwingLearning = {
+        async analyze(): Promise<unknown> { throw new Error('Analysis exploded'); },
+      };
+      const failService = new TaskSchedulerService(
+        eventBus, workflowRoot, execScheduler as any, throwingLearning as any,
+      );
+      await failService.start();
+
+      const task = await failService.createTask({
+        name: 'Fail Learn',
+        cronExpression: '0 * * * *',
+        taskType: 'learning-analysis',
+        enabled: false,
+        config: {},
+      });
+
+      const result = await failService.runTask(task.id);
+      expect(result.status).toBe('failed');
+      expect(result.result).toContain('Analysis exploded');
+      failService.stop();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P0: Cleanup handler - real journal pruning
+  // -------------------------------------------------------------------------
+  describe('cleanup handler - real journal pruning', () => {
+    it('prunes old entries and preserves recent ones', async () => {
+      await service.start();
+
+      // Write a journal.jsonl with 3 old + 2 recent entries
+      const journalDir = join(workflowRoot, 'execution');
+      await mkdir(journalDir, { recursive: true });
+      const journalPath = join(journalDir, 'journal.jsonl');
+
+      const old1 = JSON.stringify({ timestamp: '2020-01-01T00:00:00Z', type: 'old1' });
+      const old2 = JSON.stringify({ timestamp: '2020-06-15T00:00:00Z', type: 'old2' });
+      const old3 = JSON.stringify({ timestamp: '2021-01-01T00:00:00Z', type: 'old3' });
+      const recent1 = JSON.stringify({ timestamp: new Date().toISOString(), type: 'recent1' });
+      const recent2 = JSON.stringify({ timestamp: new Date().toISOString(), type: 'recent2' });
+
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(journalPath, [old1, old2, old3, recent1, recent2].join('\n') + '\n', 'utf-8');
+
+      const task = await service.createTask({
+        name: 'Prune',
+        cronExpression: '0 * * * *',
+        taskType: 'cleanup',
+        enabled: false,
+        config: { retentionDays: 30 },
+      });
+
+      const result = await service.runTask(task.id);
+      expect(result.status).toBe('success');
+      expect(result.result).toContain('pruned 3');
+
+      // Verify file contents
+      const remaining = await readFile(journalPath, 'utf-8');
+      const lines = remaining.trim().split('\n').filter(Boolean);
+      expect(lines).toHaveLength(2);
+      for (const line of lines) {
+        const parsed = JSON.parse(line);
+        expect(parsed.type).toMatch(/^recent/);
+      }
+    });
+
+    it('preserves malformed JSON lines during cleanup', async () => {
+      await service.start();
+
+      const journalDir = join(workflowRoot, 'execution');
+      await mkdir(journalDir, { recursive: true });
+      const journalPath = join(journalDir, 'journal.jsonl');
+
+      const old = JSON.stringify({ timestamp: '2020-01-01T00:00:00Z', type: 'old' });
+      const malformed = 'not valid json {{{';
+      const recent = JSON.stringify({ timestamp: new Date().toISOString(), type: 'recent' });
+
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(journalPath, [old, malformed, recent].join('\n') + '\n', 'utf-8');
+
+      const task = await service.createTask({
+        name: 'Cleanup Malformed',
+        cronExpression: '0 * * * *',
+        taskType: 'cleanup',
+        enabled: false,
+        config: { retentionDays: 30 },
+      });
+
+      const result = await service.runTask(task.id);
+      expect(result.status).toBe('success');
+
+      const remaining = await readFile(journalPath, 'utf-8');
+      const lines = remaining.trim().split('\n').filter(Boolean);
+      // malformed + recent should be kept (old pruned)
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toBe(malformed);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P1: Without optional dependencies
+  // -------------------------------------------------------------------------
+  describe('without optional dependencies', () => {
+    let bareService: TaskSchedulerService;
+
+    beforeEach(async () => {
+      bareService = new TaskSchedulerService(eventBus, workflowRoot);
+      await bareService.start();
+    });
+
+    afterEach(() => {
+      bareService.stop();
+    });
+
+    it('auto-dispatch returns Skipped without executionScheduler', async () => {
+      const task = await bareService.createTask({
+        name: 'AD Bare',
+        cronExpression: '0 * * * *',
+        taskType: 'auto-dispatch',
+        enabled: false,
+        config: {},
+      });
+      const result = await bareService.runTask(task.id);
+      expect(result.result).toContain('Skipped');
+      expect(result.result).toContain('ExecutionScheduler not available');
+    });
+
+    it('learning-analysis returns Skipped without selfLearningService', async () => {
+      const task = await bareService.createTask({
+        name: 'Learn Bare',
+        cronExpression: '0 * * * *',
+        taskType: 'learning-analysis',
+        enabled: false,
+        config: {},
+      });
+      const result = await bareService.runTask(task.id);
+      expect(result.result).toContain('Skipped');
+      expect(result.result).toContain('SelfLearningService not available');
+    });
+
+    it('health-check reports all missing deps', async () => {
+      const task = await bareService.createTask({
+        name: 'HC Bare',
+        cronExpression: '0 * * * *',
+        taskType: 'health-check',
+        enabled: false,
+        config: {},
+      });
+      const result = await bareService.runTask(task.id);
+      expect(result.result).toContain('ExecutionScheduler not available');
+      expect(result.result).toContain('SelfLearningService not available');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P1: Cleanup handler defaults & edge cases
+  // -------------------------------------------------------------------------
+  describe('cleanup handler edge cases', () => {
+    it('uses default retentionDays=30 when config omits it', async () => {
+      await service.start();
+
+      const journalDir = join(workflowRoot, 'execution');
+      await mkdir(journalDir, { recursive: true });
+      const journalPath = join(journalDir, 'journal.jsonl');
+
+      // Entry 40 days ago should be pruned with default 30 days
+      const fortyDaysAgo = new Date();
+      fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+      const old = JSON.stringify({ timestamp: fortyDaysAgo.toISOString(), type: 'old' });
+      const recent = JSON.stringify({ timestamp: new Date().toISOString(), type: 'recent' });
+
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(journalPath, [old, recent].join('\n') + '\n', 'utf-8');
+
+      const task = await service.createTask({
+        name: 'Default Retention',
+        cronExpression: '0 * * * *',
+        taskType: 'cleanup',
+        enabled: false,
+        config: {}, // no retentionDays
+      });
+
+      const result = await service.runTask(task.id);
+      expect(result.result).toContain('pruned 1');
+      expect(result.result).toContain('30 days');
+    });
+
+    it('handles empty journal file gracefully', async () => {
+      await service.start();
+
+      const journalDir = join(workflowRoot, 'execution');
+      await mkdir(journalDir, { recursive: true });
+      const journalPath = join(journalDir, 'journal.jsonl');
+
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(journalPath, '\n\n', 'utf-8');
+
+      const task = await service.createTask({
+        name: 'Empty Journal',
+        cronExpression: '0 * * * *',
+        taskType: 'cleanup',
+        enabled: false,
+        config: {},
+      });
+
+      const result = await service.runTask(task.id);
+      expect(result.status).toBe('success');
+      expect(result.result).toContain('pruned 0');
+    });
+
+    it('returns "No journal file" when file does not exist', async () => {
+      await service.start();
+
+      const task = await service.createTask({
+        name: 'No Journal',
+        cronExpression: '0 * * * *',
+        taskType: 'cleanup',
+        enabled: false,
+        config: {},
+      });
+
+      const result = await service.runTask(task.id);
+      expect(result.result).toContain('No journal file');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P1: Report handler
+  // -------------------------------------------------------------------------
+  describe('report handler', () => {
+    it('writes report JSON with correct stats', async () => {
+      await service.start();
+
+      // Create a couple tasks so stats are non-trivial
+      await service.createTask({ name: 'R1', cronExpression: '0 * * * *', taskType: 'custom', enabled: true, config: {} });
+      await service.createTask({ name: 'R2', cronExpression: '0 * * * *', taskType: 'custom', enabled: false, config: {} });
+
+      const reportTask = await service.createTask({
+        name: 'Report Test',
+        cronExpression: '0 * * * *',
+        taskType: 'report',
+        enabled: false,
+        config: {},
+      });
+
+      const result = await service.runTask(reportTask.id);
+      expect(result.status).toBe('success');
+      expect(result.result).toContain('Report written');
+
+      // Extract path and read the report file
+      const match = result.result!.match(/Report written to (.+)$/);
+      expect(match).toBeTruthy();
+      const reportContent = await readFile(match![1], 'utf-8');
+      const report = JSON.parse(reportContent);
+
+      expect(report.generatedAt).toBeTruthy();
+      expect(report.totalScheduledTasks).toBe(3); // R1 + R2 + reportTask itself
+      expect(report.enabledTasks).toBeGreaterThanOrEqual(1);
+      expect(report.executionScheduler).toBeDefined(); // execScheduler injected
+    });
+  });
 });

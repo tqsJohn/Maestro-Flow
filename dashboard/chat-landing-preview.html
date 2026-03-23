@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chat Landing - Cowork Style Preview</title>
+<style>
+  /* ===== Design Tokens (from globals.css) ===== */
+  :root {
+    --color-bg-primary: #FAF8F5;
+    --color-bg-secondary: #F3F0EA;
+    --color-bg-card: #FFFFFF;
+    --color-bg-hover: rgba(55, 53, 47, 0.04);
+    --color-text-primary: #2D2A26;
+    --color-text-secondary: #78756F;
+    --color-text-tertiary: #A09D97;
+    --color-text-placeholder: #D1CEC8;
+    --color-border: #E8E5DE;
+    --color-border-divider: #ECEAE4;
+    --color-accent-orange: #C8863A;
+    --color-accent-blue: #5B8DB8;
+    --color-accent-purple: #9178B5;
+    --color-accent-green: #5A9E78;
+    --color-tint-exploring: #EDF2F8;
+    --color-tint-planning: #F2EDF8;
+    --color-tint-verifying: #FAF0E3;
+    --color-tint-completed: #EEF5F0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* ===== Layout ===== */
+  .sidebar {
+    width: 48px;
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0;
+    gap: 6px;
+    background: var(--color-bg-primary);
+    flex-shrink: 0;
+  }
+  .sidebar-btn {
+    width: 34px; height: 34px; border-radius: 10px;
+    border: none; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-tertiary);
+    transition: all 150ms;
+  }
+  .sidebar-btn:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+  }
+  .sidebar-btn svg { width: 18px; height: 18px; stroke-width: 1.6; }
+
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+    padding-top: 12vh;
+    padding-bottom: 60px;
+  }
+
+  .content {
+    width: 100%;
+    max-width: 680px;
+    padding: 0 24px;
+  }
+
+  /* ===== Heading ===== */
+  .heading {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: clamp(28px, 4vw, 38px);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: var(--color-text-tertiary);
+    margin-bottom: 28px;
+  }
+  .subtitle a {
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* ===== Composer Card ===== */
+  .composer {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02);
+    padding: 0;
+    margin-bottom: 40px;
+    transition: border-color 200ms, box-shadow 200ms;
+  }
+  .composer:focus-within {
+    border-color: var(--color-accent-orange);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04), 0 0 0 3px rgba(200, 134, 58, 0.08);
+  }
+
+  .composer-textarea {
+    width: 100%;
+    border: none;
+    background: transparent;
+    resize: none;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--color-text-primary);
+    padding: 18px 20px 12px;
+    min-height: 64px;
+    font-family: inherit;
+  }
+  .composer-textarea::placeholder {
+    color: var(--color-text-placeholder);
+  }
+
+  .composer-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px 10px;
+    gap: 4px;
+  }
+
+  .toolbar-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px; border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 13px; font-weight: 400;
+    cursor: pointer;
+    transition: color 150ms;
+  }
+  .toolbar-btn:hover {
+    color: var(--color-text-primary);
+  }
+  .toolbar-btn svg { width: 16px; height: 16px; stroke-width: 1.5; }
+
+  .toolbar-plus {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: none; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-tertiary);
+    transition: color 150ms;
+  }
+  .toolbar-plus:hover {
+    color: var(--color-text-primary);
+  }
+
+  .toolbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .model-selector {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 4px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 13px; font-weight: 400;
+    cursor: pointer;
+    transition: color 150ms;
+  }
+  .model-selector:hover {
+    color: var(--color-text-primary);
+  }
+
+  .mic-btn {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: none; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-tertiary);
+    transition: color 150ms;
+  }
+  .mic-btn:hover {
+    color: var(--color-text-primary);
+  }
+
+  /* ===== Quick Start Section ===== */
+  .section-label {
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .quick-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .quick-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--color-border-divider);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 150ms;
+  }
+  .quick-item:hover {
+    background: var(--color-bg-hover);
+  }
+  .quick-item:last-child {
+    border-bottom: none;
+  }
+
+  .quick-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .quick-icon svg { width: 18px; height: 18px; stroke-width: 1.6; }
+
+  .quick-icon--blue { background: var(--color-tint-exploring); color: var(--color-accent-blue); }
+  .quick-icon--purple { background: var(--color-tint-planning); color: var(--color-accent-purple); }
+  .quick-icon--orange { background: var(--color-tint-verifying); color: var(--color-accent-orange); }
+  .quick-icon--green { background: var(--color-tint-completed); color: var(--color-accent-green); }
+
+  .quick-text { flex: 1; min-width: 0; }
+  .quick-title {
+    font-size: 14px; font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.3;
+  }
+  .quick-desc {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+  }
+
+  .quick-arrow {
+    color: var(--color-text-placeholder);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+  .quick-item:hover .quick-arrow {
+    opacity: 1;
+  }
+
+  /* ===== Keyboard hints ===== */
+  .hints {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 10px;
+    color: var(--color-text-placeholder);
+  }
+  .hints kbd {
+    font-family: monospace;
+    font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid var(--color-border-divider);
+    border-radius: 3px;
+    background: var(--color-bg-secondary);
+  }
+  .hints .right { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar (simplified for preview) -->
+<nav class="sidebar">
+  <button class="sidebar-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <button class="sidebar-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  </button>
+  <button class="sidebar-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  </button>
+  <button class="sidebar-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  </button>
+</nav>
+
+<!-- Main content -->
+<main class="main">
+  <div class="content">
+
+    <!-- Heading -->
+    <h1 class="heading">Let's build something together</h1>
+    <p class="subtitle">Maestro workflow orchestration. <a href="#">Learn how it works.</a></p>
+
+    <!-- Composer -->
+    <div class="composer">
+      <textarea class="composer-textarea" placeholder="How can I help you today?" rows="2"></textarea>
+      <div class="composer-toolbar">
+        <!-- Left: project selector + plus -->
+        <button class="toolbar-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Work in a project
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:12px;height:12px;margin-left:2px"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="toolbar-plus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:16px;height:16px;stroke-width:2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+
+        <!-- Right: model selector + mic -->
+        <div class="toolbar-right">
+          <div class="model-selector">
+            Claude Code
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:12px;height:12px;stroke-width:2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <button class="mic-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:18px;height:18px;stroke-width:1.6"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keyboard hints -->
+    <div class="hints" style="margin-top:-32px; margin-bottom:40px;">
+      <span><kbd>Enter</kbd> send</span>
+      <span><kbd>/</kbd> skills</span>
+      <span class="right">Claude Code &middot; opus-4.6</span>
+    </div>
+
+    <!-- Quick Start -->
+    <p class="section-label">Get started with Maestro</p>
+    <div class="quick-list">
+      <div class="quick-item">
+        <div class="quick-icon quick-icon--blue">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </div>
+        <div class="quick-text">
+          <div class="quick-title">Explore your codebase</div>
+          <div class="quick-desc">Ask questions, trace code paths, understand architecture</div>
+        </div>
+        <svg class="quick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+
+      <div class="quick-item">
+        <div class="quick-icon quick-icon--purple">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        </div>
+        <div class="quick-text">
+          <div class="quick-title">Plan a feature</div>
+          <div class="quick-desc">Break down requirements into phases and tasks</div>
+        </div>
+        <svg class="quick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+
+      <div class="quick-item">
+        <div class="quick-icon quick-icon--orange">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div class="quick-text">
+          <div class="quick-title">Execute a workflow</div>
+          <div class="quick-desc">Run parallel tasks with automatic verification</div>
+        </div>
+        <svg class="quick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+
+      <div class="quick-item">
+        <div class="quick-icon quick-icon--green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+        <div class="quick-text">
+          <div class="quick-title">Review & debug</div>
+          <div class="quick-desc">Multi-dimensional code review and hypothesis-driven debugging</div>
+        </div>
+        <svg class="quick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+</body>
+</html>

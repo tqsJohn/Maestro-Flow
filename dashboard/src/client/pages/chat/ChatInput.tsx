@@ -185,11 +185,12 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
         {/* Composer */}
         <div
           ref={composerRef}
-          className="border rounded-[14px] transition-[border-color,box-shadow]"
+          className="border transition-[border-color,box-shadow]"
           style={{
             borderColor: 'var(--color-border)',
             backgroundColor: 'var(--color-bg-card)',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.02)',
+            borderRadius: 'var(--style-composer-radius)',
+            boxShadow: 'var(--style-card-shadow)',
             transitionDuration: 'var(--duration-normal)',
           }}
           onFocusCapture={(e) => {
@@ -215,8 +216,8 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
             disabled={isNonInteractive || (externalProcessId !== undefined && !effectiveProcessId)}
             placeholder={effectiveProcessId ? 'Send a message...' : 'Send a message, / for commands...'}
             rows={isMultiline ? 3 : 1}
-            className={`w-full resize-none border-none px-[14px] py-[10px] text-[13px] leading-[1.5] bg-transparent outline-none disabled:opacity-40 disabled:cursor-not-allowed ${isMultiline ? 'min-h-[72px] max-h-[200px]' : 'min-h-[42px] max-h-[42px]'}`}
-            style={{ color: 'var(--color-text-primary)' }}
+            className={`w-full resize-none border-none leading-[1.5] bg-transparent outline-none disabled:opacity-40 disabled:cursor-not-allowed ${isMultiline ? 'min-h-[72px] max-h-[200px]' : 'min-h-[42px] max-h-[42px]'}`}
+            style={{ color: 'var(--color-text-primary)', fontSize: 'var(--style-composer-textarea-size)', padding: 'var(--style-composer-padding)' }}
           />
           <div
             className="flex items-center gap-[2px] px-[6px] py-1"
@@ -255,10 +256,11 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
 
             {/* Agent selector */}
             <div
-              className="flex items-center gap-[5px] ml-auto px-[10px] py-[3px] rounded-full border cursor-pointer text-[11px] font-medium transition-colors duration-150"
+              className="flex items-center gap-[5px] ml-auto px-[10px] py-[3px] cursor-pointer text-[11px] font-medium transition-colors duration-150"
               style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg-primary)',
+                border: 'var(--style-btn-secondary-border)',
+                backgroundColor: 'var(--style-btn-secondary-bg)',
+                borderRadius: 'var(--style-btn-secondary-radius)',
                 color: 'var(--color-text-secondary)',
               }}
             >
@@ -288,7 +290,7 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
               onClick={handleSend}
               disabled={!text.trim() || isNonInteractive || (externalProcessId !== undefined && !effectiveProcessId)}
               className="shrink-0 w-[34px] h-[30px] rounded-[8px] flex items-center justify-center transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 ml-1 border-none cursor-pointer"
-              style={{ backgroundColor: 'var(--color-accent-orange)', color: '#fff' }}
+              style={{ backgroundColor: 'var(--style-send-btn-bg)', color: 'var(--style-send-btn-color)' }}
               aria-label="Send message"
             >
               <Send size={15} strokeWidth={2} />
@@ -328,7 +330,7 @@ function ToolbarButton({
       className="group relative w-[30px] h-[30px] rounded-[8px] border-none bg-transparent flex items-center justify-center cursor-pointer transition-all duration-150"
       style={{ color: 'var(--color-text-tertiary)' }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+        (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--style-icon-btn-hover-bg)';
         (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)';
       }}
       onMouseLeave={(e) => {

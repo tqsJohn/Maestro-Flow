@@ -113,4 +113,34 @@ describe('SupervisorWsHandler', () => {
       expect(ws.sent).toHaveLength(0);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // P1: Data format completeness
+  // -------------------------------------------------------------------------
+  describe('data format completeness', () => {
+    it('supervisor:learning response has all LearningStats fields', async () => {
+      await handler.handle('supervisor:learning', undefined, ws as any, broadcast);
+      const msg = JSON.parse(ws.sent[0]);
+      const data = msg.data;
+      expect(data).toHaveProperty('totalCommands');
+      expect(data).toHaveProperty('uniquePatterns');
+      expect(data).toHaveProperty('topPatterns');
+      expect(data).toHaveProperty('suggestions');
+      expect(data).toHaveProperty('knowledgeBaseSize');
+    });
+
+    it('supervisor:schedule response has tasks array with correct shape', async () => {
+      await handler.handle('supervisor:schedule', undefined, ws as any, broadcast);
+      const msg = JSON.parse(ws.sent[0]);
+      expect(msg.data).toHaveProperty('tasks');
+      expect(Array.isArray(msg.data.tasks)).toBe(true);
+      const task = msg.data.tasks[0];
+      expect(task).toHaveProperty('id');
+      expect(task).toHaveProperty('name');
+      expect(task).toHaveProperty('cronExpression');
+      expect(task).toHaveProperty('taskType');
+      expect(task).toHaveProperty('enabled');
+      expect(task).toHaveProperty('history');
+    });
+  });
 });

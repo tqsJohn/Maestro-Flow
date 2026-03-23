@@ -200,11 +200,12 @@ export function KanbanPage() {
               type="button"
               onClick={() => setShowDone(!showDone)}
               className={[
-                'flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border text-[length:var(--font-size-xs)] transition-colors',
+                'flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] text-[length:var(--font-size-xs)] transition-colors',
                 showDone
                   ? 'border-accent-blue text-accent-blue bg-[var(--color-accent-blue-10,rgba(90,130,200,0.1))]'
-                  : 'border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+                  : 'text-text-secondary hover:text-text-primary',
               ].join(' ')}
+              style={showDone ? undefined : { border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
               title={showDone ? 'Hide Done column' : 'Show Done column'}
             >
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -222,7 +223,8 @@ export function KanbanPage() {
                 <select
                   value={linearSelectedTeamId ?? ''}
                   onChange={(e) => selectLinearTeam(e.target.value)}
-                  className="px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border border-border bg-bg-primary text-text-primary text-[length:var(--font-size-xs)]"
+                  className="px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] text-text-primary text-[length:var(--font-size-xs)]"
+                  style={{ border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
                 >
                   {linearTeams.map((team) => (
                     <option key={team.id} value={team.id}>{team.key} — {team.name}</option>
@@ -234,7 +236,8 @@ export function KanbanPage() {
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover text-[length:var(--font-size-xs)] transition-colors"
+                className="flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] text-text-secondary hover:text-text-primary text-[length:var(--font-size-xs)] transition-colors"
+                style={{ border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
                 title="Import from Linear"
               >
                 <Download size={12} />
@@ -245,7 +248,8 @@ export function KanbanPage() {
               <button
                 type="button"
                 onClick={() => setExportOpen(true)}
-                className="flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover text-[length:var(--font-size-xs)] transition-colors"
+                className="flex items-center gap-[var(--spacing-1)] px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] text-text-secondary hover:text-text-primary text-[length:var(--font-size-xs)] transition-colors"
+                style={{ border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
                 title="Export to Linear"
               >
                 <Upload size={12} />
@@ -257,7 +261,8 @@ export function KanbanPage() {
                 type="button"
                 onClick={() => void refreshLinear()}
                 disabled={linearLoading}
-                className="flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50"
+                className="flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                style={{ border: 'var(--style-btn-secondary-border)', background: 'var(--style-btn-secondary-bg)' }}
                 title="Refresh Linear board"
               >
                 <RefreshCw size={12} className={linearLoading ? 'animate-spin' : ''} />

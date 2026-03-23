@@ -3,8 +3,13 @@ import Columns2 from 'lucide-react/dist/esm/icons/columns-2.js';
 import Plus from 'lucide-react/dist/esm/icons/plus.js';
 import X from 'lucide-react/dist/esm/icons/x.js';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import GitBranch from 'lucide-react/dist/esm/icons/git-branch.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
 import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
+import { useUIPrefsStore } from '@/client/store/ui-prefs-store.js';
 import { useResizableSplit } from '@/client/hooks/useResizableSplit.js';
 import { useApprovalKeyboard } from '@/client/hooks/useApprovalKeyboard.js';
 import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
@@ -38,7 +43,109 @@ const STATUS_LABELS: Record<string, string> = {
 // WelcomeView
 // ---------------------------------------------------------------------------
 
+const COWORK_QUICK_START = [
+  {
+    title: 'Explore your codebase',
+    desc: 'Ask questions, trace code paths, understand architecture',
+    icon: Search,
+    iconColor: 'var(--color-accent-blue)',
+    iconBg: 'var(--color-tint-exploring)',
+  },
+  {
+    title: 'Plan a feature',
+    desc: 'Break down requirements into phases and tasks',
+    icon: GitBranch,
+    iconColor: 'var(--color-accent-purple)',
+    iconBg: 'var(--color-tint-planning)',
+  },
+  {
+    title: 'Execute a workflow',
+    desc: 'Run parallel tasks with automatic verification',
+    icon: Zap,
+    iconColor: 'var(--color-accent-orange)',
+    iconBg: 'var(--color-tint-verifying)',
+  },
+  {
+    title: 'Review & debug',
+    desc: 'Multi-dimensional code review and hypothesis-driven debugging',
+    icon: LayoutDashboard,
+    iconColor: 'var(--color-accent-green)',
+    iconBg: 'var(--color-tint-completed)',
+  },
+] as const;
+
 function WelcomeView() {
+  const stylePreset = useUIPrefsStore((s) => s.stylePreset);
+
+  if (stylePreset === 'cowork') {
+    return (
+      <div className="flex-1 flex flex-col" style={{ paddingTop: '12vh' }}>
+        <div className="w-full px-6" style={{ maxWidth: 680 }}>
+          <h1
+            style={{
+              fontFamily: 'var(--style-heading-font)',
+              fontSize: 'var(--style-heading-size)',
+              fontWeight: 'var(--style-heading-weight)',
+              letterSpacing: 'var(--style-heading-letter-spacing)',
+              color: 'var(--color-text-primary)',
+              margin: 0,
+            }}
+          >
+            Let's build something together
+          </h1>
+          <p
+            className="mt-2 mb-6"
+            style={{ color: 'var(--color-text-tertiary)', fontSize: 14, margin: '8px 0 24px' }}
+          >
+            Maestro workflow orchestration.
+          </p>
+          <ChatInput />
+          <div className="mt-8">
+            <p
+              className="mb-3"
+              style={{ color: 'var(--color-text-tertiary)', fontSize: 12, fontWeight: 500 }}
+            >
+              Get started with Maestro
+            </p>
+            <div className="flex flex-col gap-[2px]">
+              {COWORK_QUICK_START.map((item) => (
+                <div
+                  key={item.title}
+                  className="flex items-center gap-3 px-2 py-[6px] rounded-[8px] cursor-pointer transition-colors duration-150"
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-bg-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div
+                    className="shrink-0 flex items-center justify-center rounded-[10px]"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      backgroundColor: item.iconBg,
+                    }}
+                  >
+                    <item.icon size={18} strokeWidth={1.5} style={{ color: item.iconColor }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      {item.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+                      {item.desc}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center" style={{ marginTop: '-5vh' }}>
       <div className="w-full px-4" style={{ maxWidth: 'clamp(360px, calc(100% - 32px), 780px)' }}>

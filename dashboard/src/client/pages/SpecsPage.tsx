@@ -121,7 +121,7 @@ export function SpecsPage() {
         </span>
         <div className="flex-1" />
         {/* Search box */}
-        <div className="flex items-center gap-[6px] px-3 py-[5px] rounded-[8px] bg-bg-card border border-border w-[240px] focus-within:border-[#9178B5] transition-colors">
+        <div className="flex items-center gap-[6px] px-3 py-[5px] rounded-[8px] bg-bg-card w-[240px] focus-within:border-[#9178B5] transition-colors" style={{ border: 'var(--style-btn-secondary-border)' }}>
           <Search size={13} strokeWidth={2} className="text-text-quaternary shrink-0" />
           <input
             type="text"
@@ -135,7 +135,7 @@ export function SpecsPage() {
         <button
           type="button"
           onClick={() => setAddDialogOpen(true)}
-          className="flex items-center gap-[6px] px-[14px] py-[6px] rounded-[8px] border-none bg-text-primary text-white text-[12px] font-semibold cursor-pointer font-sans hover:bg-[#1A1816] hover:-translate-y-px hover:shadow-md transition-all"
+          className="flex items-center gap-[6px] px-[14px] py-[6px] rounded-[8px] border-none bg-text-primary text-white text-[12px] font-semibold cursor-pointer font-sans hover:bg-[#1A1816] hover:[transform:var(--style-card-hover-transform)] hover:[box-shadow:var(--style-card-hover-shadow)] transition-all"
         >
           <Plus size={14} strokeWidth={2} />
           New Entry

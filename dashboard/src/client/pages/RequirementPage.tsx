@@ -67,7 +67,7 @@ function InputPanel() {
               type="button"
               className={`flex-1 px-[var(--spacing-3)] py-[var(--spacing-1-5)] rounded-[var(--radius-default)] text-[length:var(--font-size-xs)] font-medium transition-all duration-[var(--duration-fast)] ${
                 depth === opt.value
-                  ? 'bg-[var(--color-accent-blue)] text-white shadow-[var(--shadow-sm)]'
+                  ? 'bg-[var(--color-accent-blue)] text-white shadow-[var(--style-card-shadow)]'
                   : 'bg-bg-secondary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
               }`}
               onClick={() => setDepth(opt.value)}
@@ -90,7 +90,7 @@ function InputPanel() {
               type="button"
               className={`flex-1 px-[var(--spacing-3)] py-[var(--spacing-1-5)] rounded-[var(--radius-default)] text-[length:var(--font-size-xs)] font-medium transition-all duration-[var(--duration-fast)] ${
                 method === m
-                  ? 'bg-[var(--color-accent-blue)] text-white shadow-[var(--shadow-sm)]'
+                  ? 'bg-[var(--color-accent-blue)] text-white shadow-[var(--style-card-shadow)]'
                   : 'bg-bg-secondary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
               }`}
               onClick={() => setMethod(m)}
@@ -105,7 +105,8 @@ function InputPanel() {
       <div className="flex gap-[var(--spacing-2)] justify-end">
         <button
           type="button"
-          className="px-[var(--spacing-5)] py-[var(--spacing-2)] rounded-[var(--radius-default)] border border-border text-text-secondary text-[length:var(--font-size-sm)] font-medium hover:bg-bg-secondary hover:text-text-primary transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
+          className="px-[var(--spacing-5)] py-[var(--spacing-2)] rounded-[var(--radius-default)] text-text-secondary text-[length:var(--font-size-sm)] font-medium hover:bg-bg-secondary hover:text-text-primary transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
+          style={{ border: 'var(--style-btn-secondary-border)' }}
           disabled={!text.trim() || isLoading}
           onClick={handleExpand}
         >
@@ -113,7 +114,7 @@ function InputPanel() {
         </button>
         <button
           type="button"
-          className="px-[var(--spacing-5)] py-[var(--spacing-2)] rounded-[var(--radius-default)] bg-[var(--color-accent-blue)] text-white text-[length:var(--font-size-sm)] font-medium shadow-[var(--shadow-sm)] hover:opacity-90 transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
+          className="px-[var(--spacing-5)] py-[var(--spacing-2)] rounded-[var(--radius-default)] bg-[var(--color-accent-blue)] text-white text-[length:var(--font-size-sm)] font-medium shadow-[var(--style-card-shadow)] hover:opacity-90 transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
           disabled={!text.trim() || isLoading}
           onClick={handlePlan}
         >
@@ -405,7 +406,7 @@ function ChecklistView() {
           <div className="flex gap-[var(--spacing-2)]">
             <button
               type="button"
-              className="flex-1 px-[var(--spacing-3)] py-[var(--spacing-2)] rounded-[var(--radius-default)] bg-[var(--color-accent-blue)] text-white text-[length:var(--font-size-xs)] font-medium shadow-[var(--shadow-sm)] hover:opacity-90 transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
+              className="flex-1 px-[var(--spacing-3)] py-[var(--spacing-2)] rounded-[var(--radius-default)] bg-[var(--color-accent-blue)] text-white text-[length:var(--font-size-xs)] font-medium shadow-[var(--style-card-shadow)] hover:opacity-90 transition-all duration-[var(--duration-normal)] disabled:opacity-[var(--opacity-disabled)]"
               disabled={isLoading}
               onClick={() => commit('issues')}
             >
@@ -452,7 +453,7 @@ function ChecklistItemCard({
 
   return (
     <div
-      className="group relative flex rounded-[10px] bg-bg-card border border-border shadow-[var(--shadow-sm)] overflow-hidden transition-all duration-[var(--duration-normal)] hover:-translate-y-[1px] hover:shadow-[var(--shadow-md)]"
+      className="group relative flex rounded-[10px] bg-bg-card border border-border shadow-[var(--style-card-shadow)] overflow-hidden transition-all duration-[var(--duration-normal)] hover:[transform:var(--style-card-hover-transform)] hover:shadow-[var(--style-card-hover-shadow)]"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       {/* Priority color bar */}

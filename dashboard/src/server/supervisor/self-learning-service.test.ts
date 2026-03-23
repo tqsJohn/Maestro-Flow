@@ -393,4 +393,139 @@ describe('SelfLearningService', () => {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  // P0: Persistence recovery on construction
+  // -------------------------------------------------------------------------
+  describe('persistence recovery', () => {
+    it('loads persisted patterns and kb on construction', async () => {
+      // Pre-write patterns.jsonl and kb.jsonl
+      const learningDir = join(workflowRoot, 'learning');
+      await mkdir(learningDir, { recursive: true });
+
+      const { writeFile } = await import('node:fs/promises');
+      const pattern1 = JSON.stringify({ command: 'gemini', frequency: 5, successRate: 0.8, avgDuration: 3000, lastUsed: '2026-01-01T00:00:00Z', contexts: ['a'] });
+      const pattern2 = JSON.stringify({ command: 'codex', frequency: 3, successRate: 1.0, avgDuration: 2000, lastUsed: '2026-01-02T00:00:00Z', contexts: ['b'] });
+      await writeFile(join(learningDir, 'patterns.jsonl'), pattern1 + '\n' + pattern2 + '\n', 'utf-8');
+
+      const kbEntry = JSON.stringify({ id: 'kb-1', topic: 'Test', content: 'test content', source: 'manual', usageCount: 0, lastAccessed: '2026-01-01T00:00:00Z', tags: ['t'] });
+      await writeFile(join(learningDir, 'kb.jsonl'), kbEntry + '\n', 'utf-8');
+
+      // Construct a new service instance (loadPersistedData called in constructor)
+      const service2 = new SelfLearningService(eventBus, journal as any, workflowRoot);
+      // Wait for async load
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(service2.getPatterns()).toHaveLength(2);
+      expect(service2.getPatterns()[0].command).toBe('gemini'); // sorted by frequency desc
+      expect(service2.getKnowledgeBase()).toHaveLength(1);
+      expect(service2.getKnowledgeBase()[0].topic).toBe('Test');
+    });
+
+    it('skips malformed lines in persisted JSONL', async () => {
+      const learningDir = join(workflowRoot, 'learning');
+      await mkdir(learningDir, { recursive: true });
+
+      const { writeFile } = await import('node:fs/promises');
+      const valid = JSON.stringify({ command: 'qwen', frequency: 2, successRate: 1, avgDuration: 1000, lastUsed: '2026-01-01T00:00:00Z', contexts: [] });
+      await writeFile(join(learningDir, 'patterns.jsonl'), valid + '\n' + 'BROKEN{{{' + '\n', 'utf-8');
+
+      const service2 = new SelfLearningService(eventBus, journal as any, workflowRoot);
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Only valid line loaded, malformed skipped
+      expect(service2.getPatterns()).toHaveLength(1);
+      expect(service2.getPatterns()[0].command).toBe('qwen');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P0: Incremental successRate accuracy
+  // -------------------------------------------------------------------------
+  describe('incremental successRate accuracy', () => {
+    it('computes successRate correctly across completed and failed events', async () => {
+      // Setup: 2 issues in journal — A completed, B failed, both with executor 'test-exec'
+      journal.addEvent(makeEvent('issue:dispatched', 'ACC-A', '2026-01-01T00:00:00Z', { executor: 'test-exec' }));
+      journal.addEvent(makeEvent('issue:completed', 'ACC-A', '2026-01-01T00:01:00Z'));
+      journal.addEvent(makeEvent('issue:dispatched', 'ACC-B', '2026-01-01T00:02:00Z', { executor: 'test-exec' }));
+      journal.addEvent(makeEvent('issue:failed', 'ACC-B', '2026-01-01T00:03:00Z'));
+
+      // Fire completed for A
+      eventBus.emit('execution:completed', { issueId: 'ACC-A', processId: 'p1' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      let patterns = service.getPatterns();
+      let p = patterns.find((x) => x.command === 'test-exec');
+      expect(p).toBeDefined();
+      expect(p!.frequency).toBe(1);
+      expect(p!.successRate).toBe(1);
+
+      // Fire failed for B
+      eventBus.emit('execution:failed', { issueId: 'ACC-B', processId: 'p2', error: 'timeout' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      patterns = service.getPatterns();
+      p = patterns.find((x) => x.command === 'test-exec');
+      expect(p!.frequency).toBe(2);
+      expect(p!.successRate).toBeCloseTo(0.5, 2);
+    });
+
+    it('deduplicates contexts in incremental updates', async () => {
+      journal.addEvent(makeEvent('issue:dispatched', 'DUP-1', '2026-01-01T00:00:00Z', { executor: 'dup-exec' }));
+      journal.addEvent(makeEvent('issue:completed', 'DUP-1', '2026-01-01T00:01:00Z'));
+
+      // Fire completed twice for same issueId
+      eventBus.emit('execution:completed', { issueId: 'DUP-1', processId: 'p1' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+      eventBus.emit('execution:completed', { issueId: 'DUP-1', processId: 'p1' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      const patterns = service.getPatterns();
+      const p = patterns.find((x) => x.command === 'dup-exec');
+      expect(p).toBeDefined();
+      // contexts should only contain 'DUP-1' once
+      const dupCount = p!.contexts.filter((c) => c === 'DUP-1').length;
+      expect(dupCount).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // P1: handleExecutionEvent edge cases
+  // -------------------------------------------------------------------------
+  describe('handleExecutionEvent edge cases', () => {
+    it('ignores events without dispatched event in journal', async () => {
+      // Journal has only a completed event, no dispatched
+      journal.addEvent(makeEvent('issue:completed', 'NO-DISP', '2026-01-01T00:01:00Z'));
+
+      eventBus.emit('execution:completed', { issueId: 'NO-DISP', processId: 'p1' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      // Should not create a pattern
+      const patterns = service.getPatterns();
+      const p = patterns.find((x) => x.contexts.includes('NO-DISP'));
+      expect(p).toBeUndefined();
+    });
+
+    it('computes avgDuration incrementally', async () => {
+      // Issue A: 60s duration
+      journal.addEvent(makeEvent('issue:dispatched', 'DUR-A', '2026-01-01T00:00:00Z', { executor: 'dur-exec' }));
+      journal.addEvent(makeEvent('issue:completed', 'DUR-A', '2026-01-01T00:01:00Z'));
+      // Issue B: 120s duration
+      journal.addEvent(makeEvent('issue:dispatched', 'DUR-B', '2026-01-01T00:02:00Z', { executor: 'dur-exec' }));
+      journal.addEvent(makeEvent('issue:completed', 'DUR-B', '2026-01-01T00:04:00Z'));
+
+      eventBus.emit('execution:completed', { issueId: 'DUR-A', processId: 'p1' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      let p = service.getPatterns().find((x) => x.command === 'dur-exec');
+      expect(p!.avgDuration).toBe(60_000);
+
+      eventBus.emit('execution:completed', { issueId: 'DUR-B', processId: 'p2' } as any);
+      await new Promise((r) => setTimeout(r, 300));
+
+      p = service.getPatterns().find((x) => x.command === 'dur-exec');
+      // (60000 * 1 + 120000) / 2 = 90000
+      expect(p!.avgDuration).toBe(90_000);
+    });
+  });
 });

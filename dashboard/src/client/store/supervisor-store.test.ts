@@ -353,4 +353,85 @@ describe('SupervisorStore', () => {
       expect(useSupervisorStore.getState().error).toContain('500');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // P1: Guard conditions & edge cases
+  // -------------------------------------------------------------------------
+  describe('fetchLearningStats guard', () => {
+    it('does not update state when response lacks topPatterns', async () => {
+      mockFetch(async () => jsonResponse({ unrelated: 'data' }));
+      await useSupervisorStore.getState().fetchLearningStats();
+      // learningStats should remain null since topPatterns check fails
+      expect(useSupervisorStore.getState().learningStats).toBeNull();
+    });
+  });
+
+  describe('fetchPromptModes edge cases', () => {
+    it('handles missing builders and bindings gracefully', async () => {
+      mockFetch(async () => jsonResponse({}));
+      await useSupervisorStore.getState().fetchPromptModes();
+      const state = useSupervisorStore.getState();
+      expect(state.promptModes).toEqual([]);
+      expect(state.promptBindings).toEqual({});
+    });
+
+    it('sets error on network failure', async () => {
+      mockFetch(async () => { throw new Error('DNS failed'); });
+      await useSupervisorStore.getState().fetchPromptModes();
+      expect(useSupervisorStore.getState().error).toContain('DNS failed');
+    });
+  });
+
+  describe('createSchedule guard', () => {
+    it('does not modify state when response lacks task field', async () => {
+      mockFetch(async () => jsonResponse({ ok: true })); // no task field
+      await useSupervisorStore.getState().createSchedule({
+        name: 'Ghost',
+        cronExpression: '0 * * * *',
+        taskType: 'custom',
+        enabled: true,
+        config: {},
+      });
+      expect(useSupervisorStore.getState().scheduledTasks).toHaveLength(0);
+    });
+  });
+
+  describe('updateSchedule guard', () => {
+    it('does not modify state when response lacks task field', async () => {
+      useSupervisorStore.setState({ scheduledTasks: [...mockTasks] });
+      mockFetch(async () => jsonResponse({ ok: true })); // no task field
+      await useSupervisorStore.getState().updateSchedule('task-1', { name: 'X' });
+      // Tasks should remain unchanged
+      expect(useSupervisorStore.getState().scheduledTasks[0].name).toBe('Health Check');
+    });
+
+    it('sets error on network failure', async () => {
+      mockFetch(async () => { throw new Error('Connection refused'); });
+      await useSupervisorStore.getState().updateSchedule('task-1', { name: 'X' });
+      expect(useSupervisorStore.getState().error).toContain('Connection refused');
+    });
+  });
+
+  describe('fetchExtensions guard', () => {
+    it('sets error on non-OK response', async () => {
+      mockFetch(async () => jsonResponse({}, 503));
+      await useSupervisorStore.getState().fetchExtensions();
+      expect(useSupervisorStore.getState().error).toContain('503');
+    });
+  });
+
+  describe('onScheduleTriggered edge', () => {
+    it('does not modify tasks when taskId not found', () => {
+      useSupervisorStore.setState({ scheduledTasks: [...mockTasks] });
+      useSupervisorStore.getState().onScheduleTriggered({
+        taskId: 'nonexistent',
+        taskName: 'Ghost',
+        taskType: 'custom',
+      });
+      // All tasks should be unchanged
+      const tasks = useSupervisorStore.getState().scheduledTasks;
+      expect(tasks[0].history).toHaveLength(0);
+      expect(tasks[0].lastRun).toBeNull();
+    });
+  });
 });

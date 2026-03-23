@@ -496,6 +496,80 @@
   --color-border-subtle: var(--color-border-divider);
 }
 
+/* ===== STYLE PRESETS ===== */
+/* Semantic style tokens — components reference these, presets override them */
+:root,
+[data-style="default"] {
+  /* Buttons (secondary / tertiary) */
+  --style-btn-secondary-border: 1px solid var(--color-border);
+  --style-btn-secondary-bg: var(--color-bg-primary);
+  --style-btn-secondary-radius: var(--radius-full);
+  --style-btn-secondary-hover-bg: var(--color-bg-hover);
+  /* Cards */
+  --style-card-shadow: var(--shadow-sm);
+  --style-card-hover-transform: translateY(-1px);
+  --style-card-hover-shadow: var(--shadow-md);
+  /* Modal */
+  --style-modal-shadow: var(--shadow-lg);
+  /* Focus */
+  --style-focus-ring: var(--shadow-focus-ring);
+  /* Headings */
+  --style-heading-font: inherit;
+  --style-heading-size: var(--font-size-xl);
+  --style-heading-weight: var(--font-weight-semibold);
+  --style-heading-letter-spacing: normal;
+  /* Composer */
+  --style-composer-radius: 14px;
+  --style-composer-textarea-size: 13px;
+  --style-composer-padding: 10px 14px;
+  /* Chips / pills */
+  --style-chip-border: 1px solid var(--color-border);
+  --style-chip-radius: var(--radius-full);
+  --style-chip-active-bg: var(--color-text-primary);
+  --style-chip-active-color: var(--color-text-inverse);
+  /* Toolbar icon buttons */
+  --style-icon-btn-hover-bg: var(--color-bg-hover);
+  /* Send button */
+  --style-send-btn-bg: var(--color-accent-orange);
+  --style-send-btn-color: #fff;
+}
+
+/* Cowork preset — minimal, borderless, serif headings */
+[data-style="cowork"] {
+  /* Buttons */
+  --style-btn-secondary-border: none;
+  --style-btn-secondary-bg: transparent;
+  --style-btn-secondary-radius: var(--radius-default);
+  --style-btn-secondary-hover-bg: transparent;
+  /* Cards */
+  --style-card-shadow: none;
+  --style-card-hover-transform: none;
+  --style-card-hover-shadow: none;
+  /* Modal */
+  --style-modal-shadow: var(--shadow-sm);
+  /* Focus */
+  --style-focus-ring: none;
+  /* Headings */
+  --style-heading-font: 'Georgia', 'Times New Roman', serif;
+  --style-heading-size: clamp(28px, 4vw, 38px);
+  --style-heading-weight: var(--font-weight-bold);
+  --style-heading-letter-spacing: -0.02em;
+  /* Composer */
+  --style-composer-radius: 16px;
+  --style-composer-textarea-size: 15px;
+  --style-composer-padding: 18px 20px;
+  /* Chips */
+  --style-chip-border: none;
+  --style-chip-radius: var(--radius-md);
+  --style-chip-active-bg: var(--color-bg-active);
+  --style-chip-active-color: var(--color-text-primary);
+  /* Toolbar icon buttons */
+  --style-icon-btn-hover-bg: transparent;
+  /* Send button */
+  --style-send-btn-bg: transparent;
+  --style-send-btn-color: var(--color-text-tertiary);
+}
+
 /* ===== BASE STYLES ===== */
 body {
   font-family: var(--font-sans);

@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useSettingsStore } from '@/client/store/settings-store.js';
 import type { GeneralSettings } from '@/client/store/settings-store.js';
+import { useUIPrefsStore } from '@/client/store/ui-prefs-store.js';
+import type { StylePreset } from '@/client/store/ui-prefs-store.js';
 import {
   SettingsCard,
   SettingsField,
@@ -35,6 +37,42 @@ function ToggleButton({ enabled, onClick }: { enabled: boolean; onClick: () => v
         )}
       />
     </button>
+  );
+}
+
+const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
+  { value: 'default', label: 'Default' },
+  { value: 'cowork', label: 'Cowork' },
+];
+
+function StylePresetField() {
+  const preset = useUIPrefsStore((s) => s.stylePreset);
+  const setPreset = useUIPrefsStore((s) => s.setStylePreset);
+
+  return (
+    <SettingsField
+      label="Style Preset"
+      description="Switch between visual style presets"
+    >
+      <div className="flex items-center gap-[var(--spacing-1)]">
+        {STYLE_PRESETS.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            onClick={() => setPreset(p.value)}
+            className={cn(
+              'px-3 py-1 rounded-[var(--radius-sm)] text-[length:var(--font-size-xs)] font-[var(--font-weight-medium)] transition-all duration-[var(--duration-fast)]',
+              'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]',
+              preset === p.value
+                ? 'bg-accent-blue text-white'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </SettingsField>
   );
 }
 
@@ -110,6 +148,8 @@ export function GeneralSection() {
             ]}
           />
         </SettingsField>
+
+        <StylePresetField />
       </SettingsCard>
 
       {/* Search Tool */}

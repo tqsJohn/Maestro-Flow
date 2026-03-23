@@ -138,7 +138,7 @@ export function SettingsDialog() {
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[900px] max-w-[95vw] h-[700px] max-h-[90vh]',
-            'rounded-[var(--radius-lg)] border border-border bg-bg-primary shadow-lg',
+            'rounded-[var(--radius-lg)] border border-border bg-bg-primary shadow-[var(--style-modal-shadow)]',
             'flex flex-col overflow-hidden',
             'focus:outline-none',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
