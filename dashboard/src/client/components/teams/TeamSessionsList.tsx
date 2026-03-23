@@ -21,6 +21,7 @@ export function TeamSessionsList({ viewMode }: { viewMode: 'cards' | 'table' }) 
   const setSkillFilter = useTeamStore((s) => s.setSkillFilter);
   const setSearchQuery = useTeamStore((s) => s.setSearchQuery);
   const fetchSessionDetail = useTeamStore((s) => s.fetchSessionDetail);
+  const deleteSession = useTeamStore((s) => s.deleteSession);
 
   const filtered = filteredSessions();
 
@@ -135,6 +136,7 @@ export function TeamSessionsList({ viewMode }: { viewMode: 'cards' | 'table' }) 
                 key={s.sessionId}
                 session={s}
                 onClick={() => void fetchSessionDetail(s.sessionId)}
+                onDelete={(id) => void deleteSession(id)}
               />
             ))}
           </div>

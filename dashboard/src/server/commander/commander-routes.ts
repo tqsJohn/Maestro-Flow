@@ -2,6 +2,9 @@
 // Commander REST API routes — start, stop, pause, status, config
 // ---------------------------------------------------------------------------
 
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { Hono } from 'hono';
 
 import type { CommanderAgent } from './commander-agent.js';
@@ -16,7 +19,7 @@ import type { CommanderConfig } from '../../shared/commander-types.js';
  * GET   /api/commander/status  current commander state
  * PUT   /api/commander/config  update commander config
  */
-export function createCommanderRoutes(commanderAgent: CommanderAgent): Hono {
+export function createCommanderRoutes(commanderAgent: CommanderAgent, workflowRoot?: string): Hono {
   const app = new Hono();
 
   // POST /api/commander/start — start the commander tick loop
@@ -72,6 +75,43 @@ export function createCommanderRoutes(commanderAgent: CommanderAgent): Hono {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);
     }
+  });
+
+  // GET /api/commander/config — read current config
+  app.get('/api/commander/config', (c) => {
+    return c.json(commanderAgent.getConfig());
+  });
+
+  // POST /api/commander/tick — trigger a single manual tick
+  app.post('/api/commander/tick', async (c) => {
+    try {
+      await commanderAgent.tick('manual');
+      return c.json({ ok: true, state: commanderAgent.getState() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  // GET /api/commander/decisions — read persisted decision history
+  app.get('/api/commander/decisions', async (c) => {
+    const limit = Number(c.req.query('limit')) || 50;
+    if (!workflowRoot) {
+      return c.json({ decisions: [] });
+    }
+    const filePath = join(workflowRoot, '.commander', 'decisions.jsonl');
+    let raw: string;
+    try {
+      raw = await readFile(filePath, 'utf-8');
+    } catch {
+      return c.json({ decisions: [] });
+    }
+    const lines = raw.split('\n').filter((l) => l.trim());
+    const decisions = lines
+      .slice(-limit)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+    return c.json({ decisions });
   });
 
   return app;

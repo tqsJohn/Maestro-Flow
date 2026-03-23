@@ -121,7 +121,8 @@
       "th_task": "Task",
       "th_type": "Type",
       "th_last_run": "Last Run",
-      "th_status": "Status"
+      "th_status": "Status",
+      "event_log": "Event Log"
     },
     "schedule": {
       "title": "Schedules",
@@ -225,7 +226,11 @@
       "no_decisions": "No decisions yet",
       "deferred_count": "{{count}} deferred",
       "actions_count": "{{count}} action",
-      "actions_count_plural": "{{count}} actions"
+      "actions_count_plural": "{{count}} actions",
+      "config": "Configuration",
+      "profile": "Profile",
+      "decision_model": "Model",
+      "auto_approve": "Auto Approve"
     },
     "common": {
       "just_now": "just now",

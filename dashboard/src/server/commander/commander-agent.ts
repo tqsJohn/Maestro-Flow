@@ -2,7 +2,7 @@
 // CommanderAgent — tick loop + assess + decide + dispatch
 // ---------------------------------------------------------------------------
 
-import { readFile } from 'node:fs/promises';
+import { readFile, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -127,6 +127,7 @@ export class CommanderAgent {
     }, 3_600_000);
 
     this.emitStatus();
+    this.eventBus.emit('commander:config', this.config);
     console.log(
       `[Commander] Started (model=${this.config.decisionModel}, workers=${this.config.maxConcurrentWorkers})`,
     );
@@ -190,6 +191,7 @@ export class CommanderAgent {
     Object.assign(this.config, partial);
 
     this.emitStatus();
+    this.eventBus.emit('commander:config', this.config);
   }
 
   /** Get current state snapshot. */
@@ -237,6 +239,8 @@ export class CommanderAgent {
     this.state.tickCount++;
     this.state.lastTickAt = new Date().toISOString();
 
+    const tickStart = Date.now();
+
     // --- Step 1: Gather context ---
     const context = await this.gatherContext();
 
@@ -245,6 +249,7 @@ export class CommanderAgent {
     this.state.status = 'thinking';
     this.emitStatus();
 
+    const assessStart = Date.now();
     try {
       assessment = await this.assess(context);
       this.consecutiveFailures = 0;
@@ -256,9 +261,19 @@ export class CommanderAgent {
       this.emitStatus();
       return;
     }
+    const assessDurationMs = Date.now() - assessStart;
 
     // --- Step 3: Decide (deterministic, no LLM) ---
+    const decideStart = Date.now();
     const decision = this.decide(trigger, assessment, context);
+    const decideDurationMs = Date.now() - decideStart;
+
+    // Attach timing metrics
+    decision.metrics = {
+      assessDurationMs,
+      decideDurationMs,
+      totalDurationMs: Date.now() - tickStart,
+    };
 
     // --- Step 4: Dispatch ---
     this.state.status = 'dispatching';
@@ -275,6 +290,9 @@ export class CommanderAgent {
     if (this.recentDecisions.length > 5) {
       this.recentDecisions.shift();
     }
+
+    // Persist decision to JSONL
+    await this.persistDecision(decision);
 
     this.emitStatus();
     this.eventBus.emit('supervisor:status', this.executionScheduler.getStatus());
@@ -471,6 +489,22 @@ export class CommanderAgent {
     }
 
     this.state.activeWorkers = this.executionScheduler.getStatus().running.length;
+  }
+
+  // -------------------------------------------------------------------------
+  // Decision persistence — append to JSONL file
+  // -------------------------------------------------------------------------
+
+  private async persistDecision(decision: Decision): Promise<void> {
+    try {
+      const dir = join(this.workflowRoot, '.commander');
+      await mkdir(dir, { recursive: true });
+      const filePath = join(dir, 'decisions.jsonl');
+      await appendFile(filePath, JSON.stringify(decision) + '\n', 'utf-8');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[Commander] Failed to persist decision: ${message}`);
+    }
   }
 
   // -------------------------------------------------------------------------

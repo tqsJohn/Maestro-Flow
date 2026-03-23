@@ -121,7 +121,8 @@
       "th_task": "任务",
       "th_type": "类型",
       "th_last_run": "上次运行",
-      "th_status": "状态"
+      "th_status": "状态",
+      "event_log": "事件日志"
     },
     "schedule": {
       "title": "定时任务",
@@ -225,7 +226,11 @@
       "no_decisions": "暂无决策",
       "deferred_count": "{{count}} 个延迟",
       "actions_count": "{{count}} 个操作",
-      "actions_count_plural": "{{count}} 个操作"
+      "actions_count_plural": "{{count}} 个操作",
+      "config": "配置",
+      "profile": "环境",
+      "decision_model": "决策模型",
+      "auto_approve": "自动审批"
     },
     "common": {
       "just_now": "刚刚",

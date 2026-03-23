@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve, normalize } from 'node:path';
 
 import type {
@@ -327,6 +327,31 @@ export function createTeamRoutes(workflowRoot: string | (() => string)): Hono {
       };
 
       return c.json(detail);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  // DELETE /api/teams/sessions/:sessionId
+  app.delete('/api/teams/sessions/:sessionId', async (c) => {
+    try {
+      const sessionId = c.req.param('sessionId');
+      const sessionDir = join(getTeamDir(), sessionId);
+
+      if (!existsSync(sessionDir)) {
+        return c.json({ error: `Session not found: ${sessionId}` }, 404);
+      }
+
+      // Security: validate path stays within team directory
+      const resolvedTeam = resolve(getTeamDir());
+      const resolvedSession = resolve(sessionDir);
+      if (!resolvedSession.startsWith(resolvedTeam)) {
+        return c.json({ error: 'Access denied: path traversal detected' }, 403);
+      }
+
+      rmSync(sessionDir, { recursive: true, force: true });
+      return c.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);

@@ -316,6 +316,7 @@ export class WorkflowCoordinator {
 
       step.processId = process.id;
       step.status = 'running';
+      step.startedAt = new Date().toISOString();
       this.activeProcessId = process.id;
       this.session.currentStep = index;
 
@@ -420,6 +421,10 @@ export class WorkflowCoordinator {
     this.activeProcessId = null;
 
     step.status = 'completed';
+    step.completedAt = new Date().toISOString();
+    if (step.startedAt) {
+      step.durationMs = new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime();
+    }
     step.summary = payload.reason ?? 'Agent completed';
 
     // Extract step output for quality review

@@ -183,10 +183,19 @@ async function main(): Promise<void> {
   // Static files — serve Vite build output for production
   app.use('/*', serveStatic({ root: distDir }));
 
-  // SPA fallback — serve index.html for all unmatched routes so React Router
-  // can handle client-side navigation (e.g. /chat, /kanban, /workflow).
-  const indexHtml = await readFile(resolve(distDir, 'index.html'), 'utf-8');
-  app.get('/*', (c) => c.html(indexHtml));
+  // SPA fallback — serve index.html for client-side routes (e.g. /chat, /kanban).
+  // Only for navigation requests (no file extension). Asset requests (.js, .css, etc.)
+  // that weren't matched by serveStatic get a 404 instead of HTML (avoids MIME errors).
+  // Read dynamically so it stays in sync after Vite rebuilds change asset hashes.
+  const indexHtmlPath = resolve(distDir, 'index.html');
+  app.get('/*', async (c) => {
+    const path = c.req.path;
+    if (/\.\w+$/.test(path)) {
+      return c.notFound();
+    }
+    const html = await readFile(indexHtmlPath, 'utf-8');
+    return c.html(html);
+  });
 
   // ---------------------------------------------------------------------------
   // Start scheduled tasks

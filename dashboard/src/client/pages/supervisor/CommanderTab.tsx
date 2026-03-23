@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useExecutionStore } from '@/client/store/execution-store.js';
 import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
 import { useI18n } from '@/client/i18n/index.js';
+import type { CommanderConfig } from '@/shared/commander-types.js';
 
 // ---------------------------------------------------------------------------
 // CommanderTab -- list-detail split pane for commander state + decisions
@@ -16,7 +18,11 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 export function CommanderTab() {
   const { t } = useI18n();
   const commanderState = useExecutionStore((s) => s.commanderState);
+  const commanderConfig = useExecutionStore((s) => s.commanderConfig);
+  const fetchCommanderConfig = useExecutionStore((s) => s.fetchCommanderConfig);
   const recentDecisions = useExecutionStore((s) => s.recentDecisions);
+
+  useEffect(() => { fetchCommanderConfig(); }, [fetchCommanderConfig]);
 
   const handleStart = () => sendWsMessage({ action: 'commander:start' });
   const handlePause = () => sendWsMessage({ action: 'commander:pause' });
@@ -69,6 +75,21 @@ export function CommanderTab() {
                 {commanderState.lastTickAt && (
                   <KvRow label={t('supervisor.commander.last_tick')} value={new Date(commanderState.lastTickAt).toLocaleTimeString()} />
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Config */}
+          {commanderConfig && (
+            <div style={{ borderRadius: 12, background: 'var(--color-bg-card)', border: '1px solid var(--color-border-divider)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--color-border-divider)' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>{t('supervisor.commander.config')}</span>
+              </div>
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <ConfigSelect label={t('supervisor.commander.profile')} value={commanderConfig.profile} options={['development', 'staging', 'production', 'custom']} onChange={(v) => sendWsMessage({ action: 'commander:config', config: { profile: v as CommanderConfig['profile'] } })} />
+                <ConfigSelect label={t('supervisor.commander.decision_model')} value={commanderConfig.decisionModel} options={['haiku', 'sonnet', 'opus']} onChange={(v) => sendWsMessage({ action: 'commander:config', config: { decisionModel: v as CommanderConfig['decisionModel'] } })} />
+                <ConfigSelect label={t('supervisor.commander.auto_approve')} value={commanderConfig.autoApproveThreshold} options={['low', 'medium', 'high']} onChange={(v) => sendWsMessage({ action: 'commander:config', config: { autoApproveThreshold: v as CommanderConfig['autoApproveThreshold'] } })} />
+                <KvRow label={t('supervisor.commander.workers')} value={String(commanderConfig.maxConcurrentWorkers)} />
               </div>
             </div>
           )}
@@ -155,6 +176,21 @@ function KvRow({ label, value }: { label: string; value: string }) {
     <div style={{ display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--color-border-divider)' }}>
       <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 100, flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 500 }}>{value}</span>
+    </div>
+  );
+}
+
+function ConfigSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 100, flexShrink: 0 }}>{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', cursor: 'pointer' }}
+      >
+        {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
     </div>
   );
 }

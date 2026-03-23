@@ -93,6 +93,12 @@ export interface Assessment {
 // Decision — deterministic output of the decide step (no LLM)
 // ---------------------------------------------------------------------------
 
+export interface DecisionMetrics {
+  assessDurationMs: number;
+  decideDurationMs: number;
+  totalDurationMs: number;
+}
+
 export interface Decision {
   id: string;
   timestamp: string;
@@ -103,6 +109,8 @@ export interface Decision {
   actions: PriorityAction[];
   /** Actions blocked by capacity or threshold */
   deferred: PriorityAction[];
+  /** Timing metrics for observability */
+  metrics?: DecisionMetrics;
 }
 
 // ---------------------------------------------------------------------------

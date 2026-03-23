@@ -381,6 +381,7 @@ export class CoordinateRunner {
 
       step.processId = process.id;
       step.status = 'running';
+      step.startedAt = new Date().toISOString();
       this.activeProcessId = process.id;
       this.session.currentStep = index;
 
@@ -426,6 +427,10 @@ export class CoordinateRunner {
     // Mark step completed (treat all stops as completed -- failure detection
     // would require parsing agent output which is out of scope here)
     step.status = 'completed';
+    step.completedAt = new Date().toISOString();
+    if (step.startedAt) {
+      step.durationMs = new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime();
+    }
     step.summary = payload.reason ?? 'Agent completed';
 
     this.emitStep(step);

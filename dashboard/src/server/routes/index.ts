@@ -107,9 +107,16 @@ export function createRoutes(
   // Team session routes (dynamic root for workspace switch)
   routes.route('/', createTeamRoutes(getRoot));
 
+  // EventBus recent events endpoint (ring buffer audit)
+  routes.get('/api/events/recent', (c) => {
+    const limit = Number(c.req.query('limit')) || 100;
+    const prefix = c.req.query('prefix') || undefined;
+    return c.json(eventBus.getRecentEvents(limit, prefix));
+  });
+
   // Commander routes (depends on CommanderAgent)
   if (commanderAgent) {
-    routes.route('/', createCommanderRoutes(commanderAgent));
+    routes.route('/', createCommanderRoutes(commanderAgent, workflowRoot));
   }
 
   // Requirement routes (depends on RequirementExpander)

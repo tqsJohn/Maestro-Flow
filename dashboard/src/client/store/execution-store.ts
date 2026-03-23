@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ExecutionSlot, SupervisorStatus } from '@/shared/execution-types.js';
-import type { CommanderState, Decision } from '@/shared/commander-types.js';
+import type { CommanderState, CommanderConfig, Decision } from '@/shared/commander-types.js';
 
 // ---------------------------------------------------------------------------
 // Execution store — global state for execution slots, multi-select, CLI panel
@@ -11,6 +11,7 @@ export interface ExecutionStore {
   queue: string[];
   supervisorStatus: SupervisorStatus | null;
   commanderState: CommanderState | null;
+  commanderConfig: CommanderConfig | null;
   recentDecisions: Decision[];
   selectedIssueIds: Set<string>;              // multi-select for batch
   cliPanelIssueId: string | null;             // which issue's CLI to show
@@ -21,6 +22,8 @@ export interface ExecutionStore {
   setQueue: (queue: string[]) => void;
   setSupervisorStatus: (status: SupervisorStatus) => void;
   setCommanderState: (state: CommanderState) => void;
+  setCommanderConfig: (config: CommanderConfig) => void;
+  fetchCommanderConfig: () => Promise<void>;
   addDecision: (decision: Decision) => void;
 
   // Multi-select actions
@@ -42,6 +45,7 @@ export const useExecutionStore = create<ExecutionStore>((set, get) => ({
   queue: [],
   supervisorStatus: null,
   commanderState: null,
+  commanderConfig: null,
   recentDecisions: [],
   selectedIssueIds: new Set(),
   cliPanelIssueId: null,
@@ -67,6 +71,21 @@ export const useExecutionStore = create<ExecutionStore>((set, get) => ({
 
   setCommanderState: (commanderState) =>
     set({ commanderState }),
+
+  setCommanderConfig: (commanderConfig) =>
+    set({ commanderConfig }),
+
+  fetchCommanderConfig: async () => {
+    try {
+      const res = await fetch('/api/commander/config');
+      if (res.ok) {
+        const config = await res.json();
+        set({ commanderConfig: config });
+      }
+    } catch {
+      // ignore fetch errors
+    }
+  },
 
   addDecision: (decision) =>
     set((state) => {

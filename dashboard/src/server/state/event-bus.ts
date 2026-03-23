@@ -137,6 +137,8 @@ export interface DashboardEventMap {
 
 export class DashboardEventBus {
   private readonly emitter = new EventEmitter();
+  private readonly ringBuffer: SSEEvent[] = [];
+  private readonly maxBufferSize = 1000;
 
   constructor() {
     // Raise limit — multiple SSE clients may subscribe
@@ -154,6 +156,26 @@ export class DashboardEventBus {
       timestamp: new Date().toISOString(),
     };
     this.emitter.emit(type, event);
+
+    // Append to ring buffer for audit trail
+    this.ringBuffer.push(event);
+    if (this.ringBuffer.length > this.maxBufferSize) {
+      this.ringBuffer.shift();
+    }
+  }
+
+  /** Get recent events from the ring buffer, optionally filtered by type prefix */
+  getRecentEvents(limit = 100, typePrefix?: string): SSEEvent[] {
+    let events = this.ringBuffer;
+    if (typePrefix) {
+      events = events.filter((e) => e.type.startsWith(typePrefix));
+    }
+    return events.slice(-limit);
+  }
+
+  /** Get current ring buffer size */
+  getBufferSize(): number {
+    return this.ringBuffer.length;
   }
 
   /** Subscribe to a specific event type */

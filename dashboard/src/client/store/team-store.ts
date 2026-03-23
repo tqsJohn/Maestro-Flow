@@ -25,6 +25,7 @@ interface TeamStore {
   // Actions
   fetchSessions: () => Promise<void>;
   fetchSessionDetail: (sessionId: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
   clearActiveSession: () => void;
   setActiveView: (view: TeamView) => void;
   setStatusFilter: (status: string) => void;
@@ -65,6 +66,17 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       set({ sessions: data, loading: false });
     } catch (err) {
       set({ loading: false, error: String(err) });
+    }
+  },
+
+  deleteSession: async (sessionId) => {
+    const prev = get().sessions;
+    set((s) => ({ sessions: s.sessions.filter((ss) => ss.sessionId !== sessionId) }));
+    try {
+      const res = await fetch(TEAM_API_ENDPOINTS.SESSIONS + '/' + sessionId, { method: 'DELETE' });
+      if (!res.ok) set({ sessions: prev });
+    } catch {
+      set({ sessions: prev });
     }
   },
 

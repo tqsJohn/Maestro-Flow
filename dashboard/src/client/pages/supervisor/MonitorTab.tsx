@@ -3,6 +3,7 @@ import { useSupervisorStore } from '@/client/store/supervisor-store.js';
 import { useI18n } from '@/client/i18n/index.js';
 import { AGENT_DOT_COLORS, AGENT_LABELS } from '@/shared/constants.js';
 import type { AgentType } from '@/shared/agent-types.js';
+import { EventLog } from '@/client/components/EventLog.js';
 
 // ---------------------------------------------------------------------------
 // MonitorTab -- Overview: stat boxes, patterns, suggestions, activity
@@ -181,6 +182,9 @@ export function MonitorTab() {
           </div>
         </div>
       )}
+
+      {/* Event Log */}
+      <EventLog />
 
       {/* Recent Schedule Activity */}
       <div style={{ borderRadius: 12, background: 'var(--color-bg-card)', border: '1px solid var(--color-border-divider)', overflow: 'hidden' }}>

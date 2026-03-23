@@ -60,6 +60,16 @@ function StepItem({
         {step.cmd}
         {step.args ? ` ${step.args}` : ''}
       </span>
+      {step.durationMs != null && (
+        <span
+          className="text-[length:var(--font-size-xs)] shrink-0"
+          style={{ color: 'var(--color-text-tertiary)' }}
+        >
+          {step.durationMs < 60000
+            ? `${Math.round(step.durationMs / 1000)}s`
+            : `${Math.round(step.durationMs / 60000)}m`}
+        </span>
+      )}
       {step.qualityScore != null && (
         <span
           className="text-[length:var(--font-size-xs)] shrink-0 px-[var(--spacing-1)] rounded"

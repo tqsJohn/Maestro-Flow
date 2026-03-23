@@ -118,15 +118,16 @@ export function SpecsKanbanView({ onAddEntry }: SpecsKanbanViewProps) {
   const hiddenColumns = useSpecsStore((s) => s.hiddenColumns);
   const toggleColumn = useSpecsStore((s) => s.toggleColumn);
 
-  // All categories: known order first, then any unknown from data
+  // All categories: known order first, then any unknown from data — only include categories with entries
   const allCategories = useMemo(() => {
     const fromData = new Set<string>();
     for (const e of entries) if (e.category) fromData.add(e.category);
     const result: string[] = [];
     for (const k of KNOWN_ORDER) {
-      // Always show known categories (even if empty) so columns are stable
-      result.push(k);
-      fromData.delete(k);
+      if (fromData.has(k)) {
+        result.push(k);
+        fromData.delete(k);
+      }
     }
     for (const c of Array.from(fromData).sort()) result.push(c);
     return result;

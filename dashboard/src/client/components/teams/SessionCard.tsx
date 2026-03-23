@@ -2,6 +2,7 @@ import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
 import Clock from 'lucide-react/dist/esm/icons/clock.js';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
 import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
 import type { TeamSessionSummary } from '@/shared/team-types.js';
 import { TEAM_STATUS_COLORS, PIPELINE_STATUS_COLORS } from '@/shared/team-types.js';
 
@@ -82,9 +83,11 @@ function StatusPill({ status }: { status: TeamSessionSummary['status'] }) {
 export function SessionCard({
   session,
   onClick,
+  onDelete,
 }: {
   session: TeamSessionSummary;
   onClick: () => void;
+  onDelete?: (sessionId: string) => void;
 }) {
   const skillColor = SKILL_COLORS[session.skill] ?? '#A09D97';
   const skillAbbrev = SKILL_ABBREV[session.skill] ?? 'TM';
@@ -112,6 +115,19 @@ export function SessionCard({
           </div>
         </div>
         <StatusPill status={session.status} />
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(session.sessionId);
+            }}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-text-placeholder opacity-0 group-hover:opacity-100 hover:!text-status-failed hover:bg-[rgba(196,101,85,0.1)] transition-all shrink-0"
+            title="Delete session"
+          >
+            <Trash2 size={13} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       {/* Description */}

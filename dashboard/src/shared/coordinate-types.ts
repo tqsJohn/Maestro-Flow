@@ -40,6 +40,9 @@ export interface CoordinateStep {
   analysis: string | null;
   summary: string | null;
   qualityScore?: number | null;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
 }
 
 /** Full coordinate session state */
