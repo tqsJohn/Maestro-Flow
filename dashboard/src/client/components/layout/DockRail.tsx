@@ -94,14 +94,14 @@ export function DockRail({ isPinned, onTogglePin }: DockRailProps) {
 
   // Close panel when leaving rail — unless mouse moved to panel
   const handleRailLeave = useCallback((e: React.MouseEvent) => {
-    if (!isPinned && !panelRef.current?.contains(e.relatedTarget as Node)) {
+    if (!isPinned && !(e.relatedTarget instanceof Node && panelRef.current?.contains(e.relatedTarget))) {
       setIsPanelOpen(false);
     }
   }, [isPinned]);
 
   // Close panel when leaving panel — unless mouse moved to rail
   const handlePanelLeave = useCallback((e: React.MouseEvent) => {
-    if (!isPinned && !railRef.current?.contains(e.relatedTarget as Node)) {
+    if (!isPinned && !(e.relatedTarget instanceof Node && railRef.current?.contains(e.relatedTarget))) {
       setIsPanelOpen(false);
     }
   }, [isPinned]);
