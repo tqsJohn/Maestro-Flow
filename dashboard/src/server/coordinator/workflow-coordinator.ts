@@ -32,7 +32,7 @@ import {
   resolveAgentType,
 } from './chain-map.js';
 import type { WorkflowSnapshot, StepAnalysis } from './types.js';
-import { setPromptsDir } from './prompts/index.js';
+import { setPromptsDir, loadPrompt } from './prompts/index.js';
 
 // ---------------------------------------------------------------------------
 // Start options (same interface as CoordinateRunner)
@@ -301,25 +301,8 @@ export class WorkflowCoordinator {
       step.args = resolveArgs(step.rawArgs, this.session.intent, phase);
     }
 
-    // Build prompt
-    let args = step.args;
-    const autoDirective = this.session.autoMode
-      ? ' Auto-confirm all prompts. No interactive questions.'
-      : '';
-
-    if (this.session.autoMode) {
-      const flag = AUTO_FLAG_MAP[step.cmd];
-      if (flag && !args.includes(flag)) {
-        args = args ? `${args} ${flag}` : flag;
-      }
-    }
-
-    let prompt = `/${step.cmd} ${args}`.trim() + autoDirective;
-
-    // Inject analysis hints from previous step review
-    if (this.lastAnalysis?.nextStepHints) {
-      prompt += `\n\n## Previous Step Hints\n${this.lastAnalysis.nextStepHints}`;
-    }
+    // Build prompt from template
+    const prompt = await this.buildStepPrompt(step);
 
     const agentType = resolveAgentType(this.session.tool);
 
@@ -354,6 +337,71 @@ export class WorkflowCoordinator {
       this.emitStatus();
       await this.persistState();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step prompt builder — renders step-execution template
+  // -------------------------------------------------------------------------
+
+  private async buildStepPrompt(step: CoordinateStep): Promise<string> {
+    if (!this.session) throw new Error('No active session');
+
+    let args = step.args;
+    const autoDirective = this.session.autoMode
+      ? ' Auto-confirm all prompts. No interactive questions.'
+      : '';
+
+    if (this.session.autoMode) {
+      const flag = AUTO_FLAG_MAP[step.cmd];
+      if (flag && !args.includes(flag)) {
+        args = args ? `${args} ${flag}` : flag;
+      }
+    }
+
+    const previousHints = this.lastAnalysis?.nextStepHints ?? '';
+    const snapshotSummary = this.lastSnapshot
+      ? `Phase ${this.lastSnapshot.currentPhase} (${this.lastSnapshot.phaseStatus}) | ${this.lastSnapshot.phasesCompleted}/${this.lastSnapshot.phasesTotal} phases | ${this.lastSnapshot.progressSummary}`
+      : '';
+
+    try {
+      const template = await loadPrompt('step-execution');
+      return this.renderTemplate(template, {
+        command: step.cmd,
+        args,
+        autoDirective,
+        previousHints,
+        intent: this.session.intent,
+        chainName: this.session.chainName ?? '',
+        stepIndex: String(step.index),
+        totalSteps: String(this.session.steps.length),
+        snapshot: snapshotSummary,
+      });
+    } catch {
+      // Fallback if template missing
+      let prompt = `/${step.cmd} ${args}`.trim() + autoDirective;
+      if (previousHints) {
+        prompt += `\n\n## Previous Step Hints\n${previousHints}`;
+      }
+      return prompt;
+    }
+  }
+
+  /**
+   * Render a mustache-lite template with {{var}} and {{#var}}...{{/var}} blocks.
+   * Blocks are included only when the variable is non-empty.
+   */
+  private renderTemplate(template: string, vars: Record<string, string>): string {
+    // Process conditional blocks: {{#key}}...{{/key}}
+    let result = template.replace(
+      /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
+      (_, key: string, content: string) => vars[key] ? content : '',
+    );
+    // Replace simple variables: {{key}}
+    result = result.replace(
+      /\{\{(\w+)\}\}/g,
+      (_, key: string) => vars[key] ?? '',
+    );
+    return result.trim();
   }
 
   // -------------------------------------------------------------------------

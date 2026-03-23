@@ -11,7 +11,9 @@ import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
 import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
 import FolderOpen from 'lucide-react/dist/esm/icons/folder-open.js';
+import Download from 'lucide-react/dist/esm/icons/download.js';
 import { McpDetailPanel } from '@/client/components/mcp/McpDetailPanel.js';
+import { useInstallStore } from '@/client/store/install-store.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,6 +71,7 @@ export function McpListView() {
   const toggleServer = useMcpStore((s) => s.toggleServer);
   const removeServer = useMcpStore((s) => s.removeServer);
   const removeGlobalServer = useMcpStore((s) => s.removeGlobalServer);
+  const openInstallWizard = useInstallStore((s) => s.setOpen);
 
   // Computed counts
   const activeCount = allServers.filter((s) => s.enabled).length;
@@ -171,6 +174,16 @@ export function McpListView() {
         </div>
 
         <div className="flex-1" />
+
+        {/* Install Wizard button */}
+        <button
+          type="button"
+          onClick={() => openInstallWizard(true)}
+          className="flex items-center gap-[6px] px-[14px] py-[6px] rounded-[var(--radius-lg)] border border-border bg-bg-card text-[11px] font-semibold text-text-secondary cursor-pointer transition-all hover:border-text-tertiary hover:text-text-primary whitespace-nowrap"
+        >
+          <Download size={13} strokeWidth={2} />
+          Install Wizard
+        </button>
 
         {/* Add Server button */}
         <button

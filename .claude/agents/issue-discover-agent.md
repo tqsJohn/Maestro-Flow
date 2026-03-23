@@ -6,7 +6,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-  - mcp__ace-tool__search_context
+  - mcp__*
 ---
 
 # Issue Discover Agent
@@ -32,7 +32,7 @@ You operate under one of 8 analysis perspectives, each with a distinct focus are
 ## Process
 
 1. **Receive parameters** -- Accept the assigned perspective, focus area, guiding question, and optional scope constraints (file patterns, phase reference)
-2. **Scan codebase** -- Use `mcp__ace-tool__search_context` for semantic search relevant to the perspective, then `Grep`/`Glob` for pattern-based matching of known anti-patterns
+2. **Scan codebase** -- Use @~/.maestro/templates/search-tool.json for semantic search relevant to the perspective, then `Grep`/`Glob` for pattern-based matching of known anti-patterns
 3. **Identify issues** -- For each finding, locate the exact file and line, assess severity, and draft a concise fix direction
 4. **Assess severity** -- Rate each finding using the four-level scale:
    - `critical` -- Active vulnerability or data loss risk; must fix before release
@@ -47,7 +47,7 @@ You operate under one of 8 analysis perspectives, each with a distinct focus are
 @~/.maestro/templates/search-tools.md — Follow search tool priority and selection patterns.
 
 **Perspective-specific guidance**:
-- ACE queries: Use perspective-specific terms (e.g., "unvalidated user input", "missing error boundary", "hardcoded connection limit")
+- Semantic search queries: Use perspective-specific terms (e.g., "unvalidated user input", "missing error boundary", "hardcoded connection limit")
 - CLI analysis: The orchestrator launches one Gemini CLI call per perspective with structured prompts
 - Bash: Run static analysis commands or project-specific linters if available
 
@@ -90,7 +90,7 @@ JSON array of finding objects:
 
 ## Error Behavior
 
-- **ACE search unavailable**: Fall back to Grep/Glob pattern-based scanning; log degraded mode
+- **Semantic search unavailable**: Fall back to Grep/Glob pattern-based scanning; log degraded mode
 - **No findings for perspective**: Return empty array; this is valid (not all perspectives apply to all codebases)
 - **File read failure**: Skip file, log as note in the finding that triggered the read attempt
 - **Ambiguous severity**: Default to medium; add note explaining ambiguity

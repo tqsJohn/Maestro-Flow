@@ -18,6 +18,7 @@ import { createIssueRoutes } from './issues.js';
 import { createExecutionRoutes } from './execution.js';
 import { createCliHistoryRoutes } from './cli-history.js';
 import { createMcpRoutes } from './mcp.js';
+import { createInstallRoutes } from './install.js';
 import { createSpecsRoutes } from './specs.js';
 import { createLinearRoutes } from './linear.js';
 import { createTeamRoutes } from './teams.js';
@@ -85,6 +86,9 @@ export function createRoutes(
 
   // MCP server management routes
   routes.route('/', createMcpRoutes());
+
+  // Install wizard routes (pure file ops, no dependencies)
+  routes.route('/', createInstallRoutes());
 
   // Linear API proxy routes (dynamic root for workspace switch)
   routes.route('/', createLinearRoutes(getRoot));

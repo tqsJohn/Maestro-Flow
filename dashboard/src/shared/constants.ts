@@ -247,6 +247,16 @@ export const DEFAULT_CONFIG = {
 export const CLI_HISTORY_DIR_NAME = 'cli-history';
 
 // ---------------------------------------------------------------------------
+// Install Wizard API endpoint paths
+// ---------------------------------------------------------------------------
+
+export const INSTALL_API_ENDPOINTS = {
+  DETECT: '/api/install/detect',
+  EXECUTE: '/api/install/execute',
+  MANIFESTS: '/api/install/manifests',
+} as const;
+
+// ---------------------------------------------------------------------------
 // Status colors (Linear-inspired design tokens)
 // ---------------------------------------------------------------------------
 

@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 function getConfigPaths(workflowRoot: string) {
   return {
     cliTools: resolve(homedir(), '.maestro', 'cli-tools.json'),
+    searchTool: resolve(homedir(), '.maestro', 'templates', 'search-tool.json'),
     dashboardConfig: resolve(workflowRoot, 'config.json'),
     specDir: resolve(workflowRoot, '.spec'),
   };
@@ -71,6 +72,15 @@ export function createSettingsRoutes(workflowRoot: string | (() => string)): Hon
       result['cliTools'] = raw;
     } catch {
       result['cliTools'] = '{}';
+    }
+
+    // Read search tool config
+    try {
+      const raw = await readFile(p.searchTool, 'utf-8');
+      const json = JSON.parse(raw) as Record<string, unknown>;
+      result['searchTool'] = typeof json['name'] === 'string' ? json['name'] : 'mcp__ace-tool__search_context';
+    } catch {
+      result['searchTool'] = 'mcp__ace-tool__search_context';
     }
 
     // Read linear settings
@@ -222,6 +232,50 @@ export function createSettingsRoutes(workflowRoot: string | (() => string)): Hon
         delete process.env.LINEAR_API_KEY;
       }
 
+      return c.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Write failed';
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/settings/search-tool — read ~/.maestro/templates/search-tool.json
+  // -----------------------------------------------------------------------
+  app.get('/api/settings/search-tool', async (c) => {
+    const p = getPaths();
+    try {
+      const raw = await readFile(p.searchTool, 'utf-8');
+      const json = JSON.parse(raw) as Record<string, unknown>;
+      return c.json({
+        name: typeof json['name'] === 'string' ? json['name'] : 'mcp__ace-tool__search_context',
+      });
+    } catch {
+      return c.json({ name: 'mcp__ace-tool__search_context' });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // PUT /api/settings/search-tool — write ~/.maestro/templates/search-tool.json
+  // -----------------------------------------------------------------------
+  app.put('/api/settings/search-tool', async (c) => {
+    try {
+      const p = getPaths();
+      const body = await c.req.json() as { name?: string };
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) {
+        return c.json({ ok: false, error: 'Search tool name cannot be empty' }, 400);
+      }
+
+      // Ensure ~/.maestro/templates/ directory exists
+      const templatesDir = resolve(homedir(), '.maestro', 'templates');
+      try {
+        await access(templatesDir, constants.F_OK);
+      } catch {
+        await mkdir(templatesDir, { recursive: true });
+      }
+
+      await writeFile(p.searchTool, JSON.stringify({ name }, null, 2) + '\n', 'utf-8');
       return c.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Write failed';

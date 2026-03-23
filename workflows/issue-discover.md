@@ -291,8 +291,8 @@ Store dimensions in:
 ```
 For each exploration dimension:
 
-1. Use ACE semantic search for relevant code:
-   mcp__ace-tool__search_context(
+1. Use @~/.maestro/templates/search-tool.json for semantic search:
+   {search_tool}(
      project_root_path="{PROJECT_ROOT}",
      query="{dimension.description}"
    )

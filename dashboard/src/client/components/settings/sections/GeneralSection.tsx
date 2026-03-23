@@ -5,6 +5,7 @@ import type { GeneralSettings } from '@/client/store/settings-store.js';
 import {
   SettingsCard,
   SettingsField,
+  SettingsInput,
   SettingsSelect,
   SettingsSaveBar,
 } from '../SettingsComponents.js';
@@ -45,6 +46,8 @@ export function GeneralSection() {
   const updateDraft = useSettingsStore((s) => s.updateDraft);
   const saveConfig = useSettingsStore((s) => s.saveConfig);
   const discardDraft = useSettingsStore((s) => s.discardDraft);
+  const searchTool = useSettingsStore((s) => s.draft?.searchTool ?? 'mcp__ace-tool__search_context');
+  const searchToolDirty = useSettingsStore((s) => s.isDirty('searchTool'));
   const chineseResponse = useSettingsStore((s) => s.chineseResponse);
   const loadChineseResponse = useSettingsStore((s) => s.loadChineseResponse);
   const toggleChineseResponse = useSettingsStore((s) => s.toggleChineseResponse);
@@ -107,6 +110,32 @@ export function GeneralSection() {
             ]}
           />
         </SettingsField>
+      </SettingsCard>
+
+      {/* Search Tool */}
+      <SettingsCard
+        title="Search Tool"
+        description="Configure the MCP semantic search tool used by agents and workflows. Stored in ~/.maestro/config.json"
+      >
+        <SettingsField
+          label="Tool Name"
+          description="MCP tool name for semantic codebase search (e.g. mcp__ace-tool__search_context)"
+          htmlFor="settings-search-tool"
+        >
+          <SettingsInput
+            id="settings-search-tool"
+            value={searchTool}
+            onChange={(v) => updateDraft('searchTool', v)}
+            placeholder="mcp__ace-tool__search_context"
+            className="w-72 font-mono text-[length:var(--font-size-xs)]"
+          />
+        </SettingsField>
+        <SettingsSaveBar
+          dirty={searchToolDirty}
+          saving={saving}
+          onSave={() => void saveConfig('searchTool')}
+          onDiscard={() => discardDraft('searchTool')}
+        />
       </SettingsCard>
 
       {/* Response Language */}

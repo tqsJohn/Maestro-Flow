@@ -173,8 +173,8 @@ Memory: Integration with auth module, using shared error patterns from @shared/u
 For complex requirements, discover files BEFORE CLI execution:
 
 ```bash
-# Step 1: Discover files
-mcp__ace-tool__search_context(project_root_path="/path", query="React components with export")
+# Step 1: Discover files — use @~/.maestro/templates/search-tool.json
+{search_tool}(project_root_path="/path", query="React components with export")
 
 # Step 2: Build CONTEXT
 CONTEXT: @components/Auth.tsx @types/auth.d.ts | Memory: Previous type refactoring

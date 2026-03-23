@@ -39,6 +39,7 @@ export interface SettingsConfig {
   agents: Record<AgentType, AgentSettingsEntry>;
   cliTools: string; // raw JSON string of cli-tools.json
   linear: LinearSettings;
+  searchTool: string; // MCP semantic search tool name
 }
 
 /** Section type union */
@@ -80,6 +81,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
   agents: DEFAULT_AGENTS,
   cliTools: '{}',
   linear: { apiKey: '' },
+  searchTool: 'mcp__ace-tool__search_context',
 };
 
 function deepClone<T>(obj: T): T {
@@ -117,7 +119,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           { ...defaults, ...((data.agents as Record<string, AgentSettingsEntry>)?.[key] || {}) },
         ]),
       ) as Record<AgentType, AgentSettingsEntry>;
-      const config: SettingsConfig = { ...DEFAULT_CONFIG, ...data, agents: mergedAgents };
+      const searchTool = typeof data.searchTool === 'string' ? data.searchTool : DEFAULT_CONFIG.searchTool;
+      const config: SettingsConfig = { ...DEFAULT_CONFIG, ...data, agents: mergedAgents, searchTool };
       set({ config, draft: deepClone(config), loading: false });
     } catch (err) {
       const config = deepClone(DEFAULT_CONFIG);
@@ -141,8 +144,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const endpoint =
         section === 'cliTools'
           ? '/api/settings/cli-tools'
-          : `/api/settings/${section}`;
-      const body = draft[section];
+          : section === 'searchTool'
+            ? '/api/settings/search-tool'
+            : `/api/settings/${section}`;
+      const body = section === 'searchTool' ? { name: draft[section] } : draft[section];
       const res = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

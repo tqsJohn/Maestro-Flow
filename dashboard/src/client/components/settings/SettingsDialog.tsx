@@ -99,7 +99,8 @@ export function SettingsDialog() {
       JSON.stringify(s.config.general) !== JSON.stringify(s.draft.general) ||
       JSON.stringify(s.config.agents) !== JSON.stringify(s.draft.agents) ||
       s.config.cliTools !== s.draft.cliTools ||
-      JSON.stringify(s.config.linear) !== JSON.stringify(s.draft.linear)
+      JSON.stringify(s.config.linear) !== JSON.stringify(s.draft.linear) ||
+      s.config.searchTool !== s.draft.searchTool
     );
   });
 
