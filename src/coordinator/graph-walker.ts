@@ -8,7 +8,7 @@ import type {
   GateNode, JoinNode, TerminalNode, WalkerState, WalkerContext,
   ProjectSnapshot, HistoryEntry, CommandExecutor, PromptAssembler,
   ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter,
-  CoordinateEvent, AssembleRequest,
+  CoordinateEvent, AssembleRequest, AgentType,
 } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
 
@@ -167,15 +167,15 @@ export class GraphWalker {
       entry.exited_at = new Date().toISOString();
       this.emit({ type: 'walker:node_exit', session_id: state.session_id, node_id: nodeId, outcome: entry.outcome ?? 'success' });
 
-      state.updated_at = new Date().toISOString();
-      this.save(state);
-
       // Step mode: pause after each command node execution
       if (state.step_mode && node.type === 'command' && state.status === 'running') {
         state.status = 'step_paused';
-        this.save(state);
-        break;
       }
+
+      state.updated_at = new Date().toISOString();
+      this.save(state);
+
+      if (state.status === 'step_paused') break;
 
       // Bail if status changed to non-running (waiting, paused, completed, failed)
       if (state.status !== 'running') break;
@@ -209,7 +209,7 @@ export class GraphWalker {
 
     const execResult = await this.executor.execute({
       prompt,
-      agent_type: (state.tool as 'claude-code' | 'codex' | 'gemini' | 'qwen' | 'opencode') || 'claude-code',
+      agent_type: (state.tool as AgentType) || 'claude',
       work_dir: (state.context.inputs['workflowRoot'] as string) ?? '.',
       approval_mode: state.auto_mode ? 'auto' : 'suggest',
       timeout_ms: node.timeout_ms ?? graph.defaults?.timeout_ms ?? 300000,

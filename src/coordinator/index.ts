@@ -52,12 +52,3 @@ export { CliExecutor } from './cli-executor.js';
 export type { SpawnFn } from './cli-executor.js';
 export { GeminiStepAnalyzer } from './step-analyzer.js';
 export { IntentRouter } from './intent-router.js';
-export { LinkSession } from './link-session.js';
-export { LinkWalker } from './link-walker.js';
-export type {
-  LinkStepPreview,
-  LinkUpcomingStep,
-  LinkAction,
-  LinkSessionState,
-  ChainModification,
-} from './graph-types.js';

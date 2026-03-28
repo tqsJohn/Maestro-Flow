@@ -21,6 +21,7 @@ export type SpawnFn = (config: {
   workDir: string;
   approvalMode: 'suggest' | 'auto';
   model?: string;
+  signal?: AbortSignal;
 }) => Promise<{
   output: string;
   success: boolean;
@@ -47,6 +48,7 @@ export class CliExecutor implements CommandExecutor {
         prompt: request.prompt,
         workDir: request.work_dir,
         approvalMode: request.approval_mode,
+        signal: this.abortController!.signal,
       });
 
       return {

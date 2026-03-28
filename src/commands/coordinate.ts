@@ -34,26 +34,29 @@ function resolvePaths(workflowRoot: string) {
   return { chainsRoot, templateDir, sessionDir };
 }
 
-function createSpawnFn(tool: string): SpawnFn {
+function createSpawnFn(): SpawnFn {
   return async (config) => {
     const startTime = Date.now();
     const execId = `coord-${Date.now().toString(36)}`;
+    const tool = config.type === 'claude-code' ? 'claude' : config.type;
+    const mode = config.approvalMode === 'auto' ? 'write' : 'analysis';
 
-    console.log(`[coordinate] Spawning ${config.type} agent (tool: ${tool})...`);
-    console.log(`[coordinate] Prompt: ${config.prompt.slice(0, 200)}...`);
-    console.log(`[coordinate] WorkDir: ${config.workDir}`);
+    console.error(`[coordinate] Spawning ${tool} agent...`);
+    console.error(`[coordinate] Prompt: ${config.prompt.slice(0, 200)}...`);
+    console.error(`[coordinate] WorkDir: ${config.workDir}`);
 
     try {
       const { stdout, stderr } = await execFileAsync('maestro', [
         'cli', '-p', config.prompt,
         '--tool', tool,
-        '--mode', 'write',
+        '--mode', mode,
         '--cd', config.workDir,
       ], {
         cwd: config.workDir,
         timeout: 600000,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env },
+        signal: config.signal,
       });
 
       const output = stdout + (stderr ? '\n' + stderr : '');
@@ -77,13 +80,13 @@ function createSpawnFn(tool: string): SpawnFn {
   };
 }
 
-function createWalker(tool: string, workflowRoot: string) {
+function createWalker(workflowRoot: string) {
   const { chainsRoot, templateDir, sessionDir } = resolvePaths(workflowRoot);
   const loader = new GraphLoader(chainsRoot);
   const evaluator = new DefaultExprEvaluator();
   const parser = new DefaultOutputParser();
   const assembler = new DefaultPromptAssembler(workflowRoot, templateDir);
-  const executor = new CliExecutor(createSpawnFn(tool));
+  const executor = new CliExecutor(createSpawnFn());
   const router = new IntentRouter(loader, chainsRoot);
   const walker = new GraphWalker(
     loader, assembler, executor,
@@ -158,7 +161,7 @@ export function registerCoordinateCommand(program: Command): void {
     .action(async (intentWords: string[], opts: { chain?: string; tool: string; yes?: boolean }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(opts.tool, workflowRoot);
+      const { walker, router } = createWalker(workflowRoot);
 
       try {
         const graphId = router.resolve(intent, opts.chain);
@@ -189,7 +192,7 @@ export function registerCoordinateCommand(program: Command): void {
     .option('--tool <tool>', 'Agent tool override', 'claude')
     .action(async (sessionId: string | undefined, opts: { tool: string }) => {
       const workflowRoot = resolve(process.cwd());
-      const { walker } = createWalker(opts.tool, workflowRoot);
+      const { walker } = createWalker(workflowRoot);
 
       try {
         const state = await walker.next(sessionId);
@@ -209,7 +212,7 @@ export function registerCoordinateCommand(program: Command): void {
     .description('Show current session state')
     .action((sessionId: string | undefined) => {
       const workflowRoot = resolve(process.cwd());
-      const { walker } = createWalker('claude', workflowRoot);
+      const { walker } = createWalker(workflowRoot);
 
       try {
         const state = walker.getState(sessionId);
@@ -240,7 +243,7 @@ export function registerCoordinateCommand(program: Command): void {
     }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(opts.tool, workflowRoot);
+      const { walker, router } = createWalker(workflowRoot);
 
       try {
         let state;

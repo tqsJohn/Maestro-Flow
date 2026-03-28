@@ -202,7 +202,7 @@ export interface DelegateFrame {
 // 4. Command Executor Interface
 // ---------------------------------------------------------------------------
 
-export type AgentType = 'claude-code' | 'codex' | 'gemini' | 'qwen' | 'opencode';
+export type AgentType = 'claude-code' | 'claude' | 'codex' | 'gemini' | 'qwen' | 'opencode';
 
 export interface ExecuteRequest {
   prompt: string;
@@ -346,46 +346,3 @@ export interface IntentMap {
   fallback: IntentRoute;
 }
 
-// ---------------------------------------------------------------------------
-// 11. Link-Coordinate Types (step-by-step interactive walker)
-// ---------------------------------------------------------------------------
-
-export interface LinkStepPreview {
-  node_id: string;
-  cmd: string;
-  description?: string;
-  resolved_args: string;
-  prompt_preview: string;
-  step_index: number;
-  total_steps: number;
-  upcoming: LinkUpcomingStep[];
-  context_summary: string;
-}
-
-export interface LinkUpcomingStep {
-  node_id: string;
-  cmd: string;
-  args_template: string;
-  description?: string;
-}
-
-export type LinkAction =
-  | { type: 'execute' }
-  | { type: 'skip' }
-  | { type: 'modify'; args: string }
-  | { type: 'add'; after_node: string; cmd: string; args?: string }
-  | { type: 'remove'; node_id: string }
-  | { type: 'quit' };
-
-export interface LinkSessionState extends WalkerState {
-  link_mode: true;
-  pending_preview: LinkStepPreview | null;
-  chain_modifications: ChainModification[];
-}
-
-export interface ChainModification {
-  action: 'add' | 'remove' | 'modify_args' | 'skip';
-  node_id: string;
-  timestamp: string;
-  detail?: Record<string, unknown>;
-}
