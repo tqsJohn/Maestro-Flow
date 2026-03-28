@@ -7,8 +7,9 @@ import type { DashboardEventBus } from '../../state/event-bus.js';
 import type { ExecutionScheduler } from '../../execution/execution-scheduler.js';
 import type { WaveExecutor } from '../../execution/wave-executor.js';
 import type { AgentWsHandler } from './agent-handler.js';
+import type { Issue } from '../../../shared/issue-types.js';
 import { loadDashboardAgentSettings } from '../../config.js';
-import { readIssuesJsonl } from '../../utils/issue-store.js';
+import { readIssuesJsonl, writeIssuesJsonl, withIssueWriteLock } from '../../utils/issue-store.js';
 
 // ---------------------------------------------------------------------------
 // ExecutionWsHandler — execute:issue, execute:batch, execute:wave,
@@ -23,6 +24,7 @@ export class ExecutionWsHandler implements WsHandler {
     'supervisor:toggle',
     'issue:analyze',
     'issue:plan',
+    'issue:pipeline',
   ] as const;
 
   constructor(
@@ -88,6 +90,13 @@ export class ExecutionWsHandler implements WsHandler {
         }
         await this.handleIssuePlan(ws, msg.issueId as string, msg.tool as string | undefined);
         break;
+
+      case 'issue:pipeline':
+        if (!msg.issueId) {
+          throw new Error('Missing issueId');
+        }
+        await this.handleIssuePipeline(msg.issueId as string, msg.tool as string | undefined);
+        break;
     }
   }
 
@@ -104,6 +113,42 @@ export class ExecutionWsHandler implements WsHandler {
       throw new Error(`Issue not found: ${issueId}`);
     }
     await this.waveExecutor.execute(issue);
+  }
+
+  private async handleIssuePipeline(issueId: string, tool?: string): Promise<void> {
+    const { join } = await import('node:path');
+    const jsonlPath = join(this.workflowRoot, 'issues', 'issues.jsonl');
+
+    // Read issue and derive chain mode from current state
+    const issues = await readIssuesJsonl(jsonlPath);
+    const issue = issues.find((i) => i.id === issueId);
+    if (!issue) {
+      throw new Error(`Issue not found: ${issueId}`);
+    }
+
+    const mode = resolveChainMode(issue);
+
+    // Write chain config into solution (create stub if absent)
+    await withIssueWriteLock(async () => {
+      const freshIssues = await readIssuesJsonl(jsonlPath);
+      const idx = freshIssues.findIndex((i) => i.id === issueId);
+      if (idx === -1) return;
+
+      const target = freshIssues[idx];
+      target.solution = {
+        steps: [],
+        ...target.solution,
+        chain: 'issue-lifecycle',
+        chainMode: mode,
+      };
+      target.updated_at = new Date().toISOString();
+      freshIssues[idx] = target;
+      await writeIssuesJsonl(jsonlPath, freshIssues);
+    });
+
+    // Dispatch via existing executeIssue — it routes to dispatchViaChain when solution.chain is set
+    const executor = (tool as import('../../../shared/agent-types.js').AgentType) || undefined;
+    await this.executionScheduler.executeIssue(issueId, executor);
   }
 
   private async handleIssueAnalyze(ws: WebSocket, issueId: string, tool?: string, depth?: string): Promise<void> {
@@ -145,4 +190,10 @@ export class ExecutionWsHandler implements WsHandler {
       approvalMode: 'auto',
     });
   }
+}
+
+function resolveChainMode(issue: Issue): 'full' | 'plan-execute' | 'direct' {
+  if (issue.solution && issue.solution.steps.length > 0) return 'direct';
+  if (issue.analysis) return 'plan-execute';
+  return 'full';
 }

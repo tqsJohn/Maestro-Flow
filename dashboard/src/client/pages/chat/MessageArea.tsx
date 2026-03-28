@@ -1,15 +1,50 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { useAutoScroll } from '@/client/hooks/useAutoScroll.js';
 import { EntryRenderer } from './entries/index.js';
 import { EntryContextMenu } from './entries/EntryContextMenu.js';
+import { AVATAR_CONFIG } from './entries/AssistantMessage.js';
 import { CreateIssueDialog } from '@/client/components/issues/CreateIssueDialog.js';
-import type { NormalizedEntry } from '@/shared/agent-types.js';
+import type { NormalizedEntry, AgentType } from '@/shared/agent-types.js';
 import type { CreateIssueRequest } from '@/shared/issue-types.js';
 
 // Stable empty array to avoid infinite re-render from Zustand selector
 const EMPTY_ENTRIES: NormalizedEntry[] = [];
+
+// ---------------------------------------------------------------------------
+// AgentLoadingPlaceholder -- avatar + bouncing dots shown while waiting for response
+// ---------------------------------------------------------------------------
+
+function AgentLoadingPlaceholder({ agentType }: { agentType?: AgentType }) {
+  const cfg = AVATAR_CONFIG[agentType ?? 'claude-code'] ?? AVATAR_CONFIG['claude-code'];
+  return (
+    <div className="max-w-[780px] mx-auto px-6">
+      <div className="flex gap-[10px]" style={{ paddingTop: 10, paddingBottom: 10 }}>
+        <div
+          className="relative shrink-0 w-7 h-7 rounded-[8px] flex items-center justify-center mt-[2px] text-[11px] font-bold text-white"
+          style={{ backgroundColor: cfg.color }}
+        >
+          {cfg.label}
+          <span
+            className="absolute inset-[-3px] rounded-[10px] pointer-events-none"
+            style={{
+              border: '1.5px solid currentColor',
+              color: cfg.color,
+              opacity: 0.3,
+              animation: 'avatar-pulse 2.5s ease-in-out infinite',
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-[3px] pt-[6px]">
+          <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '0ms', opacity: 0.7 }} />
+          <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '150ms', opacity: 0.7 }} />
+          <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '300ms', opacity: 0.7 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // MessageArea -- virtualized scrollable message list for a given process
@@ -18,6 +53,9 @@ const EMPTY_ENTRIES: NormalizedEntry[] = [];
 export function MessageArea({ processId }: { processId: string | null }) {
   const entries = useAgentStore((s) =>
     processId ? (s.entries[processId] ?? EMPTY_ENTRIES) : EMPTY_ENTRIES,
+  );
+  const process = useAgentStore((s) =>
+    processId ? s.processes[processId] : undefined,
   );
 
   const {
@@ -38,6 +76,19 @@ export function MessageArea({ processId }: { processId: string | null }) {
     setIssueDialogOpen(true);
   }, []);
 
+  const processStatus = process?.status;
+  const isActive = processStatus === 'running' || processStatus === 'spawning';
+
+  // Show loading placeholder when agent is active but hasn't started streaming a response
+  const showLoadingPlaceholder = useMemo(() => {
+    if (!isActive || entries.length === 0) return false;
+    const last = entries[entries.length - 1];
+    // Already streaming a partial response — AssistantMessage shows its own cursor
+    if (last.type === 'assistant_message' && last.partial) return false;
+    // After user_message or after a completed assistant_message (agent doing more work)
+    return true;
+  }, [isActive, entries]);
+
   if (!processId) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-tertiary text-[length:var(--font-size-sm)]">
@@ -46,21 +97,31 @@ export function MessageArea({ processId }: { processId: string | null }) {
     );
   }
 
-  const processStatus = useAgentStore((s) =>
-    processId ? s.processes[processId]?.status : undefined,
-  );
-
   if (entries.length === 0) {
-    const isActive = processStatus === 'running' || processStatus === 'spawning';
-
     if (isActive) {
+      const cfg = AVATAR_CONFIG[process?.type ?? 'claude-code'] ?? AVATAR_CONFIG['claude-code'];
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
+            <div
+              className="relative w-9 h-9 rounded-[10px] flex items-center justify-center text-[13px] font-bold text-white"
+              style={{ backgroundColor: cfg.color }}
+            >
+              {cfg.label}
+              <span
+                className="absolute inset-[-3px] rounded-[12px] pointer-events-none"
+                style={{
+                  border: '1.5px solid currentColor',
+                  color: cfg.color,
+                  opacity: 0.3,
+                  animation: 'avatar-pulse 2.5s ease-in-out infinite',
+                }}
+              />
+            </div>
             <div className="flex gap-1">
-              <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-accent-orange)', animationDelay: '0ms' }} />
-              <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-accent-orange)', animationDelay: '150ms' }} />
-              <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-accent-orange)', animationDelay: '300ms' }} />
+              <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '0ms', opacity: 0.7 }} />
+              <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '150ms', opacity: 0.7 }} />
+              <span className="w-[5px] h-[5px] rounded-full animate-bounce" style={{ backgroundColor: cfg.color, animationDelay: '300ms', opacity: 0.7 }} />
             </div>
             <span className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
               {processStatus === 'spawning' ? 'Starting agent...' : 'Thinking...'}
@@ -89,6 +150,9 @@ export function MessageArea({ processId }: { processId: string | null }) {
           atBottomThreshold={60}
           className="h-full"
           style={{ height: '100%' }}
+          components={showLoadingPlaceholder ? {
+            Footer: () => <AgentLoadingPlaceholder agentType={process?.type} />,
+          } : undefined}
           itemContent={(index, entry) => {
             // Check if this assistant_message continues a group from the previous assistant_message
             // (skipping non-visual entries like tool_use, error, status_change between them)

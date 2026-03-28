@@ -160,6 +160,7 @@ export class AgentSdkAdapter extends BaseAgentAdapter {
       abortController,
       cwd: config.workDir,
       model: config.model,
+      settingSources: ['project'],
     };
 
     // When settingsFile is set, use settings file path and dontAsk mode

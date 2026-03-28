@@ -86,7 +86,7 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {/* Issues summary */}
+      {/* Issues summary card */}
       {issues.length > 0 && (
         <div className="px-[var(--spacing-3)] py-[var(--spacing-2)] border-b border-border-divider">
           <h2 className="text-[length:var(--font-size-xs)] font-[var(--font-weight-semibold)] text-text-tertiary uppercase tracking-[var(--letter-spacing-wide)] mb-[var(--spacing-2)]">
@@ -95,12 +95,34 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => navigate('/kanban')}
-            className={`${BASE_NAV_CLASSES} ${INACTIVE_NAV_CLASSES}`}
+            className="w-full rounded-[var(--radius-md)] border border-border p-2.5 hover:bg-bg-hover transition-all duration-[var(--duration-fast)] cursor-pointer text-left"
           >
-            <span className="truncate">{issueCounts.total} issues</span>
-            {issueCounts.open > 0 && (
-              <span className="text-[length:10px] text-text-tertiary ml-auto">{issueCounts.open} open</span>
-            )}
+            <div className="flex items-baseline gap-1.5 mb-2">
+              <span className="text-[20px] font-semibold text-text-primary leading-none">
+                {issueCounts.total}
+              </span>
+              <span className="text-[length:var(--font-size-xs)] text-text-tertiary">issues</span>
+            </div>
+            <div className="flex gap-3">
+              {issueCounts.open > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: '#5B8DB8' }} />
+                  <span className="text-[10px] text-text-tertiary">{issueCounts.open} open</span>
+                </div>
+              )}
+              {issueCounts.in_progress > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: '#B89540' }} />
+                  <span className="text-[10px] text-text-tertiary">{issueCounts.in_progress} active</span>
+                </div>
+              )}
+              {issueCounts.resolved > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: '#5A9E78' }} />
+                  <span className="text-[10px] text-text-tertiary">{issueCounts.resolved} done</span>
+                </div>
+              )}
+            </div>
           </button>
         </div>
       )}

@@ -27,6 +27,7 @@ import { createCommanderRoutes } from '../commander/commander-routes.js';
 import { createCoordinatorRoutes } from '../coordinator/coordinator-routes.js';
 import { createRequirementRoutes } from './requirements.js';
 import { createSupervisorRoutes } from './supervisor.js';
+import { createWorkspaceRoutes } from './workspace.js';
 import { createObservabilityRoutes } from '../observability/observability-routes.js';
 import type { RequirementExpander } from '../requirement/requirement-expander.js';
 import type { SelfLearningService } from '../supervisor/self-learning-service.js';
@@ -75,6 +76,9 @@ export function createRoutes(
 
   // Artifact route (dynamic root for workspace switch)
   routes.route('/', createArtifactRoutes(getRoot));
+
+  // Workspace tree route (project root = parent of .workflow/)
+  routes.route('/', createWorkspaceRoutes(getRoot));
 
   // SSE events route (depends on StateManager, EventBus, SSEHub)
   routes.route('/', createEventsRoute(stateManager, eventBus, sseHub));

@@ -91,6 +91,48 @@ const DEPTH_OPTIONS: { value: string; label: string }[] = [
   { value: 'deep', label: 'Deep' },
 ];
 
+// Pipeline progress indicator — 3-dot step visualization
+function PipelineProgress({ issue }: { issue: Issue }) {
+  const steps = [
+    { label: 'Analyze', done: !!issue.analysis },
+    { label: 'Plan', done: !!issue.solution && issue.solution.steps.length > 0 },
+    { label: 'Execute', done: !!issue.execution?.result },
+  ];
+
+  return (
+    <div className="flex items-center gap-1 mb-2.5">
+      {steps.map((step, i) => (
+        <div key={step.label} className="flex items-center gap-1">
+          {i > 0 && (
+            <div
+              className="w-6 h-px"
+              style={{ backgroundColor: step.done || steps[i - 1].done ? 'var(--color-accent-blue)' : 'var(--color-border)' }}
+            />
+          )}
+          <div className="flex items-center gap-1">
+            <span
+              className="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px]"
+              style={{
+                backgroundColor: step.done ? 'var(--color-accent-blue)' : 'transparent',
+                border: step.done ? 'none' : '1.5px solid var(--color-border)',
+                color: step.done ? 'white' : 'var(--color-text-tertiary)',
+              }}
+            >
+              {step.done ? '\u2713' : ''}
+            </span>
+            <span
+              className="text-[9px]"
+              style={{ color: step.done ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)' }}
+            >
+              {step.label}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Action buttons for issue lifecycle — navigate to chat after dispatching
 function ActionButtons({ issue }: { issue: Issue }) {
   const navigate = useNavigate();
@@ -104,14 +146,30 @@ function ActionButtons({ issue }: { issue: Issue }) {
     navigate('/chat');
   };
 
+  // Pipeline button label adapts to issue state
+  const pipelineLabel = issue.solution && issue.solution.steps.length > 0
+    ? 'Execute'
+    : issue.analysis
+      ? 'Continue'
+      : 'Run Pipeline';
+
+  // Single-step secondary action
+  const singleStepAction = !issue.analysis
+    ? { label: 'Analyze', onClick: () => dispatchAndOpenChat({ action: 'issue:analyze', issueId: issue.id, tool: selectedTool, depth: selectedDepth }) }
+    : !issue.solution
+      ? { label: 'Plan', onClick: () => dispatchAndOpenChat({ action: 'issue:plan', issueId: issue.id, tool: selectedTool }) }
+      : { label: 'Execute', onClick: () => dispatchAndOpenChat({ action: 'execute:issue', issueId: issue.id }) };
+
   return (
-    <div className="pt-3 border-t" style={{ borderColor: 'var(--color-border-divider)' }}>
-      {/* Tool / Depth selectors */}
-      <div className="flex items-center gap-2 mb-2">
+    <div>
+      <PipelineProgress issue={issue} />
+      <div className="flex items-center gap-2">
+        {/* Tool / Depth selectors — left side */}
         <select
           value={selectedTool}
           onChange={(e) => setSelectedTool(e.target.value)}
-          className="px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border border-border bg-bg-primary text-text-primary text-[length:var(--font-size-xs)] cursor-pointer"
+          className="text-[10px] px-1.5 py-1 rounded border cursor-pointer"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-tertiary)' }}
         >
           {TOOL_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -120,53 +178,35 @@ function ActionButtons({ issue }: { issue: Issue }) {
         <select
           value={selectedDepth}
           onChange={(e) => setSelectedDepth(e.target.value)}
-          className="px-[var(--spacing-2)] py-[var(--spacing-1)] rounded-[var(--radius-sm)] border border-border bg-bg-primary text-text-primary text-[length:var(--font-size-xs)] cursor-pointer"
+          className="text-[10px] px-1.5 py-1 rounded border cursor-pointer"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-tertiary)' }}
         >
           {DEPTH_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
-      </div>
-      {/* Action buttons */}
-      <div className="flex gap-2">
-        {!issue.analysis && (
-          <button
-            type="button"
-            onClick={() => dispatchAndOpenChat({ action: 'issue:analyze', issueId: issue.id, tool: selectedTool, depth: selectedDepth })}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
-            style={{ backgroundColor: 'var(--color-accent-blue)', color: 'white' }}
-          >
-            Analyze
-          </button>
-        )}
-        {issue.analysis && !issue.solution && (
-          <button
-            type="button"
-            onClick={() => dispatchAndOpenChat({ action: 'issue:plan', issueId: issue.id, tool: selectedTool })}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
-            style={{ backgroundColor: 'var(--color-accent-blue)', color: 'white' }}
-          >
-            Plan
-          </button>
-        )}
-        {issue.solution && (
-          <button
-            type="button"
-            onClick={() => dispatchAndOpenChat({ action: 'execute:issue', issueId: issue.id })}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
-            style={{ backgroundColor: '#5A9E78', color: 'white' }}
-          >
-            Execute
-          </button>
-        )}
-        {/* Wave Execute -- decompose + parallel execution via Agent SDK */}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Single-step secondary action */}
         <button
           type="button"
-          onClick={() => dispatchAndOpenChat({ action: 'execute:wave', issueId: issue.id })}
-          className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-colors hover:opacity-90"
-          style={{ backgroundColor: 'var(--color-accent-purple)', color: 'white' }}
+          onClick={singleStepAction.onClick}
+          className="text-[11px] font-medium px-3.5 py-1.5 rounded-md transition-colors hover:opacity-90 border"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'transparent' }}
         >
-          Wave Execute
+          {singleStepAction.label}
+        </button>
+
+        {/* Pipeline primary action — rightmost */}
+        <button
+          type="button"
+          onClick={() => dispatchAndOpenChat({ action: 'issue:pipeline', issueId: issue.id, tool: selectedTool })}
+          className="text-[11px] font-medium px-3.5 py-1.5 rounded-md transition-colors hover:opacity-90"
+          style={{ backgroundColor: 'var(--color-accent-blue)', color: 'white' }}
+        >
+          {pipelineLabel}
         </button>
       </div>
     </div>
@@ -215,13 +255,13 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
       <>
         {/* Dim backdrop */}
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-[60]"
           style={{ backgroundColor: 'rgba(0,0,0,0.22)' }}
           onClick={onClose}
         />
         {/* Panel */}
         <div
-          className="fixed right-0 top-0 bottom-0 z-50 w-[400px] flex flex-col overflow-hidden motion-safe:animate-[slide-in-right_180ms_ease-out_both]"
+          className="fixed right-0 top-0 bottom-0 z-[70] w-[400px] flex flex-col overflow-hidden motion-safe:animate-[slide-in-right_180ms_ease-out_both]"
           style={{
             backgroundColor: 'var(--color-bg-card)',
             borderLeft: '1px solid var(--color-border)',
@@ -329,8 +369,10 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
                 <div>Updated {formatRelative(issue.updated_at)}</div>
               </div>
             </PropRow>
+          </div>
 
-            {/* Action Buttons */}
+          {/* Action Buttons — fixed at bottom */}
+          <div className="shrink-0 px-5 py-3" style={{ borderTop: '1px solid var(--color-border-divider)' }}>
             <ActionButtons issue={issue} />
           </div>
         </div>
@@ -342,7 +384,7 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
   if (style === 2) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-6"
+        className="fixed inset-0 z-[60] flex items-center justify-center p-6"
         style={{ backgroundColor: 'rgba(0,0,0,0.52)' }}
         onClick={onClose}
       >
@@ -440,12 +482,12 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
               <div className="mt-5 space-y-5">
                 <DetailSections issue={issue} />
               </div>
-
-              {/* Action Buttons */}
-              <div className="mt-5">
-                <ActionButtons issue={issue} />
-              </div>
             </div>
+          </div>
+
+          {/* Action Buttons — fixed at bottom of left column */}
+          <div className="shrink-0 px-6 py-3" style={{ borderTop: '1px solid var(--color-border-divider)' }}>
+            <ActionButtons issue={issue} />
           </div>
 
           {/* Right: properties sidebar */}
@@ -523,7 +565,7 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
   // ── Style 3: Full-page takeover ──────────────────────────────────────────
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col motion-safe:animate-[slide-up_220ms_ease-out_both]"
+      className="fixed inset-0 z-[60] flex flex-col motion-safe:animate-[slide-up_220ms_ease-out_both]"
       style={{ backgroundColor: 'var(--color-bg-primary)' }}
     >
       {/* Breadcrumb top bar */}
@@ -570,6 +612,7 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
       {/* Body */}
       <div className="flex-1 overflow-hidden flex">
         {/* Main content area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-12 py-10">
           <div className="max-w-[740px] mx-auto">
             <div
@@ -626,12 +669,15 @@ export function IssueDetailModal({ issue, style, onClose }: Props) {
             <div className="mt-8 space-y-6">
               <DetailSections issue={issue} />
             </div>
-
-            {/* Action Buttons */}
-            <div className="mt-8">
-              <ActionButtons issue={issue} />
-            </div>
           </div>
+        </div>
+
+        {/* Action Buttons — fixed at bottom */}
+        <div className="shrink-0 px-12 py-3" style={{ borderTop: '1px solid var(--color-border-divider)' }}>
+          <div className="max-w-[740px] mx-auto">
+            <ActionButtons issue={issue} />
+          </div>
+        </div>
         </div>
 
         {/* Right sidebar */}

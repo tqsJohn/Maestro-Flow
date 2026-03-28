@@ -108,6 +108,7 @@ export type WsClientMessage =
   | WsClientCoordinateStopMessage
   | WsClientCoordinateResumeMessage
   | WsClientCoordinateClarifyMessage
+  | WsClientIssuePipelineMessage
   | WsClientRequirementExpandMessage
   | WsClientRequirementRefineMessage
   | WsClientRequirementCommitMessage;
@@ -182,6 +183,12 @@ export interface WsClientPlanIssueMessage {
   action: 'issue:plan';
   issueId: string;
   tool?: string;   // 'gemini' | 'qwen'
+}
+
+export interface WsClientIssuePipelineMessage {
+  action: 'issue:pipeline';
+  issueId: string;
+  tool?: string;
 }
 
 export interface WsClientSupervisorToggleMessage {

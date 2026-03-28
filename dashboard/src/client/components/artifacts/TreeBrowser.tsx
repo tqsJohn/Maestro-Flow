@@ -40,7 +40,7 @@ export function TreeBrowser({ tree, selectedPath, onSelectFile, loading }: TreeB
     <div className="flex flex-col h-full bg-bg-primary" role="tree" aria-label="File browser">
       {/* Header */}
       <div className="flex items-center gap-[var(--spacing-2)] px-[14px] py-[10px] border-b border-border-divider shrink-0">
-        <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-text-primary">Artifacts</span>
+        <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-text-primary">Files</span>
         <span className="text-[10px] text-text-tertiary ml-auto font-mono">{countAllFiles(filteredTree)}</span>
       </div>
 

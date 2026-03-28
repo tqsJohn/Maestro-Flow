@@ -8,15 +8,19 @@ import GitBranch from 'lucide-react/dist/esm/icons/git-branch.js';
 import Zap from 'lucide-react/dist/esm/icons/zap.js';
 import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
 import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import FolderTree from 'lucide-react/dist/esm/icons/folder-tree.js';
 import { useAgentStore } from '@/client/store/agent-store.js';
 import { useUIPrefsStore } from '@/client/store/ui-prefs-store.js';
 import { useResizableSplit } from '@/client/hooks/useResizableSplit.js';
 import { useApprovalKeyboard } from '@/client/hooks/useApprovalKeyboard.js';
+import { useWorkspaceTree } from '@/client/hooks/useWorkspaceTree.js';
 import { sendWsMessage } from '@/client/hooks/useWebSocket.js';
 import { MessageArea } from './MessageArea.js';
 import { ChatInput } from './ChatInput.js';
 import { ThoughtDisplay } from './ThoughtDisplay.js';
 import { HistoryPanel } from './SessionSidebar.js';
+import { FileViewer } from './FileViewer.js';
+import { TreeBrowser } from '@/client/components/artifacts/TreeBrowser.js';
 import { AGENT_DOT_COLORS, AGENT_LABELS } from '@/shared/constants.js';
 import type { AgentProcess, AgentType } from '@/shared/agent-types.js';
 
@@ -248,21 +252,25 @@ function GlobalTabBar({
   activeProcessId,
   splitOpen,
   historyOpen,
+  fileTreeOpen,
   onSelectProcess,
   onDismissProcess,
   onNewSession,
   onToggleSplit,
   onToggleHistory,
+  onToggleFileTree,
 }: {
   sortedProcesses: AgentProcess[];
   activeProcessId: string | null;
   splitOpen: boolean;
   historyOpen: boolean;
+  fileTreeOpen: boolean;
   onSelectProcess: (id: string) => void;
   onDismissProcess: (id: string) => void;
   onNewSession: () => void;
   onToggleSplit: () => void;
   onToggleHistory: () => void;
+  onToggleFileTree: () => void;
 }) {
   return (
     <div className="sticky top-0 z-30 flex justify-center pt-2 pointer-events-none shrink-0">
@@ -348,8 +356,16 @@ function GlobalTabBar({
           <Plus size={14} strokeWidth={2} />
         </button>
 
-        {/* History toggle */}
+        {/* File tree toggle */}
         <div className="w-px h-4 shrink-0" style={{ backgroundColor: 'var(--color-border-divider)', margin: '0 2px' }} />
+        <IconButton
+          icon={<FolderTree size={14} strokeWidth={1.8} />}
+          isActive={fileTreeOpen}
+          onClick={onToggleFileTree}
+          label="Toggle file tree"
+        />
+
+        {/* History toggle */}
         <IconButton
           icon={<Clock size={14} strokeWidth={1.8} />}
           isActive={historyOpen}
@@ -491,7 +507,10 @@ export function ChatPage() {
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitProcessId, setSplitProcessId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const { ratio: splitRatio, setRatio: setSplitRatio, handleMouseDown: handleDividerMouseDown, containerRef } = useResizableSplit({ defaultRatio: 50, minRatio: 25, maxRatio: 75 });
+  const [fileTreeOpen, setFileTreeOpen] = useState(false);
+  const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
+  const { ratio: splitRatio, setRatio: setSplitRatio, createDragHandle } = useResizableSplit({ defaultRatio: 50, minRatio: 25, maxRatio: 75, storageKey: 'chat-split-ratio' });
+  const workspace = useWorkspaceTree();
 
   const sortedProcesses = useMemo(() => {
     return Object.values(processes).sort(
@@ -540,6 +559,7 @@ export function ChatPage() {
     if (splitOpen) {
       setSplitOpen(false);
       setSplitProcessId(null);
+      setFileViewerPath(null);
     } else {
       const other = sortedProcesses.find((p) => p.id !== activeProcessId);
       if (other) {
@@ -563,8 +583,46 @@ export function ChatPage() {
     setActiveProcessId(null);
   }, [setActiveProcessId]);
 
+  // File viewer: if already showing a file → refresh in place; otherwise open split
+  const handleSelectFile = useCallback((path: string) => {
+    if (fileViewerPath !== null) {
+      // File viewer already open — refresh content
+      setFileViewerPath(path);
+    } else {
+      // No file viewer — open split with file viewer
+      setFileViewerPath(path);
+      setSplitOpen(true);
+      setSplitProcessId(null);
+      setSplitRatio(50);
+    }
+  }, [fileViewerPath, setSplitRatio]);
+
+  const closeFileViewer = useCallback(() => {
+    setFileViewerPath(null);
+    setSplitOpen(false);
+    setSplitProcessId(null);
+  }, []);
+
   return (
     <div className="h-full flex min-w-0 overflow-hidden relative">
+      {/* Collapsible file tree panel */}
+      <div
+        className="shrink-0 flex flex-col overflow-hidden border-r transition-[width] duration-200 ease-[var(--ease-notion)]"
+        style={{
+          width: fileTreeOpen ? 260 : 0,
+          borderColor: fileTreeOpen ? 'var(--color-border)' : 'transparent',
+        }}
+      >
+        {fileTreeOpen && (
+          <TreeBrowser
+            tree={workspace.tree}
+            selectedPath={fileViewerPath}
+            onSelectFile={handleSelectFile}
+            loading={workspace.loading}
+          />
+        )}
+      </div>
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
       {/* Global tab bar — always visible */}
@@ -573,17 +631,19 @@ export function ChatPage() {
         activeProcessId={activeProcessId}
         splitOpen={splitOpen}
         historyOpen={historyOpen}
+        fileTreeOpen={fileTreeOpen}
         onSelectProcess={setActiveProcessId}
         onDismissProcess={handleDismissProcess}
         onNewSession={handleNewSession}
         onToggleSplit={toggleSplit}
         onToggleHistory={() => setHistoryOpen(!historyOpen)}
+        onToggleFileTree={() => setFileTreeOpen(!fileTreeOpen)}
       />
 
       {showWelcome ? (
         <WelcomeView />
       ) : (
-        <div ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 flex overflow-hidden min-h-0 relative">
           {/* Pane 1 */}
           <div className="flex flex-col min-w-0 overflow-hidden" style={{ flex: splitOpen ? `0 0 ${splitRatio}%` : '1' }}>
             {/* Per-pane tab bar in split mode */}
@@ -605,37 +665,44 @@ export function ChatPage() {
             )}
           </div>
 
-          {/* Divider */}
+          {/* Divider drag handle */}
           {splitOpen && (
-            <div
-              className="w-[5px] shrink-0 cursor-col-resize relative transition-colors duration-150"
-              style={{ backgroundColor: 'var(--color-border)' }}
-              onMouseDown={handleDividerMouseDown}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-orange)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-border)'; }}
-            />
+            <div className="relative shrink-0" style={{ width: 0 }}>
+              {createDragHandle({
+                className: 'left-[-6px]',
+                linePlacement: 'end',
+                lineClassName: 'opacity-40 group-hover:opacity-100 group-active:opacity-100',
+                lineStyle: { backgroundColor: 'var(--color-accent-orange)' },
+              })}
+            </div>
           )}
 
-          {/* Pane 2 */}
+          {/* Pane 2 — file viewer or chat session */}
           {splitOpen && (
             <div
               className="flex flex-col min-w-0 overflow-hidden border-l"
               style={{ flex: `0 0 ${100 - splitRatio}%`, borderColor: 'var(--color-border)' }}
             >
-              <PaneTabBar
-                sortedProcesses={sortedProcesses}
-                currentProcessId={splitProcessId}
-                onSelectProcess={setSplitProcessId}
-                onClose={toggleSplit}
-              />
-              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <MessageArea processId={splitProcessId} />
-              </div>
-              <ThoughtDisplay processId={splitProcessId} />
-              <ChatInput
-                processId={splitProcessId}
-                executor={splitProcess?.type}
-              />
+              {fileViewerPath ? (
+                <FileViewer filePath={fileViewerPath} onClose={closeFileViewer} />
+              ) : (
+                <>
+                  <PaneTabBar
+                    sortedProcesses={sortedProcesses}
+                    currentProcessId={splitProcessId}
+                    onSelectProcess={setSplitProcessId}
+                    onClose={toggleSplit}
+                  />
+                  <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                    <MessageArea processId={splitProcessId} />
+                  </div>
+                  <ThoughtDisplay processId={splitProcessId} />
+                  <ChatInput
+                    processId={splitProcessId}
+                    executor={splitProcess?.type}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>

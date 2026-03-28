@@ -7,7 +7,7 @@ import type { AssistantMessageEntry, AgentType } from '@/shared/agent-types.js';
 // AssistantMessage -- left-aligned message with avatar + markdown rendering
 // ---------------------------------------------------------------------------
 
-const AVATAR_CONFIG: Record<AgentType, { label: string; color: string; className: string }> = {
+export const AVATAR_CONFIG: Record<AgentType, { label: string; color: string; className: string }> = {
   'claude-code': { label: 'C', color: 'var(--color-accent-purple)', className: 'claude' },
   codex:         { label: 'Cx', color: 'var(--color-accent-green)', className: 'codex' },
   'codex-server': { label: 'Cs', color: 'var(--color-accent-green)', className: 'codex' },
