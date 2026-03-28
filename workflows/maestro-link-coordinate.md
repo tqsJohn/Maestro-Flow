@@ -37,9 +37,14 @@ Exit after display.
 
 #### 3a: New session (step mode)
 
+Build command dynamically — only include flags when values are present:
+
 ```bash
-maestro coordinate start "{intent}" --chain {forcedChain} --tool {cliTool} {autoYes ? '-y' : ''}
+maestro coordinate start "{intent}" --tool {cliTool} [--chain {forcedChain}] [-y]
 ```
+
+- Append `--chain {forcedChain}` only if `forcedChain` is not null
+- Append `-y` only if `autoYes` is true
 
 Outputs JSON to stdout:
 
@@ -59,9 +64,13 @@ Capture `session_id` from output.
 
 #### 3b: Resume existing session
 
+Use `coordinate next` for step_paused sessions:
+
 ```bash
 maestro coordinate next {resumeId}
 ```
+
+If `resumeId` is null (bare `-c`), omit the session ID — `next` resumes the latest step_paused session.
 
 Same JSON output format.
 
@@ -84,7 +93,7 @@ After each call:
 
 The walker handles internally:
 - Prompt assembly from `coordinate-step` template
-- CLI execution via `maestro cli --tool {tool} --mode write`
+- CLI execution via `maestro cli --tool {tool} --mode {write|analysis}`
 - Decision/gate/eval node auto-resolution
 - max_visits loop prevention
 - State persistence to `.workflow/.maestro-coordinate/{session_id}/`

@@ -189,8 +189,7 @@ export function registerCoordinateCommand(program: Command): void {
   coord
     .command('next [sessionId]')
     .description('Execute next step of a paused session')
-    .option('--tool <tool>', 'Agent tool override', 'claude')
-    .action(async (sessionId: string | undefined, opts: { tool: string }) => {
+    .action(async (sessionId: string | undefined) => {
       const workflowRoot = resolve(process.cwd());
       const { walker } = createWalker(workflowRoot);
 

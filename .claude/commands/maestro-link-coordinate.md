@@ -1,6 +1,6 @@
 ---
 name: maestro-link-coordinate
-description: Chain-graph coordinator via maestro coordinate endpoint — step-mode execution with session tracking
+description: Step-mode graph coordinator via maestro coordinate endpoint — executes chain nodes one by one with session tracking
 argument-hint: "\"intent text\" [--list] [-c [sessionId]] [--chain <name>] [--tool <tool>] [-y]"
 allowed-tools:
   - Read
@@ -12,10 +12,9 @@ allowed-tools:
   - Agent
 ---
 <purpose>
-Graph-driven workflow coordinator using `maestro coordinate` CLI endpoint.
-Uses step-mode subcommands (start/next/status) to walk chain graphs node by node.
-Each command node executed via `maestro cli` internally by the coordinate engine.
-Decision/gate/eval nodes auto-resolve between steps.
+Step-mode workflow coordinator using `maestro coordinate` CLI subcommands (start/next/status).
+Walks chain graphs node by node — each command node executed via `maestro cli` internally.
+Decision/gate/eval nodes auto-resolve between steps. Session persisted for resume.
 </purpose>
 
 <required_reading>
@@ -27,7 +26,7 @@ $ARGUMENTS — user intent text, or flags.
 
 **Flags:**
 - `--list` — List all available chain graphs
-- `-c` / `--continue [sessionId]` — Resume previous session via `coordinate next`
+- `-c` / `--continue [sessionId]` — Resume step_paused session via `coordinate next`
 - `--chain <name>` — Force a specific chain graph
 - `--tool <tool>` — CLI tool override (default: claude)
 - `-y` / `--yes` — Auto mode
