@@ -442,7 +442,7 @@ After planning, the Issue's display status changes from `analyzing` to `planned`
 
 **Dual-mode execution**:
 - **Server UP**: Dispatched via Dashboard API (`POST /api/execution/dispatch`)
-- **Server DOWN**: Executed directly via `ccw cli`
+- **Server DOWN**: Executed directly via `maestro cli`
 
 ### 3.3 Issue and Kanban Integration
 

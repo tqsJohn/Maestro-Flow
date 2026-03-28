@@ -62,11 +62,11 @@ Aggregate lessons learned from workflow sessions, categorized by functional doma
 - Lessons: `manifest.json` -> `archives[].lessons.{successes|challenges|watch_patterns}`
 - Session metadata: `.workflow/.archives/{session_id}/workflow-session.json`
 
-## Aggregation Rules (Use CCW CLI)
+## Aggregation Rules (Use maestro cli)
 
 **Command Pattern**:
 ```bash
-ccw cli -p "
+maestro cli -p "
 PURPOSE: Aggregate workflow lessons from session data
 TASK: • Group successes by functional domain • Categorize challenges by severity (HIGH/MEDIUM/LOW) • Identify watch patterns with frequency >= 2 • Mark CRITICAL patterns (3+ sessions)
 MODE: analysis

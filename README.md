@@ -30,7 +30,7 @@ Maestro-Flow takes the core ideas that worked and rebuilds them with a clear phi
 **What changed from CCW:**
 - Stripped the heavy session/beat orchestration layer — replaced with lightweight skill-based routing
 - Merged the terminal dashboard into a proper web UI with Linear-style Kanban
-- Unified CLI tool invocation through a single `ccw cli` interface
+- Unified CLI tool invocation through a single `maestro cli` interface
 - Added autonomous Commander Agent (assess → decide → dispatch loop)
 - Built a complete Issue closed-loop system (discover → analyze → plan → execute → close)
 
@@ -188,7 +188,7 @@ Maestro-Flow doesn't pick one AI — it uses them together:
 
 - **Wave execution** — Independent tasks run in parallel across agents, dependent tasks wait for predecessors
 - **Agent SDK** — Native Claude Agent SDK for Claude Code processes
-- **CLI adapters** — Codex, Gemini, Qwen, OpenCode all accessible through `ccw cli`
+- **CLI adapters** — Codex, Gemini, Qwen, OpenCode all accessible through `maestro cli`
 - **Workspace isolation** — Each agent gets a clean execution context
 
 ---

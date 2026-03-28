@@ -183,7 +183,7 @@ If SERVER_UP == false (or server dispatch failed):
    - Rewrite file
 
 3. Execute via CLI:
-   ccw cli -p "{EXEC_PROMPT}" --tool {CLI_TOOL} --mode write
+   maestro cli -p "{EXEC_PROMPT}" --tool {CLI_TOOL} --mode write
 
 4. Evaluate result:
    - If CLI exits successfully → EXEC_SUCCESS = true
@@ -274,7 +274,7 @@ If execution failed:
 ## Output
 
 - **Updated**: `.workflow/issues/issues.jsonl` -- issue status transitions (open -> in_progress -> resolved/open)
-- **Execution modes**: Server dispatch (POST /api/execution/dispatch) or Direct CLI (ccw cli --mode write)
+- **Execution modes**: Server dispatch (POST /api/execution/dispatch) or Direct CLI (maestro cli --mode write)
 
 ## Quality Criteria
 

@@ -51,7 +51,7 @@ Parse `$ARGUMENTS`:
 - **Session prefix**: `TST`
 - **Session path**: `.workflow/.team/TST-<slug>-<date>/`
 - **Team name**: `testing`
-- **CLI tools**: `ccw cli --mode analysis` (read-only), `ccw cli --mode write` (modifications)
+- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
 - **Message bus**: `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)`
 
 ## Worker Spawn Template

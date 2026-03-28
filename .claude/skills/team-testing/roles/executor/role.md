@@ -62,7 +62,7 @@ Bash("<test-command> 2>&1 || true")
 
 ```
 Bash({
-  command: `ccw cli -p "PURPOSE: Fix test failures to achieve pass rate >= 0.95; success = all tests pass
+  command: `maestro cli -p "PURPOSE: Fix test failures to achieve pass rate >= 0.95; success = all tests pass
 TASK: • Analyze test failure output • Identify root causes • Fix test code only (not source) • Preserve test intent
 MODE: write
 CONTEXT: @<session>/<test-dir>/**/* | Memory: Test framework: <framework>, iteration <N>/3

@@ -91,7 +91,7 @@ Solution planning for a specific issue with codebase-aware step generation and p
 ```
 1. Build planning prompt:
 
-   ccw cli -p "PURPOSE: Generate a step-by-step solution plan for issue {ISS-ID}: {ISSUE.title}
+   maestro cli -p "PURPOSE: Generate a step-by-step solution plan for issue {ISS-ID}: {ISSUE.title}
    Produce an actionable, ordered list of implementation steps.
 
    ISSUE DETAILS:

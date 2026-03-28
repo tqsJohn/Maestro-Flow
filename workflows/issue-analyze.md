@@ -87,7 +87,7 @@ Root cause analysis for a specific issue using CLI exploration and codebase cont
 ```
 1. Build analysis prompt:
 
-   ccw cli -p "PURPOSE: Root cause analysis for issue {ISS-ID}: {ISSUE.title}
+   maestro cli -p "PURPOSE: Root cause analysis for issue {ISS-ID}: {ISSUE.title}
    Identify the root cause, assess impact, and suggest an approach.
 
    ISSUE DETAILS:

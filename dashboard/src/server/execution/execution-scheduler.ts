@@ -2,8 +2,7 @@
 // ExecutionScheduler — orchestrates issue execution via agent processes
 // ---------------------------------------------------------------------------
 
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { readIssuesJsonl, writeIssuesJsonl, withIssueWriteLock } from '../utils/issue-store.js';
 
 import type { AgentType, AgentProcess } from '../../shared/agent-types.js';
@@ -25,6 +24,8 @@ import type { DispatchStrategy, DispatchContext, DispatchDecision } from './disp
 import type { SelfLearningService } from '../supervisor/self-learning-service.js';
 import { PriorityStrategy } from './strategies/priority-strategy.js';
 import { SmartStrategy } from './strategies/smart-strategy.js';
+import { GraphWalkerFactory } from '../coordinator/graph-walker-factory.js';
+import { WalkerEventBridge } from '../coordinator/walker-event-bridge.js';
 
 
 // ---------------------------------------------------------------------------
@@ -57,12 +58,8 @@ export class ExecutionScheduler {
   private isDispatching = false;
   public isCommanderActive = false;
 
-  // Lazy-cached GraphWalker infrastructure (shared across dispatchViaChain calls)
-  private chainInfraPromise: Promise<{
-    GraphWalker: any; GraphLoader: any; DefaultExprEvaluator: any;
-    DefaultOutputParser: any; DefaultPromptAssembler: any; DashboardExecutor: any;
-    homedir: () => string;
-  }> | null = null;
+  // Factory for GraphWalker instances (shared across dispatchViaChain calls)
+  private readonly factory: GraphWalkerFactory;
 
   constructor(
     private readonly agentManager: AgentManager,
@@ -74,6 +71,7 @@ export class ExecutionScheduler {
     selfLearningService?: SelfLearningService,
   ) {
     this.config = { ...DEFAULT_SCHEDULER_CONFIG, ...config };
+    this.factory = new GraphWalkerFactory();
     this.promptRegistry = promptRegistry ?? PromptRegistry.createDefault();
     this.selfLearningService = selfLearningService;
 
@@ -567,66 +565,18 @@ export class ExecutionScheduler {
       executor,
     });
 
-    // Lazy-load GraphWalker infrastructure (cached after first call)
+    // Create GraphWalker via factory
     try {
-      if (!this.chainInfraPromise) {
-        this.chainInfraPromise = Promise.all([
-          import('../../../../src/coordinator/graph-walker.js'),
-          import('../../../../src/coordinator/graph-loader.js'),
-          import('../../../../src/coordinator/expr-evaluator.js'),
-          import('../../../../src/coordinator/output-parser.js'),
-          import('../../../../src/coordinator/prompt-assembler.js'),
-          import('../coordinator/dashboard-executor.js'),
-          import('node:os'),
-        ]).then(([gw, gl, ee, op, pa, de, os]) => ({
-          GraphWalker: gw.GraphWalker,
-          GraphLoader: gl.GraphLoader,
-          DefaultExprEvaluator: ee.DefaultExprEvaluator,
-          DefaultOutputParser: op.DefaultOutputParser,
-          DefaultPromptAssembler: pa.DefaultPromptAssembler,
-          DashboardExecutor: de.DashboardExecutor,
-          homedir: os.homedir,
-        }));
-      }
-      const infra = await this.chainInfraPromise;
-      const { GraphWalker, GraphLoader, DefaultExprEvaluator, DefaultOutputParser, DefaultPromptAssembler, DashboardExecutor, homedir } = infra;
-
-      const globalChainsRoot = resolve(homedir(), '.maestro', 'chains');
-      const localChainsRoot = resolve(workDir, 'chains');
-      const chainsRoot = existsSync(localChainsRoot) ? localChainsRoot : globalChainsRoot;
-      const templateDir = resolve(homedir(), '.maestro', 'templates', 'cli', 'prompts');
-
-      const loader = new GraphLoader(chainsRoot);
-      const dashExecutor = new DashboardExecutor(this.agentManager, this.eventBus);
-      const assembler = new DefaultPromptAssembler(workDir, templateDir);
-      const evaluator = new DefaultExprEvaluator();
-      const parser = new DefaultOutputParser();
-
-      // Bridge walker events → execution events for UI progress tracking
-      const eventBus = this.eventBus;
-      const issueId = issue.id;
-      const emitter = {
-        emit(event: { type: string; [k: string]: unknown }) {
-          eventBus.emit(event.type as any, event);
-          if (event.type === 'walker:command') {
-            const status = event.status as string;
-            if (status === 'completed' || status === 'failed') {
-              eventBus.emit('coordinate:step' as any, {
-                sessionId: `chain-${issueId}`,
-                step: {
-                  cmd: event.cmd ?? event.node_id,
-                  status: status === 'completed' ? 'completed' : 'failed',
-                  summary: (event as any).summary ?? null,
-                  qualityScore: null,
-                },
-              });
-            }
-          }
-        },
-      };
-
+      const bridge = new WalkerEventBridge('execution', this.eventBus, `chain-${issue.id}`);
       const sessionDir = join(workDir, '.workflow', '.maestro-coordinate', `chain-${issue.id}`);
-      const walker = new GraphWalker(loader, assembler, dashExecutor, null, parser, evaluator, emitter, sessionDir);
+      const { walker } = await this.factory.create({
+        agentManager: this.agentManager,
+        eventBus: this.eventBus,
+        workDir,
+        emitter: bridge,
+        analyzer: null,
+        sessionDir,
+      });
 
       const walkerState = await walker.start(chainId, issue.description, {
         tool: executor,

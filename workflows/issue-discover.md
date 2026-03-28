@@ -115,7 +115,7 @@ Batch 2: scalability, ux, accessibility, compliance
 
 For each perspective, launch a CLI analysis:
 
-  ccw cli -p "PURPOSE: Discover {PERSPECTIVE} issues in the codebase.
+  maestro cli -p "PURPOSE: Discover {PERSPECTIVE} issues in the codebase.
   Focus: {FOCUS_AREA}
   Guiding question: {QUESTION}
 
@@ -262,7 +262,7 @@ For each unique finding:
 ```
 Use Gemini CLI to decompose the user prompt into exploration dimensions:
 
-  ccw cli -p "PURPOSE: Decompose this issue discovery prompt into 3-5 specific exploration dimensions.
+  maestro cli -p "PURPOSE: Decompose this issue discovery prompt into 3-5 specific exploration dimensions.
 
   User wants to find: {USER_PROMPT}
 

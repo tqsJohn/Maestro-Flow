@@ -1,7 +1,7 @@
 ---
 name: manage-issue-discover
 description: Automated issue discovery -- multi-perspective analysis or prompt-driven exploration
-argument-hint: "[by-prompt \"what to look for\"]"
+argument-hint: "[multi-perspective | by-prompt \"what to look for\"] [-y|--yes] [--scope=src/**] [--depth=standard|deep]"
 allowed-tools:
   - Read
   - Write
@@ -14,8 +14,9 @@ allowed-tools:
 <purpose>
 Automated issue discovery via multi-perspective codebase analysis (8 perspectives) or prompt-driven exploration. Discovers issues, deduplicates findings, and records them in `.workflow/issues/issues.jsonl`.
 
-- **Default (no args)**: Multi-perspective scan — security, performance, reliability, maintainability, scalability, UX, accessibility, compliance.
-- **`by-prompt "..."`**: Prompt-driven — user describes what to look for, system decomposes into exploration dimensions with iterative deepening.
+- **Default (no args)**: Interactive mode selection — choose multi-perspective or prompt-driven.
+- **`multi-perspective`**: 8-perspective parallel agent scan — security, performance, reliability, maintainability, scalability, UX, accessibility, compliance.
+- **`by-prompt "..."`**: Prompt-driven — Gemini plans exploration strategy, agents explore iteratively with cross-dimension analysis.
 
 For CRUD operations (create, list, update, close, link), use `/manage-issue`.
 
@@ -28,14 +29,21 @@ After discovery, use `/manage-issue-analyze <ISS-ID>` to perform root cause anal
 
 <deferred_reading>
 - [issue.json template](~/.maestro/templates/issue.json) — read when creating issue records from findings (Step 6/11)
+- [search-tools](~/.maestro/templates/search-tools.md) — search tool priority, passed to agents via workflow
 </deferred_reading>
 
 <context>
 $ARGUMENTS -- optional. Parse first token to determine mode.
 
 **Modes:**
-- _(empty)_ -- multi-perspective discovery (8 analysis perspectives)
-- `by-prompt "..."` -- prompt-driven discovery (user describes what to look for)
+- _(empty)_ -- interactive mode selection (AskUserQuestion)
+- `multi-perspective` -- 8-perspective parallel agent scan
+- `by-prompt "..."` -- prompt-driven iterative agent exploration (Gemini-planned)
+
+**Flags:**
+- `-y` / `--yes` -- auto mode, skip confirmations
+- `--scope=<pattern>` -- file scope (default: `**/*`)
+- `--depth=standard|deep` -- exploration depth (by-prompt only, default: `standard`)
 
 **State files:**
 - `.workflow/issues/issues.jsonl` -- issues appended here
@@ -44,7 +52,8 @@ $ARGUMENTS -- optional. Parse first token to determine mode.
 
 <execution>
 Determine mode from $ARGUMENTS:
-- No arguments or empty → multi-perspective mode
+- No arguments or empty → interactive selection via AskUserQuestion
+- First token is `multi-perspective` → multi-perspective mode
 - First token is `by-prompt` → prompt-driven mode, remaining tokens are the user prompt
 
 Follow '~/.maestro/workflows/issue-discover.md' completely.

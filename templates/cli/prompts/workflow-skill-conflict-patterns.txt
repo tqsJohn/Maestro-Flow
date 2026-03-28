@@ -66,11 +66,11 @@ Document recurring conflict patterns across workflow sessions with resolutions.
 - Context packages: `.workflow/.archives/{session_id}/.process/context-package.json` (reference only)
 - Session lessons: `manifest.json` -> `archives[].lessons.challenges`
 
-## Conflict Identification (Use CCW CLI)
+## Conflict Identification (Use maestro cli)
 
 **Command Pattern**:
 ```bash
-ccw cli -p "
+maestro cli -p "
 PURPOSE: Identify conflict patterns from workflow sessions
 TASK: • Extract conflicts from IMPL_PLAN and lessons • Group by type (architecture/dependencies/testing/performance) • Identify recurring patterns (same conflict in different sessions) • Link resolutions to specific sessions
 MODE: analysis

@@ -444,7 +444,7 @@ Issue 系统与 Phase 管线并行运行，既可独立闭环，也可与 Phase 
 
 **双模式执行**：
 - **Server UP**: 通过 Dashboard API (`POST /api/execution/dispatch`) 调度
-- **Server DOWN**: 通过 `ccw cli` 直接执行
+- **Server DOWN**: 通过 `maestro cli` 直接执行
 
 ### 3.3 Issue 与看板集成
 

@@ -4,9 +4,8 @@
 // ---------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import type { AgentStoppedPayload, NormalizedEntry } from '../../shared/agent-types.js';
 import type {
@@ -23,6 +22,9 @@ import type { StateManager } from '../state/state-manager.js';
 import { StateAnalyzerAgent } from './agents/state-analyzer-agent.js';
 import { IntentClassifierAgent } from './agents/intent-classifier-agent.js';
 import { QualityReviewerAgent } from './agents/quality-reviewer-agent.js';
+import { GraphWalkerFactory } from './graph-walker-factory.js';
+import { WalkerEventBridge } from './walker-event-bridge.js';
+import { DashboardStepAnalyzer } from './dashboard-step-analyzer.js';
 import {
   CHAIN_MAP,
   TASK_TO_CHAIN,
@@ -38,59 +40,7 @@ import { setPromptsDir, loadPrompt } from './prompts/index.js';
 // [GRAPH_WALKER] Feature flag — set USE_GRAPH_WALKER=true to route through GraphWalker
 const USE_GRAPH_WALKER = process.env.USE_GRAPH_WALKER === 'true';
 
-// [GRAPH_WALKER] Lazy-loaded graph walker factory (dynamic imports avoid compile-time dependency)
-async function createGraphWalker(agentManager: AgentManager, eventBus: DashboardEventBus, workflowRoot: string) {
-  const { GraphWalker } = await import('../../../../src/coordinator/graph-walker.js');
-  const { GraphLoader } = await import('../../../../src/coordinator/graph-loader.js');
-  const { DefaultExprEvaluator } = await import('../../../../src/coordinator/expr-evaluator.js');
-  const { DefaultOutputParser } = await import('../../../../src/coordinator/output-parser.js');
-  const { DefaultPromptAssembler } = await import('../../../../src/coordinator/prompt-assembler.js');
-  const { DashboardExecutor } = await import('./dashboard-executor.js');
-  const { IntentRouter } = await import('../../../../src/coordinator/intent-router.js');
-
-  const { homedir } = await import('node:os');
-
-  const globalChainsRoot = resolve(homedir(), '.maestro', 'chains');
-  const localChainsRoot = resolve(workflowRoot, 'chains');
-  const chainsRoot = existsSync(localChainsRoot) ? localChainsRoot : globalChainsRoot;
-  const templateDir = resolve(homedir(), '.maestro', 'templates', 'cli', 'prompts');
-
-  const loader = new GraphLoader(chainsRoot);
-  const executor = new DashboardExecutor(agentManager, eventBus);
-  const assembler = new DefaultPromptAssembler(workflowRoot, templateDir);
-  const evaluator = new DefaultExprEvaluator();
-  const parser = new DefaultOutputParser();
-  const router = new IntentRouter(loader, chainsRoot);
-
-  // Bridge walker events → dashboard coordinate events for real-time UI updates
-  const emitter = {
-    emit(event: { type: string; [k: string]: unknown }) {
-      // Forward raw walker events
-      eventBus.emit(event.type as any, event);
-
-      // Translate walker:command events → coordinate:step events for the UI
-      if (event.type === 'walker:command') {
-        const status = event.status as string;
-        eventBus.emit('coordinate:step' as any, {
-          sessionId: event.session_id,
-          step: {
-            cmd: event.cmd ?? event.node_id,
-            status: status === 'completed' ? 'completed'
-              : status === 'failed' ? 'failed'
-              : 'running',
-            summary: event.summary ?? null,
-            qualityScore: event.quality_score ?? null,
-          },
-        });
-      }
-    },
-  };
-
-  const sessionDir = join(workflowRoot, '.workflow', '.maestro-coordinate');
-  const walker = new GraphWalker(loader, assembler, executor, null, parser, evaluator, emitter, sessionDir);
-
-  return { walker, router, executor };
-}
+// [GRAPH_WALKER] Factory for lazy-loaded graph walker instances
 
 // ---------------------------------------------------------------------------
 // Start options (same interface as CoordinateRunner)
@@ -119,9 +69,10 @@ export class WorkflowCoordinator {
   private readonly intentClassifier: IntentClassifierAgent;
   private readonly qualityReviewer: QualityReviewerAgent;
 
-  // [GRAPH_WALKER] Lazily initialized graph walker components
-  private graphWalker: Awaited<ReturnType<typeof createGraphWalker>> | null = null;
-  private graphWalkerInitPromise: Promise<Awaited<ReturnType<typeof createGraphWalker>>> | null = null;
+  // [GRAPH_WALKER] Factory and lazily initialized components
+  private readonly factory: GraphWalkerFactory;
+  private graphWalker: Awaited<ReturnType<GraphWalkerFactory['create']>> | null = null;
+  private graphWalkerInitPromise: Promise<Awaited<ReturnType<GraphWalkerFactory['create']>>> | null = null;
 
   constructor(
     private readonly eventBus: DashboardEventBus,
@@ -130,6 +81,7 @@ export class WorkflowCoordinator {
     private readonly workflowRoot: string,
   ) {
     setPromptsDir(workflowRoot);
+    this.factory = new GraphWalkerFactory();
     this.stateAnalyzer = new StateAnalyzerAgent(stateManager, workflowRoot, eventBus);
     this.intentClassifier = new IntentClassifierAgent();
     this.qualityReviewer = new QualityReviewerAgent();
@@ -145,7 +97,15 @@ export class WorkflowCoordinator {
   private async getGraphWalker() {
     if (this.graphWalker) return this.graphWalker;
     if (!this.graphWalkerInitPromise) {
-      this.graphWalkerInitPromise = createGraphWalker(this.agentManager, this.eventBus, this.workflowRoot);
+      const sessionDir = join(this.workflowRoot, '.workflow', '.maestro-coordinate');
+      this.graphWalkerInitPromise = this.factory.create({
+        agentManager: this.agentManager,
+        eventBus: this.eventBus,
+        workDir: this.workflowRoot,
+        emitter: new WalkerEventBridge('coordinate', this.eventBus),
+        analyzer: new DashboardStepAnalyzer(this.qualityReviewer),
+        sessionDir,
+      });
     }
     this.graphWalker = await this.graphWalkerInitPromise;
     return this.graphWalker;
@@ -400,7 +360,7 @@ export class WorkflowCoordinator {
   }
 
   private async runGraphWalker(
-    gw: Awaited<ReturnType<typeof createGraphWalker>>,
+    gw: Awaited<ReturnType<GraphWalkerFactory['create']>>,
     graphId: string,
     intent: string,
     opts?: CoordinateStartOpts,
