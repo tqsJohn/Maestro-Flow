@@ -1,0 +1,24 @@
+{
+  "name": "maestro-tui",
+  "version": "0.1.0",
+  "description": "Terminal UI for Maestro dashboard",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "ink": "^6.0.0",
+    "react": "^19.0.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -16,7 +16,23 @@ import * as TemplateStore from './mcp-templates-store.js';
 // Config paths
 // ---------------------------------------------------------------------------
 const CLAUDE_CONFIG_PATH = join(homedir(), '.claude.json');
-const CODEX_CONFIG_PATH = join(homedir(), '.codex', 'config.toml');
+
+/**
+ * Resolve Codex CLI config path across platforms:
+ * - All platforms: ~/.codex/config.toml (primary)
+ * - Linux: $XDG_CONFIG_HOME/codex/config.toml (fallback)
+ */
+function resolveCodexConfigPath(): string {
+  const primary = join(homedir(), '.codex', 'config.toml');
+  if (existsSync(primary)) return primary;
+  // XDG fallback (Linux)
+  const xdg = process.env.XDG_CONFIG_HOME;
+  if (xdg) {
+    const xdgPath = join(xdg, 'codex', 'config.toml');
+    if (existsSync(xdgPath)) return xdgPath;
+  }
+  return primary; // default even if not found
+}
 
 // ---------------------------------------------------------------------------
 // TOML Parser (for Codex config.toml)
@@ -281,12 +297,14 @@ function getMcpConfig(): McpConfig {
 }
 
 function getCodexMcpConfig(): { servers: Record<string, unknown>; configPath: string; exists: boolean } {
+  // Re-resolve each time in case config was created since startup
+  const configPath = resolveCodexConfigPath();
   try {
-    if (!existsSync(CODEX_CONFIG_PATH)) return { servers: {}, configPath: CODEX_CONFIG_PATH, exists: false };
-    const cfg = parseToml(readFileSync(CODEX_CONFIG_PATH, 'utf-8'));
-    return { servers: (cfg.mcp_servers ?? {}) as Record<string, unknown>, configPath: CODEX_CONFIG_PATH, exists: true };
+    if (!existsSync(configPath)) return { servers: {}, configPath, exists: false };
+    const cfg = parseToml(readFileSync(configPath, 'utf-8'));
+    return { servers: (cfg.mcp_servers ?? {}) as Record<string, unknown>, configPath, exists: true };
   } catch {
-    return { servers: {}, configPath: CODEX_CONFIG_PATH, exists: false };
+    return { servers: {}, configPath, exists: false };
   }
 }
 
@@ -296,10 +314,11 @@ function getCodexMcpConfig(): { servers: Record<string, unknown>; configPath: st
 
 function addCodexServer(name: string, serverConfig: Record<string, unknown>): { success?: boolean; error?: string } {
   try {
-    const codexDir = join(homedir(), '.codex');
+    const configPath = resolveCodexConfigPath();
+    const codexDir = dirname(configPath);
     if (!existsSync(codexDir)) mkdirSync(codexDir, { recursive: true });
     let cfg: Record<string, unknown> = {};
-    if (existsSync(CODEX_CONFIG_PATH)) cfg = parseToml(readFileSync(CODEX_CONFIG_PATH, 'utf-8'));
+    if (existsSync(configPath)) cfg = parseToml(readFileSync(configPath, 'utf-8'));
     if (!cfg.mcp_servers) cfg.mcp_servers = {};
 
     const out: Record<string, unknown> = {};
@@ -322,7 +341,7 @@ function addCodexServer(name: string, serverConfig: Record<string, unknown>): { 
     }
 
     (cfg.mcp_servers as Record<string, unknown>)[name] = out;
-    writeFileSync(CODEX_CONFIG_PATH, serializeToml(cfg), 'utf-8');
+    writeFileSync(configPath, serializeToml(cfg), 'utf-8');
     return { success: true };
   } catch (error: unknown) {
     return { error: (error as Error).message };
@@ -331,12 +350,13 @@ function addCodexServer(name: string, serverConfig: Record<string, unknown>): { 
 
 function removeCodexServer(name: string): { success?: boolean; error?: string } {
   try {
-    if (!existsSync(CODEX_CONFIG_PATH)) return { error: 'config.toml not found' };
-    const cfg = parseToml(readFileSync(CODEX_CONFIG_PATH, 'utf-8'));
+    const configPath = resolveCodexConfigPath();
+    if (!existsSync(configPath)) return { error: 'config.toml not found' };
+    const cfg = parseToml(readFileSync(configPath, 'utf-8'));
     const servers = cfg.mcp_servers as Record<string, unknown> | undefined;
     if (!servers?.[name]) return { error: `Server not found: ${name}` };
     delete servers[name];
-    writeFileSync(CODEX_CONFIG_PATH, serializeToml(cfg), 'utf-8');
+    writeFileSync(configPath, serializeToml(cfg), 'utf-8');
     return { success: true };
   } catch (error: unknown) {
     return { error: (error as Error).message };
@@ -345,12 +365,13 @@ function removeCodexServer(name: string): { success?: boolean; error?: string } 
 
 function toggleCodexServer(name: string, enabled: boolean): { success?: boolean; error?: string } {
   try {
-    if (!existsSync(CODEX_CONFIG_PATH)) return { error: 'config.toml not found' };
-    const cfg = parseToml(readFileSync(CODEX_CONFIG_PATH, 'utf-8'));
+    const configPath = resolveCodexConfigPath();
+    if (!existsSync(configPath)) return { error: 'config.toml not found' };
+    const cfg = parseToml(readFileSync(configPath, 'utf-8'));
     const servers = cfg.mcp_servers as Record<string, Record<string, unknown>> | undefined;
     if (!servers?.[name]) return { error: `Server not found: ${name}` };
     servers[name].enabled = enabled;
-    writeFileSync(CODEX_CONFIG_PATH, serializeToml(cfg), 'utf-8');
+    writeFileSync(configPath, serializeToml(cfg), 'utf-8');
     return { success: true };
   } catch (error: unknown) {
     return { error: (error as Error).message };
@@ -691,18 +712,52 @@ export function createMcpRoutes(): Hono {
   // -----------------------------------------------------------------------
 
   app.post('/api/mcp/detect-commands', (_c) => {
+    const isWin = process.platform === 'win32';
+    const whichCmd = isWin ? 'where' : 'which';
+
     const cmds = [
       { name: 'npm', installUrl: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm' },
       { name: 'node', installUrl: 'https://nodejs.org/' },
       { name: 'python', installUrl: 'https://www.python.org/downloads/' },
       { name: 'npx', installUrl: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm' },
+      { name: 'claude', installUrl: 'https://docs.anthropic.com/en/docs/claude-code/overview' },
+      { name: 'codex', installUrl: 'https://github.com/openai/codex' },
     ];
-    const results = cmds.map((cmd) => {
-      let available = false;
+
+    function detectCommand(name: string): boolean {
+      // 1. Try which/where
       try {
-        execSync(`${process.platform === 'win32' ? 'where' : 'which'} ${cmd.name}`, { stdio: 'ignore' });
-        available = true;
-      } catch { /* not found */ }
+        execSync(`${whichCmd} ${name}`, { stdio: 'ignore', timeout: 5000 });
+        return true;
+      } catch { /* not found via PATH */ }
+
+      // 2. For codex: also check npm global + config existence
+      if (name === 'codex') {
+        // Check if codex config dir exists (indicates prior use)
+        const configDir = join(homedir(), '.codex');
+        if (existsSync(configDir)) return true;
+        // Check npm global
+        try {
+          execSync(`npm list -g @openai/codex --depth=0`, { stdio: 'ignore', timeout: 10000 });
+          return true;
+        } catch { /* not installed globally */ }
+      }
+
+      // 3. For claude: also check npm global + config existence
+      if (name === 'claude') {
+        const configPath = join(homedir(), '.claude.json');
+        if (existsSync(configPath)) return true;
+        try {
+          execSync(`npm list -g @anthropic-ai/claude-code --depth=0`, { stdio: 'ignore', timeout: 10000 });
+          return true;
+        } catch { /* not installed globally */ }
+      }
+
+      return false;
+    }
+
+    const results = cmds.map((cmd) => {
+      const available = detectCommand(cmd.name);
       return { command: cmd.name, available, installUrl: available ? undefined : cmd.installUrl };
     });
     return _c.json(results);

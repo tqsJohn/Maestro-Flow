@@ -14,6 +14,7 @@ import FolderOpen from 'lucide-react/dist/esm/icons/folder-open.js';
 import Download from 'lucide-react/dist/esm/icons/download.js';
 import { McpDetailPanel } from '@/client/components/mcp/McpDetailPanel.js';
 import { useInstallStore } from '@/client/store/install-store.js';
+import { ClaudeIcon, CodexIcon } from '@/client/components/mcp/CliIcons.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -435,21 +436,23 @@ function ServerRow({
         <div className="flex gap-[3px]">
           <span
             className={[
-              'w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none',
+              'w-5 h-4 rounded-[3px] flex items-center justify-center',
               server.cli.claude ? '' : 'opacity-25',
             ].join(' ')}
             style={{ background: 'rgba(200,134,58,0.08)', color: 'var(--color-status-verifying, #C8863A)' }}
+            title="Claude Code"
           >
-            C
+            <ClaudeIcon size={11} />
           </span>
           <span
             className={[
-              'w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none',
+              'w-5 h-4 rounded-[3px] flex items-center justify-center',
               server.cli.codex ? '' : 'opacity-25',
             ].join(' ')}
             style={{ background: 'rgba(90,158,120,0.08)', color: 'var(--color-status-completed, #5A9E78)' }}
+            title="Codex CLI"
           >
-            X
+            <CodexIcon size={11} />
           </span>
         </div>
       </td>
@@ -492,27 +495,27 @@ function ServerRow({
           {(missingCodex || missingClaude) && (
             <button
               type="button"
-              className="flex items-center gap-[3px] px-2 py-1 rounded-[5px] border border-border bg-bg-card text-[9px] font-semibold text-text-tertiary hover:border-[var(--color-accent-blue,#5B8DB8)] hover:text-[var(--color-accent-blue,#5B8DB8)] hover:bg-[rgba(91,141,184,0.04)] transition-all whitespace-nowrap"
+              className="flex items-center gap-[3px] px-2 py-1 rounded-[5px] border border-border bg-bg-card text-text-tertiary hover:border-[var(--color-accent-blue,#5B8DB8)] hover:text-[var(--color-accent-blue,#5B8DB8)] hover:bg-[rgba(91,141,184,0.04)] transition-all whitespace-nowrap"
               title={missingCodex ? 'Copy to Codex' : 'Copy to Claude'}
             >
               {missingCodex ? (
                 <>
                   <ChevronRight size={10} strokeWidth={2.5} />
                   <span
-                    className="w-[14px] h-[11px] rounded-[2px] flex items-center justify-center text-[7px] font-extrabold font-mono"
+                    className="w-[14px] h-[11px] rounded-[2px] flex items-center justify-center"
                     style={{ background: 'rgba(90,158,120,0.08)', color: 'var(--color-status-completed, #5A9E78)' }}
                   >
-                    X
+                    <CodexIcon size={9} />
                   </span>
                 </>
               ) : (
                 <>
                   <ChevronLeft size={10} strokeWidth={2.5} />
                   <span
-                    className="w-[14px] h-[11px] rounded-[2px] flex items-center justify-center text-[7px] font-extrabold font-mono"
+                    className="w-[14px] h-[11px] rounded-[2px] flex items-center justify-center"
                     style={{ background: 'rgba(200,134,58,0.08)', color: 'var(--color-status-verifying, #C8863A)' }}
                   >
-                    C
+                    <ClaudeIcon size={9} />
                   </span>
                 </>
               )}

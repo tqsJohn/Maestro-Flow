@@ -87,8 +87,9 @@ export function registerViewCommand(program: Command): void {
     .option('--host <host>', 'Bind host', '127.0.0.1')
     .option('--path <dir>', 'Path to maestro workspace root containing .workflow/ (hot-switches running server without restart)')
     .option('--no-browser', 'Do not open browser')
+    .option('--tui', 'Launch terminal UI instead of browser')
     .option('--dev', 'Use Vite dev server with HMR (hot reload)')
-    .action(async (opts: { port: string; host: string; path?: string; browser: boolean; dev?: boolean }) => {
+    .action(async (opts: { port: string; host: string; path?: string; browser: boolean; tui?: boolean; dev?: boolean }) => {
       const port = parseInt(opts.port, 10) || DEFAULT_PORT;
       const host = opts.host;
       const browserHost = (host === '0.0.0.0' || host === '::') ? 'localhost' : host;
@@ -99,6 +100,94 @@ export function registerViewCommand(program: Command): void {
       console.error('');
       console.error('  Maestro Dashboard');
       console.error('');
+
+      // ------------------------------------------------------------------
+      // TUI mode: launch terminal UI
+      // ------------------------------------------------------------------
+      if (opts.tui) {
+        // Ensure dashboard server is running
+        const health = await checkHealth(host, port);
+        if (!health) {
+          // Spawn server using same logic as production mode
+          const serverEntry = join(dashboardDir, 'dist-server', 'server', 'index.js');
+          const hasBuild = existsSync(serverEntry)
+            && existsSync(join(dashboardDir, 'dist', 'index.html'));
+
+          const env = {
+            ...process.env,
+            PORT: String(port),
+            HOST: host,
+            WORKFLOW_ROOT: workflowRoot,
+          };
+
+          if (!hasBuild) {
+            const tsEntry = join(dashboardDir, 'src', 'server', 'index.ts');
+            if (!existsSync(tsEntry)) {
+              console.error(`  Error: Dashboard server not found at ${dashboardDir}`);
+              console.error('  Run `cd dashboard && npm run build` first.');
+              process.exit(1);
+            }
+            console.error(`  Starting dashboard server on port ${port}...`);
+            const child = spawn('npx', ['tsx', tsEntry], {
+              cwd: dashboardDir,
+              env,
+              stdio: ['ignore', 'pipe', 'pipe'],
+              detached: true,
+              shell: true,
+              windowsHide: true,
+            });
+            child.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
+            child.stdout?.on('data', (d: Buffer) => process.stderr.write(d));
+            child.unref();
+          } else {
+            console.error(`  Starting dashboard server on port ${port}...`);
+            const child = spawn(process.execPath, [serverEntry], {
+              cwd: dashboardDir,
+              env,
+              stdio: ['ignore', 'pipe', 'pipe'],
+              detached: true,
+            });
+            child.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
+            child.stdout?.on('data', (d: Buffer) => process.stderr.write(d));
+            child.unref();
+          }
+
+          const ready = await waitForServer(host, port);
+          if (!ready) {
+            console.error('  Warning: Server did not respond in time.');
+          }
+        } else {
+          console.error(`  Server already running on port ${port}`);
+        }
+
+        // Launch TUI process
+        const tuiEntry = join(dashboardDir, 'tui', 'dist', 'index.js');
+        if (!existsSync(tuiEntry)) {
+          console.error(`  Error: TUI build not found at ${tuiEntry}`);
+          console.error('  Run `cd dashboard/tui && npm run build` first.');
+          process.exit(1);
+        }
+
+        console.error(`  Launching TUI...`);
+        console.error('');
+
+        const tuiChild = spawn(process.execPath, [tuiEntry], {
+          cwd: dashboardDir,
+          env: {
+            ...process.env,
+            PORT: String(port),
+            HOST: host,
+            WORKFLOW_ROOT: workflowRoot,
+          },
+          stdio: 'inherit',
+        });
+
+        tuiChild.on('exit', (code) => {
+          process.exit(code ?? 0);
+        });
+
+        return;
+      }
 
       // ------------------------------------------------------------------
       // Dev mode: use `npm run dev` (Vite HMR + tsx --watch backend)

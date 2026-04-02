@@ -7,6 +7,7 @@ import Edit3 from 'lucide-react/dist/esm/icons/edit-3.js';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
 import { useMcpStore } from '@/client/store/mcp-store.js';
 import type { McpServerEntry } from '@/client/store/mcp-store.js';
+import { ClaudeIcon, CodexIcon } from '@/client/components/mcp/CliIcons.js';
 
 // ---------------------------------------------------------------------------
 // McpDetailPanel -- sliding panel showing server details (380px from right)
@@ -132,14 +133,14 @@ export function McpDetailPanel({ server, onClose }: McpDetailPanelProps) {
           {/* CLI Presence */}
           <Section label="CLI Presence">
             <CliRow
-              letter="C"
+              icon={<ClaudeIcon size={12} />}
               label="Claude Code"
               present={server.cli.claude}
               tintBg="rgba(200,134,58,0.08)"
               tintColor="var(--color-status-verifying, #C8863A)"
             />
             <CliRow
-              letter="X"
+              icon={<CodexIcon size={12} />}
               label="Codex CLI"
               present={server.cli.codex}
               tintBg="rgba(90,158,120,0.08)"
@@ -242,13 +243,13 @@ function CfgRow({ label, children }: { label: string; children: React.ReactNode 
 }
 
 function CliRow({
-  letter,
+  icon,
   label,
   present,
   tintBg,
   tintColor,
 }: {
-  letter: string;
+  icon: React.ReactNode;
   label: string;
   present: boolean;
   tintBg: string;
@@ -260,10 +261,10 @@ function CliRow({
       style={{ background: present ? tintBg : undefined }}
     >
       <div
-        className="w-6 h-[18px] rounded-[4px] flex items-center justify-center text-[9px] font-extrabold font-mono"
+        className="w-6 h-[18px] rounded-[4px] flex items-center justify-center"
         style={{ background: tintBg, color: tintColor }}
       >
-        {letter}
+        {icon}
       </div>
       <span className="text-[12px] font-semibold text-text-primary flex-1">{label}</span>
       <span

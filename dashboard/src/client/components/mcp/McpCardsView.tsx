@@ -7,6 +7,7 @@ import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
 import FolderOpen from 'lucide-react/dist/esm/icons/folder-open.js';
 import { useMcpStore } from '@/client/store/mcp-store.js';
 import type { McpServerEntry } from '@/client/store/mcp-store.js';
+import { ClaudeIcon, CodexIcon } from '@/client/components/mcp/CliIcons.js';
 
 // ---------------------------------------------------------------------------
 // McpCardsView -- servers grouped by scope in a card grid
@@ -340,62 +341,46 @@ function ServerCard({
             <button
               type="button"
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-[3px] px-[7px] py-[3px] rounded-[4px] border border-border bg-bg-card text-[8px] font-bold text-text-tertiary font-mono transition-all hover:border-[var(--color-accent-blue,#5B8DB8)] hover:text-[var(--color-accent-blue,#5B8DB8)] hover:bg-[rgba(91,141,184,0.04)]"
+              className="flex items-center gap-[3px] px-[7px] py-[3px] rounded-[4px] border border-border bg-bg-card text-text-tertiary transition-all hover:border-[var(--color-accent-blue,#5B8DB8)] hover:text-[var(--color-accent-blue,#5B8DB8)] hover:bg-[rgba(91,141,184,0.04)]"
               title={missingCodex ? 'Copy to Codex' : 'Copy to Claude'}
             >
               {missingCodex ? (
                 <>
-                  <ChevronRight size={9} strokeWidth={2.5} />X
+                  <ChevronRight size={9} strokeWidth={2.5} />
+                  <CodexIcon size={11} style={{ color: 'var(--color-status-completed, #5A9E78)' }} />
                 </>
               ) : (
                 <>
-                  <ChevronLeft size={9} strokeWidth={2.5} />C
+                  <ChevronLeft size={9} strokeWidth={2.5} />
+                  <ClaudeIcon size={11} style={{ color: 'var(--color-status-verifying, #C8863A)' }} />
                 </>
               )}
             </button>
           )}
 
-          {/* CLI badges (when both present) */}
-          {server.cli.claude && server.cli.codex && (
-            <div className="flex gap-[3px]">
-              <span
-                className="w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none"
-                style={{ background: 'rgba(200,134,58,0.08)', color: 'var(--color-status-verifying, #C8863A)' }}
-              >
-                C
-              </span>
-              <span
-                className="w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none"
-                style={{ background: 'rgba(90,158,120,0.08)', color: 'var(--color-status-completed, #5A9E78)' }}
-              >
-                X
-              </span>
-            </div>
-          )}
-
-          {/* Single CLI badge when only one present and no missing (e.g., enterprise) */}
-          {!missingCodex && !missingClaude && !(server.cli.claude && server.cli.codex) && (
-            <div className="flex gap-[3px]">
-              <span
-                className={[
-                  'w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none',
-                  !server.cli.claude ? 'opacity-25' : '',
-                ].join(' ')}
-                style={{ background: 'rgba(200,134,58,0.08)', color: 'var(--color-status-verifying, #C8863A)' }}
-              >
-                C
-              </span>
-              <span
-                className={[
-                  'w-5 h-4 rounded-[3px] flex items-center justify-center text-[8px] font-extrabold font-mono leading-none',
-                  !server.cli.codex ? 'opacity-25' : '',
-                ].join(' ')}
-                style={{ background: 'rgba(90,158,120,0.08)', color: 'var(--color-status-completed, #5A9E78)' }}
-              >
-                X
-              </span>
-            </div>
-          )}
+          {/* CLI badges */}
+          <div className="flex gap-[3px]">
+            <span
+              className={[
+                'w-5 h-4 rounded-[3px] flex items-center justify-center',
+                !server.cli.claude ? 'opacity-25' : '',
+              ].join(' ')}
+              style={{ background: 'rgba(200,134,58,0.08)', color: 'var(--color-status-verifying, #C8863A)' }}
+              title="Claude Code"
+            >
+              <ClaudeIcon size={11} />
+            </span>
+            <span
+              className={[
+                'w-5 h-4 rounded-[3px] flex items-center justify-center',
+                !server.cli.codex ? 'opacity-25' : '',
+              ].join(' ')}
+              style={{ background: 'rgba(90,158,120,0.08)', color: 'var(--color-status-completed, #5A9E78)' }}
+              title="Codex CLI"
+            >
+              <CodexIcon size={11} />
+            </span>
+          </div>
         </div>
       </div>
     </motion.div>
