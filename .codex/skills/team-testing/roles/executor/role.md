@@ -24,7 +24,7 @@ Execute tests, collect coverage, attempt auto-fix for failures. Acts as the Crit
 | .msg/meta.json | <session>/wisdom/.msg/meta.json | No |
 
 1. Extract session path and test directory from task description
-2. Load test specs: Run `ccw spec load --category test` for test framework conventions and coverage targets
+2. Load test specs: Run `maestro spec load --category test` for test framework conventions and coverage targets
 3. Extract coverage target (default: 80%)
 3. Read .msg/meta.json for framework info (from strategist namespace)
 4. Determine test framework:
@@ -61,7 +61,7 @@ Bash("<test-command> 2>&1 || true")
 **Auto-fix delegation** (on failure):
 
 ```
-Bash(`ccw cli -p "PURPOSE: Fix test failures to achieve pass rate >= 0.95; success = all tests pass
+Bash(`maestro cli -p "PURPOSE: Fix test failures to achieve pass rate >= 0.95; success = all tests pass
 TASK: • Analyze test failure output • Identify root causes • Fix test code only (not source) • Preserve test intent
 MODE: write
 CONTEXT: @<session>/<test-dir>/**/* | Memory: Test framework: <framework>, iteration <N>/3

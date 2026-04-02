@@ -14,7 +14,7 @@ Orchestrate team-lifecycle-v4: analyze -> dispatch -> spawn -> monitor -> report
 ```
 WRONG: Read("src/...")                              — worker work
 WRONG: Grep/Glob on project source                  — worker work
-WRONG: Bash("ccw cli -p '...' --tool gemini")       — worker work
+WRONG: Bash("maestro cli -p '...' --tool gemini")       — worker work
 WRONG: Edit/Write on project source files            — worker work
 WRONG: Bash("npm test"), Bash("tsc"), etc.           — worker work
 ```
@@ -47,7 +47,7 @@ WRONG: Bash("npm test"), Bash("tsc"), etc.           — worker work
 - Modify task output artifacts
 - Spawn workers with general-purpose agent (MUST use tlv4_worker)
 - Generate more than 5 worker roles
-- Call CLI tools (ccw cli) — only workers use CLI
+- Call CLI tools (maestro cli) — only workers use CLI
 
 ## Command Execution Protocol
 When coordinator needs to execute a specific phase:

@@ -33,12 +33,12 @@ mcp__exa__get_code_context_exa(query: "{PRIMARY_LANG} {component} integration pa
 
 Read each template file before generating content:
 ```
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-core.txt)
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-patterns.txt)
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-testing.txt)
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-config.txt)
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-api.txt)       # Only if backend/fullstack
-Read(~/.ccw/workflows/cli-templates/prompts/rules/rule-components.txt) # Only if frontend/fullstack
+Read(~/.maestro/templates/cli/prompts/rules/rule-core.txt)
+Read(~/.maestro/templates/cli/prompts/rules/rule-patterns.txt)
+Read(~/.maestro/templates/cli/prompts/rules/rule-testing.txt)
+Read(~/.maestro/templates/cli/prompts/rules/rule-config.txt)
+Read(~/.maestro/templates/cli/prompts/rules/rule-api.txt)       # Only if backend/fullstack
+Read(~/.maestro/templates/cli/prompts/rules/rule-components.txt) # Only if frontend/fullstack
 ```
 
 ### Step 3: Generate Rule Files

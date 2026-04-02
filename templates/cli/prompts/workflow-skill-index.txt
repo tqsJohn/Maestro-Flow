@@ -129,7 +129,7 @@ Load Level 3 from workflow-progress SKILL for complete development history
 ## Variable Substitution Guide
 
 ### Required Variables
-- `{project_root}`: Absolute project path from git root (e.g., "/d/Claude_dms3")
+- `{project_root}`: Absolute project path from git root (e.g., "{project_root}")
 - `{semantic_version}`: Version string (e.g., "1.0.0", increment patch for each update)
 - `{session_count}`: Total number of archived sessions
 - `{domain_list}`: Comma-separated unique tags sorted by frequency
@@ -171,7 +171,7 @@ or learning from workflow history, especially when no relevant context exists in
 
 ### Step 1: Get Project Root
 ```bash
-git rev-parse --show-toplevel  # Returns: /d/Claude_dms3
+git rev-parse --show-toplevel  # Returns: {project_root}
 ```
 
 ### Step 2: Read Manifest

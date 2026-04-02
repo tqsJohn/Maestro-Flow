@@ -1,6 +1,6 @@
 # Tasks Schema — team-lifecycle-v4
 
-> Base schema: `~/.ccw/workflows/cli-templates/schemas/team-tasks-schema.json`
+> Base schema: `~/.maestro/templates/cli/schemas/team-tasks-schema.json`
 
 This file documents lifecycle-v4 specific extensions to the universal team tasks schema.
 

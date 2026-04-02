@@ -95,7 +95,7 @@ Review Gemini's proposed code targets:
 
 ### Output File
 **Path**: `.workflow/active/{session_id}/.process/codex-feasibility-validation.md`
-**Format**: Follow structure from `~/.ccw/workflows/cli-templates/prompts/workflow/analysis-results-structure.txt`
+**Format**: Follow structure from `~/.maestro/templates/cli/prompts/workflow/analysis-results-structure.txt`
 
 ### Required Sections
 Focus on these sections from the template:

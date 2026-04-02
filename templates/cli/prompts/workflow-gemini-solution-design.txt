@@ -74,7 +74,7 @@ For each target:
 
 ### Output File
 **Path**: `.workflow/active/{session_id}/.process/gemini-solution-design.md`
-**Format**: Follow structure from `~/.ccw/workflows/cli-templates/prompts/workflow/analysis-results-structure.txt`
+**Format**: Follow structure from `~/.maestro/templates/cli/prompts/workflow/analysis-results-structure.txt`
 
 ### Required Sections
 - Executive Summary with feasibility score

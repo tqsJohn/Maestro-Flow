@@ -22,7 +22,7 @@ Generate test code by layer (L1 unit / L2 integration / L3 E2E). Acts as the Gen
 | .msg/meta.json | <session>/wisdom/.msg/meta.json | No |
 
 1. Extract session path and layer from task description
-2. Load test specs: Run `ccw spec load --category test` for test framework conventions and coverage targets
+2. Load test specs: Run `maestro spec load --category test` for test framework conventions and coverage targets
 3. Read test strategy:
 
 ```
@@ -63,7 +63,7 @@ For revision mode:
 **CLI delegation** (medium/high complexity):
 
 ```
-Bash(`ccw cli -p "PURPOSE: Generate <layer> tests using <framework> to achieve coverage target; success = all priority files covered with quality tests
+Bash(`maestro cli -p "PURPOSE: Generate <layer> tests using <framework> to achieve coverage target; success = all priority files covered with quality tests
 TASK: • Analyze source files • Generate test cases (happy path, edge cases, errors) • Write test files with proper structure • Ensure import resolution
 MODE: write
 CONTEXT: @<source-files> @<session>/strategy/test-strategy.md | Memory: Framework: <framework>, Layer: <layer>, Round: <round>

@@ -368,7 +368,7 @@ Read `memory-index.json`, append new entry to `entries[]`:
   "file": "MEM-20260315-143022.md",
   "summary": "Session objective in one line",
   "tags": [],
-  "project_root": "D:\\maestro",
+  "project_root": "/path/to/project",
   "session_id": "WFS-001"
 }
 ```
@@ -382,7 +382,7 @@ For tips:
   "file": "TIP-20260315-143022.md",
   "summary": "First 80 chars of note content",
   "tags": ["config", "redis"],
-  "project_root": "D:\\maestro"
+  "project_root": "/path/to/project"
 }
 ```
 

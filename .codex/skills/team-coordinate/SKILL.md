@@ -28,8 +28,8 @@ Universal team coordination skill: analyze task -> generate role-specs -> dispat
   (roles generated at runtime from task analysis)
 
   CLI Tools (callable by any worker):
-    ccw cli --mode analysis  - analysis and exploration
-    ccw cli --mode write     - code generation and modification
+    maestro cli --mode analysis  - analysis and exploration
+    maestro cli --mode write     - code generation and modification
 ```
 
 ## Delegation Lock
@@ -48,7 +48,7 @@ Before calling ANY tool, apply this check:
 | `Read` on `roles/`, `commands/`, `specs/` | ALLOWED | Loading own instructions |
 | `Read/Grep/Glob` on project source code | BLOCKED | Delegate to worker |
 | `Edit` on any file outside `.workflow/` | BLOCKED | Delegate to worker |
-| `Bash("ccw cli ...")` | BLOCKED | Only workers call CLI |
+| `Bash("maestro cli ...")` | BLOCKED | Only workers call CLI |
 | `Bash` running build/test/lint commands | BLOCKED | Delegate to worker |
 
 **If a tool call is BLOCKED**: STOP. Create a task, spawn a worker.
@@ -65,8 +65,8 @@ Before calling ANY tool, apply this check:
 | Session path | `.workflow/.team/TC-<slug>-<date>/` |
 | Worker agent | `team-worker` |
 | Message bus | `mcp__maestro-tools__team_msg(session_id=<session-id>, ...)` |
-| CLI analysis | `ccw cli --mode analysis` |
-| CLI write | `ccw cli --mode write` |
+| CLI analysis | `maestro cli --mode analysis` |
+| CLI write | `maestro cli --mode write` |
 | Max roles | 5 |
 
 ## Role Router
@@ -92,8 +92,8 @@ Workers can use CLI tools for analysis and code operations:
 
 | Tool | Purpose |
 |------|---------|
-| ccw cli --mode analysis | Analysis, exploration, pattern discovery |
-| ccw cli --mode write | Code generation, modification, refactoring |
+| maestro cli --mode analysis | Analysis, exploration, pattern discovery |
+| maestro cli --mode write | Code generation, modification, refactoring |
 
 ### Dispatch
 
