@@ -16,6 +16,8 @@ import { DefaultPromptAssembler } from '../coordinator/prompt-assembler.js';
 import { CliExecutor } from '../coordinator/cli-executor.js';
 import { DefaultExprEvaluator } from '../coordinator/expr-evaluator.js';
 import { DefaultOutputParser } from '../coordinator/output-parser.js';
+import { DefaultParallelExecutor } from '../coordinator/parallel-executor.js';
+import { ParallelCliRunner } from '../agents/parallel-cli-runner.js';
 import type { SpawnFn } from '../coordinator/cli-executor.js';
 
 const execFileAsync = promisify(execFile);
@@ -80,18 +82,26 @@ function createSpawnFn(): SpawnFn {
   };
 }
 
-function createWalker(workflowRoot: string) {
+function createWalker(workflowRoot: string, opts?: { parallel?: boolean }) {
   const { chainsRoot, templateDir, sessionDir } = resolvePaths(workflowRoot);
   const loader = new GraphLoader(chainsRoot);
   const evaluator = new DefaultExprEvaluator();
   const parser = new DefaultOutputParser();
   const assembler = new DefaultPromptAssembler(workflowRoot, templateDir);
-  const executor = new CliExecutor(createSpawnFn());
+  const spawnFn = createSpawnFn();
+  const executor = new CliExecutor(spawnFn);
   const router = new IntentRouter(loader, chainsRoot);
+
+  // Inject parallel executor when --parallel flag is set
+  const parallelExecutor = opts?.parallel
+    ? new DefaultParallelExecutor(new ParallelCliRunner(spawnFn))
+    : undefined;
+
   const walker = new GraphWalker(
     loader, assembler, executor,
     null, parser, evaluator,
     undefined, sessionDir,
+    parallelExecutor,
   );
   return { walker, router, loader };
 }
@@ -158,10 +168,11 @@ export function registerCoordinateCommand(program: Command): void {
     .option('--chain <name>', 'Force specific chain graph')
     .option('--tool <tool>', 'Agent tool to use', 'claude')
     .option('-y, --yes', 'Auto mode — inject auto-confirm flags')
-    .action(async (intentWords: string[], opts: { chain?: string; tool: string; yes?: boolean }) => {
+    .option('--parallel', 'Enable parallel execution for fork/join nodes')
+    .action(async (intentWords: string[], opts: { chain?: string; tool: string; yes?: boolean; parallel?: boolean }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(workflowRoot);
+      const { walker, router } = createWalker(workflowRoot, { parallel: opts.parallel });
 
       try {
         const graphId = router.resolve(intent, opts.chain);
@@ -233,16 +244,18 @@ export function registerCoordinateCommand(program: Command): void {
     .option('--chain <name>', 'Force specific chain graph')
     .option('--tool <tool>', 'Agent tool to use', 'claude')
     .option('--dry-run', 'Show graph traversal plan without executing')
+    .option('--parallel', 'Enable parallel execution for fork/join nodes')
     .action(async (intentWords: string[], opts: {
       yes?: boolean;
       continue?: string | true;
       chain?: string;
       tool: string;
       dryRun?: boolean;
+      parallel?: boolean;
     }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(workflowRoot);
+      const { walker, router } = createWalker(workflowRoot, { parallel: opts.parallel });
 
       try {
         let state;

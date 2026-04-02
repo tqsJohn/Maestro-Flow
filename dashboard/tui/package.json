@@ -13,6 +13,7 @@
     "@inkjs/ui": "^2.0.0",
     "ink": "^6.0.0",
     "react": "^19.0.0",
+    "marked": "^15.0.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {

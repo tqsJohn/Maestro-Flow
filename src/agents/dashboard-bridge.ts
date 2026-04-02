@@ -32,6 +32,7 @@ interface NormalizedEntry {
 
 export class DashboardBridge {
   private ws: WebSocket | null = null;
+  private activeCount: number = 0;
 
   /**
    * Attempt to connect to the Dashboard WS endpoint.
@@ -69,9 +70,22 @@ export class DashboardBridge {
     this.send({ action: 'cli:entry', entry });
   }
 
+  /** Register an active CLI process for reference counting */
+  registerProcess(): void {
+    this.activeCount++;
+  }
+
   /** Notify Dashboard that the CLI process has stopped */
   forwardStopped(processId: string): void {
     this.send({ action: 'cli:stopped', processId });
+    this.activeCount--;
+  }
+
+  /** Close the WS connection only when no active processes remain */
+  closeIfIdle(): void {
+    if (this.activeCount <= 0) {
+      this.close();
+    }
   }
 
   /** Close the WS connection */
@@ -80,6 +94,7 @@ export class DashboardBridge {
       this.ws.close();
     }
     this.ws = null;
+    this.activeCount = 0;
   }
 
   private send(data: unknown): void {

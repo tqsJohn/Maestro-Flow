@@ -316,6 +316,9 @@ export type CoordinateEvent =
   | { type: 'walker:decision'; session_id: string; node_id: string; resolved_value: unknown; target: string }
   | { type: 'walker:command'; session_id: string; node_id: string; cmd: string; status: 'spawned' | 'completed' | 'failed' }
   | { type: 'walker:delegate'; session_id: string; from_graph: string; to_graph: string }
+  | { type: 'walker:fork_start'; session_id: string; node_id: string; branches: string[] }
+  | { type: 'walker:branch_complete'; session_id: string; node_id: string; branch_id: string; success: boolean }
+  | { type: 'walker:join_complete'; session_id: string; node_id: string; strategy: string; success: boolean }
   | { type: 'walker:completed'; session_id: string; status: 'success' | 'failure'; history_summary: string[] }
   | { type: 'walker:error'; session_id: string; error: string };
 

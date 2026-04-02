@@ -18,6 +18,7 @@ import type {
   GraphNode,
 } from '../graph-types.js';
 import type { GraphLoader } from '../graph-loader.js';
+import type { ParallelCommandExecutor, BranchTask, BranchResult } from '../parallel-executor.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,6 +98,7 @@ function makeWalker(
   loaderGraphs: Record<string, ChainGraph>,
   analyzer?: StepAnalyzer | null,
   emitter?: WalkerEventEmitter,
+  parallelExecutor?: ParallelCommandExecutor,
 ): GraphWalker {
   return new GraphWalker(
     createMockLoader(loaderGraphs),
@@ -106,6 +108,8 @@ function makeWalker(
     parser,
     evaluator,
     emitter,
+    undefined,
+    parallelExecutor,
   );
 }
 
@@ -484,6 +488,244 @@ describe('GraphWalker', () => {
       assert.strictEqual(executor.calls.length, 0);
       assert.ok(Array.isArray(result.context.var['dry_run_plan']));
       assert.ok((result.context.var['dry_run_plan'] as string[]).length > 0);
+    });
+  });
+
+  // 11. Fork/Join — sequential fallback (no parallelExecutor)
+  describe('fork/join — sequential fallback', () => {
+    it('visits all branches and proceeds through join', async () => {
+      const graph = makeGraph('fork-seq', {
+        fork1: { type: 'fork', branches: ['b1', 'b2'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        join1: { type: 'join', strategy: 'all', next: 'done', merge: 'concat' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const { events, emitter } = collectEvents();
+      const walker = makeWalker(executor, { 'fork-seq': graph }, null, emitter);
+      const state = makeState('fork-seq', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
+      // Sequential fallback does not execute commands through executor
+      assert.strictEqual(executor.calls.length, 0);
+      // Branch visits recorded
+      assert.strictEqual(result.context.visits['b1'], 1);
+      assert.strictEqual(result.context.visits['b2'], 1);
+      // fork_state cleared after join
+      assert.strictEqual(result.fork_state, null);
+      // Events emitted
+      const forkStart = events.find(e => e.type === 'walker:fork_start');
+      assert.ok(forkStart, 'should emit walker:fork_start');
+      const branchCompletes = events.filter(e => e.type === 'walker:branch_complete');
+      assert.strictEqual(branchCompletes.length, 2);
+      const joinComplete = events.find(e => e.type === 'walker:join_complete');
+      assert.ok(joinComplete, 'should emit walker:join_complete');
+    });
+
+    it('fails if a branch node does not exist in graph', async () => {
+      const graph = makeGraph('fork-missing', {
+        fork1: { type: 'fork', branches: ['b1', 'missing'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        join1: { type: 'join', strategy: 'all', next: 'done' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const walker = makeWalker(executor, { 'fork-missing': graph });
+      const state = makeState('fork-missing', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'failed');
+    });
+  });
+
+  // 12. Fork/Join — parallel execution with mock executor
+  describe('fork/join — parallel execution', () => {
+    function createMockParallelExecutor(
+      resultOverrides?: Partial<BranchResult>[],
+    ): ParallelCommandExecutor & { calls: { branches: BranchTask[]; strategy: string }[] } {
+      const calls: { branches: BranchTask[]; strategy: string }[] = [];
+      return {
+        calls,
+        async executeBranches(branches, joinStrategy) {
+          calls.push({ branches, strategy: joinStrategy });
+          return branches.map((b, i) => {
+            const override = resultOverrides?.[i] ?? {};
+            return {
+              branchId: b.branchId,
+              success: override.success ?? true,
+              output: override.output ?? `output-${b.branchId}`,
+              durationMs: override.durationMs ?? 50,
+            };
+          });
+        },
+      };
+    }
+
+    it('dispatches branches via parallelExecutor and merges with concat', async () => {
+      const graph = makeGraph('fork-par', {
+        fork1: { type: 'fork', branches: ['b1', 'b2'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        join1: { type: 'join', strategy: 'all', next: 'done', merge: 'concat' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor();
+      const { events, emitter } = collectEvents();
+      const walker = makeWalker(executor, { 'fork-par': graph }, null, emitter, parExec);
+      const state = makeState('fork-par', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
+      // ParallelExecutor was called once
+      assert.strictEqual(parExec.calls.length, 1);
+      assert.strictEqual(parExec.calls[0].branches.length, 2);
+      assert.strictEqual(parExec.calls[0].strategy, 'all');
+      // No direct executor calls (branches dispatched via parallel)
+      assert.strictEqual(executor.calls.length, 0);
+      // Result merged
+      assert.ok(result.context.result);
+      assert.ok((result.context.result as Record<string, unknown>)['merged']);
+      // fork_state cleared
+      assert.strictEqual(result.fork_state, null);
+    });
+
+    it('join strategy "any" succeeds when at least one branch succeeds', async () => {
+      const graph = makeGraph('fork-any', {
+        fork1: { type: 'fork', branches: ['b1', 'b2'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        join1: { type: 'join', strategy: 'any', next: 'done', merge: 'last' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor([
+        { success: true, output: 'ok' },
+        { success: false, output: 'fail' },
+      ]);
+      const walker = makeWalker(executor, { 'fork-any': graph }, null, undefined, parExec);
+      const state = makeState('fork-any', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
+    });
+
+    it('join strategy "all" fails when any branch fails', async () => {
+      const graph = makeGraph('fork-all-fail', {
+        fork1: { type: 'fork', branches: ['b1', 'b2'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        join1: { type: 'join', strategy: 'all', next: 'done', merge: 'concat' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor([
+        { success: true },
+        { success: false },
+      ]);
+      const walker = makeWalker(executor, { 'fork-all-fail': graph }, null, undefined, parExec);
+      const state = makeState('fork-all-fail', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'failed');
+    });
+
+    it('join strategy "majority" succeeds when >50% branches succeed', async () => {
+      const graph = makeGraph('fork-maj', {
+        fork1: { type: 'fork', branches: ['b1', 'b2', 'b3'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        b3: { type: 'command', cmd: 'branch3', next: 'join1' },
+        join1: { type: 'join', strategy: 'majority', next: 'done', merge: 'best_score' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor([
+        { success: true },
+        { success: true },
+        { success: false },
+      ]);
+      const walker = makeWalker(executor, { 'fork-maj': graph }, null, undefined, parExec);
+      const state = makeState('fork-maj', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
+    });
+
+    it('join strategy "majority" fails when <=50% branches succeed', async () => {
+      const graph = makeGraph('fork-maj-fail', {
+        fork1: { type: 'fork', branches: ['b1', 'b2', 'b3', 'b4'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        b3: { type: 'command', cmd: 'branch3', next: 'join1' },
+        b4: { type: 'command', cmd: 'branch4', next: 'join1' },
+        join1: { type: 'join', strategy: 'majority', next: 'done', merge: 'concat' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor([
+        { success: true },
+        { success: false },
+        { success: false },
+        { success: false },
+      ]);
+      const walker = makeWalker(executor, { 'fork-maj-fail': graph }, null, undefined, parExec);
+      const state = makeState('fork-maj-fail', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'failed');
+    });
+
+    it('merge mode "best_score" picks first successful branch', async () => {
+      const graph = makeGraph('fork-best', {
+        fork1: { type: 'fork', branches: ['b1', 'b2'], join: 'join1' },
+        b1: { type: 'command', cmd: 'branch1', next: 'join1' },
+        b2: { type: 'command', cmd: 'branch2', next: 'join1' },
+        join1: { type: 'join', strategy: 'any', next: 'done', merge: 'best_score' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const parExec = createMockParallelExecutor([
+        { success: false, output: 'bad' },
+        { success: true, output: 'good' },
+      ]);
+      const walker = makeWalker(executor, { 'fork-best': graph }, null, undefined, parExec);
+      const state = makeState('fork-best', 'fork1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
+      // best_score picks first completed (b2)
+      const merged = result.context.result as Record<string, unknown>;
+      assert.ok(merged);
+      assert.strictEqual(merged['output'], 'good');
+      assert.strictEqual(merged['success'], true);
+    });
+  });
+
+  // 13. Join without fork_state — backward compat
+  describe('join without fork_state', () => {
+    it('proceeds to next node when no fork_state exists', async () => {
+      const graph = makeGraph('join-only', {
+        join1: { type: 'join', strategy: 'all', next: 'done' },
+        done: { type: 'terminal', status: 'success' },
+      });
+      const executor = createMockExecutor();
+      const walker = makeWalker(executor, { 'join-only': graph });
+      const state = makeState('join-only', 'join1');
+
+      const result = await walker.walkGraph(state, graph);
+
+      assert.strictEqual(result.status, 'completed');
     });
   });
 });

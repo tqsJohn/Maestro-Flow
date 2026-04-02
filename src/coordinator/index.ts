@@ -52,3 +52,5 @@ export { CliExecutor } from './cli-executor.js';
 export type { SpawnFn } from './cli-executor.js';
 export { GeminiStepAnalyzer } from './step-analyzer.js';
 export { IntentRouter } from './intent-router.js';
+export { DefaultParallelExecutor } from './parallel-executor.js';
+export type { ParallelCommandExecutor, BranchTask, BranchResult } from './parallel-executor.js';

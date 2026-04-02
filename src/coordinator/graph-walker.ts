@@ -11,6 +11,7 @@ import type {
   CoordinateEvent, AssembleRequest, AgentType,
 } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
+import type { ParallelCommandExecutor, BranchResult } from './parallel-executor.js';
 
 export interface StartOptions {
   tool: string;
@@ -33,6 +34,7 @@ export class GraphWalker {
     private readonly evaluator: ExprEvaluator,
     private readonly emitter?: WalkerEventEmitter,
     private readonly sessionDir?: string,
+    private readonly parallelExecutor?: ParallelCommandExecutor,
   ) {}
 
   async start(graphId: string, intent: string, options: StartOptions): Promise<WalkerState> {
@@ -311,21 +313,174 @@ export class GraphWalker {
   }
 
   private async handleFork(state: WalkerState, graph: ChainGraph, node: ForkNode): Promise<void> {
-    // Sequential fallback (Phase 5 will add true parallelism)
+    // Validate all branch nodes exist
     for (const branch of node.branches) {
-      const branchNode = graph.nodes[branch];
-      if (branchNode) {
-        // Simple: just visit each branch entry sequentially via walk
-        // For now, just record we visited it
-        state.context.visits[branch] = (state.context.visits[branch] ?? 0) + 1;
+      if (!graph.nodes[branch]) {
+        state.status = 'failed';
+        this.emit({ type: 'walker:error', session_id: state.session_id, error: `Fork branch node not found: ${branch}` });
+        return;
       }
     }
+
+    // Initialize fork_state keyed by current fork node ID
+    const forkNodeId = state.current_node;
+    const branchStates: Record<string, 'pending' | 'running' | 'completed' | 'failed'> = {};
+    for (const branch of node.branches) {
+      branchStates[branch] = 'pending';
+    }
+    if (!state.fork_state) state.fork_state = {};
+    state.fork_state[forkNodeId] = {
+      branches: branchStates,
+      join_node: node.join,
+      results: {},
+    };
+
+    this.emit({ type: 'walker:fork_start', session_id: state.session_id, node_id: forkNodeId, branches: node.branches });
+
+    const forkEntry = state.fork_state[forkNodeId];
+
+    if (this.parallelExecutor) {
+      // Parallel execution via injected executor
+      const workDir = (state.context.inputs['workflowRoot'] as string) ?? '.';
+      const agentType = (state.tool as AgentType) || 'claude';
+
+      const branchTasks = node.branches.map((branchId) => {
+        const branchNode = graph.nodes[branchId] as CommandNode;
+        return {
+          branchId,
+          nodeId: branchId,
+          prompt: branchNode.type === 'command' ? branchNode.cmd : branchId,
+          workDir,
+          agentType,
+        };
+      });
+
+      // Mark all branches running
+      for (const branch of node.branches) {
+        forkEntry.branches[branch] = 'running';
+      }
+
+      const joinNode = graph.nodes[node.join] as JoinNode | undefined;
+      const strategy = joinNode?.strategy ?? 'all';
+
+      const results = await this.parallelExecutor.executeBranches(branchTasks, strategy);
+
+      // Update branch states and store results
+      for (const result of results) {
+        forkEntry.branches[result.branchId] = result.success ? 'completed' : 'failed';
+        forkEntry.results[result.branchId] = { output: result.output, success: result.success, durationMs: result.durationMs };
+        state.context.visits[result.branchId] = (state.context.visits[result.branchId] ?? 0) + 1;
+        this.emit({ type: 'walker:branch_complete', session_id: state.session_id, node_id: forkNodeId, branch_id: result.branchId, success: result.success });
+      }
+    } else {
+      // Sequential fallback — visit each branch entry, record visit
+      for (const branch of node.branches) {
+        forkEntry.branches[branch] = 'running';
+        state.context.visits[branch] = (state.context.visits[branch] ?? 0) + 1;
+        forkEntry.branches[branch] = 'completed';
+        forkEntry.results[branch] = { output: '', success: true, durationMs: 0 };
+        this.emit({ type: 'walker:branch_complete', session_id: state.session_id, node_id: forkNodeId, branch_id: branch, success: true });
+      }
+    }
+
     state.current_node = node.join;
   }
 
   private handleJoin(state: WalkerState, node: JoinNode): void {
-    // Sequential fallback: just proceed
-    state.current_node = node.next;
+    if (!state.fork_state) {
+      // No fork state — just proceed (backward compat)
+      state.current_node = node.next;
+      return;
+    }
+
+    // Find the fork entry that references this join node
+    const joinNodeId = state.current_node;
+    let forkKey: string | undefined;
+    for (const [key, entry] of Object.entries(state.fork_state)) {
+      if (entry.join_node === joinNodeId) {
+        forkKey = key;
+        break;
+      }
+    }
+
+    if (!forkKey) {
+      // No matching fork — just proceed
+      state.current_node = node.next;
+      return;
+    }
+
+    const forkEntry = state.fork_state[forkKey];
+
+    // Evaluate join strategy
+    const branches = forkEntry.branches;
+    const branchIds = Object.keys(branches);
+    const completedCount = branchIds.filter((id) => branches[id] === 'completed').length;
+    const totalCount = branchIds.length;
+
+    let joinSuccess: boolean;
+    switch (node.strategy) {
+      case 'all':
+        joinSuccess = completedCount === totalCount;
+        break;
+      case 'any':
+        joinSuccess = completedCount >= 1;
+        break;
+      case 'majority':
+        joinSuccess = completedCount > totalCount / 2;
+        break;
+      default:
+        joinSuccess = completedCount === totalCount;
+    }
+
+    // Apply merge mode to aggregate branch results
+    const mergeMode = node.merge ?? 'concat';
+    const branchResults = forkEntry.results;
+
+    switch (mergeMode) {
+      case 'concat': {
+        const outputs: string[] = [];
+        for (const id of branchIds) {
+          const br = branchResults[id] as { output?: string } | undefined;
+          if (br?.output) outputs.push(br.output);
+        }
+        state.context.result = { merged: outputs.join('\n'), branches: branchResults };
+        break;
+      }
+      case 'last': {
+        const lastId = branchIds[branchIds.length - 1];
+        const lastResult = branchResults[lastId] as Record<string, unknown> | undefined;
+        state.context.result = lastResult ? { ...lastResult, branches: branchResults } : { branches: branchResults };
+        break;
+      }
+      case 'best_score': {
+        // Pick the first successful branch; fall back to first branch
+        let bestId = branchIds[0];
+        for (const id of branchIds) {
+          if (branches[id] === 'completed') {
+            bestId = id;
+            break;
+          }
+        }
+        const bestResult = branchResults[bestId] as Record<string, unknown> | undefined;
+        state.context.result = bestResult ? { ...bestResult, branches: branchResults } : { branches: branchResults };
+        break;
+      }
+    }
+
+    this.emit({ type: 'walker:join_complete', session_id: state.session_id, node_id: state.current_node, strategy: node.strategy, success: joinSuccess });
+
+    // Clear fork state for this fork
+    delete state.fork_state[forkKey];
+    if (Object.keys(state.fork_state).length === 0) {
+      state.fork_state = null;
+    }
+
+    if (joinSuccess) {
+      state.current_node = node.next;
+    } else {
+      state.status = 'failed';
+      this.emit({ type: 'walker:error', session_id: state.session_id, error: `Join strategy '${node.strategy}' not satisfied: ${completedCount}/${totalCount} branches completed` });
+    }
   }
 
   private async handleTerminal(

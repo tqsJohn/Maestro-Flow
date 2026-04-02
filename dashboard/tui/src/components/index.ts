@@ -19,3 +19,5 @@ export type { FilterBarProps } from './FilterBar.js';
 
 export { ConfirmDialog } from './ConfirmDialog.js';
 export type { ConfirmDialogProps } from './ConfirmDialog.js';
+
+export { Markdown, StreamingMarkdown, configureMarked } from './Markdown.js';

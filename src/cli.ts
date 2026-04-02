@@ -12,6 +12,8 @@ import { registerSpecCommand } from './commands/spec.js';
 import { registerHooksCommand } from './commands/hooks.js';
 import { registerCoordinateCommand } from './commands/coordinate.js';
 import { registerLauncherCommand } from './commands/launcher.js';
+import { registerDelegateCommand } from './commands/delegate.js';
+import { registerMsgCommand } from './commands/msg.js';
 
 const program = new Command();
 
@@ -33,5 +35,7 @@ registerSpecCommand(program);
 registerHooksCommand(program);
 registerCoordinateCommand(program);
 registerLauncherCommand(program);
+registerDelegateCommand(program);
+registerMsgCommand(program);
 
 program.parse();
