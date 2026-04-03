@@ -10,6 +10,7 @@
 
 import type { SpawnFn } from '../coordinator/cli-executor.js';
 import type { AgentType } from '../coordinator/graph-types.js';
+import type { TerminalBackend } from './terminal-backend.js';
 
 // ---------------------------------------------------------------------------
 // Tool name -> AgentType mapping (mirrors cli-agent-runner.ts)
@@ -20,6 +21,14 @@ const TOOL_TO_AGENT_TYPE: Record<string, AgentType> = {
   qwen: 'qwen',
   codex: 'codex',
   claude: 'claude-code',
+  opencode: 'opencode',
+};
+
+const TOOL_TO_TERMINAL_CMD: Record<string, string> = {
+  gemini: 'gemini',
+  qwen: 'qwen',
+  codex: 'codex',
+  claude: 'claude',
   opencode: 'opencode',
 };
 
@@ -92,7 +101,10 @@ const DEFAULT_TASK_TIMEOUT_MS = 10 * 60 * 1000;
 // ---------------------------------------------------------------------------
 
 export class ParallelCliRunner {
-  constructor(private readonly spawn: SpawnFn) {}
+  constructor(
+    private readonly spawn: SpawnFn,
+    private readonly terminalBackend?: TerminalBackend,
+  ) {}
 
   /**
    * Execute tasks in parallel with session-key grouping and join strategy.
@@ -197,10 +209,24 @@ export class ParallelCliRunner {
   }
 
   // -------------------------------------------------------------------------
-  // Single task execution via SpawnFn
+  // Single task execution — routes to SpawnFn or TerminalAdapter
   // -------------------------------------------------------------------------
 
   private async executeTask(
+    task: ParallelTask,
+    globalSignal?: AbortSignal,
+  ): Promise<ParallelResult> {
+    if (task.backend === 'terminal' && this.terminalBackend) {
+      return this.executeViaTerminal(task, globalSignal);
+    }
+    return this.executeViaSpawn(task, globalSignal);
+  }
+
+  // -------------------------------------------------------------------------
+  // Execution via SpawnFn (direct adapter — default)
+  // -------------------------------------------------------------------------
+
+  private async executeViaSpawn(
     task: ParallelTask,
     globalSignal?: AbortSignal,
   ): Promise<ParallelResult> {
@@ -252,6 +278,75 @@ export class ParallelCliRunner {
       clearTimeout(timeout);
       globalSignal?.removeEventListener('abort', onGlobalAbort);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Execution via TerminalAdapter (tmux/wezterm pane)
+  // -------------------------------------------------------------------------
+
+  private async executeViaTerminal(
+    task: ParallelTask,
+    globalSignal?: AbortSignal,
+  ): Promise<ParallelResult> {
+    const startTime = Date.now();
+    const agentType = TOOL_TO_AGENT_TYPE[task.tool];
+
+    if (!agentType) {
+      return {
+        id: task.id, success: false,
+        output: `Unknown tool: ${task.tool}`, execId: '', durationMs: 0,
+      };
+    }
+
+    const { TerminalAdapter } = await import('./terminal-adapter.js');
+    const cmd = TOOL_TO_TERMINAL_CMD[task.tool] ?? task.tool;
+    const adapter = new TerminalAdapter(this.terminalBackend!, cmd);
+
+    // Cast needed: graph-types AgentType includes 'claude', terminal-adapter's is narrower
+    const proc = await adapter.spawn({
+      type: agentType as string,
+      prompt: task.prompt,
+      workDir: task.workDir,
+      approvalMode: task.mode === 'write' ? 'auto' : 'suggest',
+    } as Parameters<typeof adapter.spawn>[0]);
+
+    return new Promise<ParallelResult>((resolve) => {
+      let output = '';
+      let settled = false;
+
+      const settle = (success: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        globalSignal?.removeEventListener('abort', onAbort);
+        unsub();
+        resolve({
+          id: task.id, success, output,
+          execId: proc.id, durationMs: Date.now() - startTime,
+        });
+      };
+
+      const timeout = setTimeout(() => {
+        adapter.stop(proc.id);
+        settle(false);
+      }, DEFAULT_TASK_TIMEOUT_MS);
+
+      const onAbort = () => {
+        adapter.stop(proc.id);
+        settle(false);
+      };
+      globalSignal?.addEventListener('abort', onAbort, { once: true });
+
+      const unsub = adapter.onEntry(proc.id, (entry) => {
+        if (entry.type === 'assistant_message') {
+          output += entry.content;
+        }
+        if (entry.type === 'status_change') {
+          if (entry.status === 'stopped') settle(true);
+          else if (entry.status === 'error') settle(false);
+        }
+      });
+    });
   }
 
   // -------------------------------------------------------------------------

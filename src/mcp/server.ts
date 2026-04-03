@@ -8,6 +8,13 @@ import { ToolRegistry } from '../core/tool-registry.js';
 import { loadConfig } from '../config/index.js';
 import { registerBuiltinTools } from '../tools/index.js';
 
+// Exported for use by CliAgentRunner to push delegate-completion notifications
+let _server: Server | null = null;
+
+export function getMcpServer(): Server | null {
+  return _server;
+}
+
 export async function startMcpServer(): Promise<void> {
   const config = loadConfig();
   const registry = new ToolRegistry();
@@ -15,8 +22,15 @@ export async function startMcpServer(): Promise<void> {
 
   const server = new Server(
     { name: 'maestro', version: config.version },
-    { capabilities: { tools: {} } }
+    {
+      capabilities: {
+        tools: {},
+        experimental: { 'claude/channel': {} },
+      },
+    }
   );
+
+  _server = server;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = registry.list();

@@ -50,6 +50,7 @@ export function registerHooksCommand(program: Command): void {
 
       const statuslineCmd = `node "${join(binDir, 'maestro-statusline.js')}"`;
       const monitorCmd = `node "${join(binDir, 'maestro-context-monitor.js')}"`;
+      const delegateMonitorCmd = `node "${join(binDir, 'maestro-delegate-monitor.js')}"`;
 
       // --- Statusline ---
       settings.statusLine = {
@@ -75,15 +76,20 @@ export function registerHooksCommand(program: Command): void {
         hooks: [{ type: 'command', command: monitorCmd }],
       });
 
+      settings.hooks.PostToolUse.push({
+        hooks: [{ type: 'command', command: delegateMonitorCmd }],
+      });
+
       // Ensure parent directory exists
       const settingsDir = join(settingsPath, '..');
       paths.ensure(settingsDir);
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
       console.log('Maestro hooks installed:');
-      console.log(`  Statusline:       ${statuslineCmd}`);
-      console.log(`  Context monitor:  ${monitorCmd}`);
-      console.log(`  Settings file:    ${settingsPath}`);
+      console.log(`  Statusline:        ${statuslineCmd}`);
+      console.log(`  Context monitor:   ${monitorCmd}`);
+      console.log(`  Delegate monitor:  ${delegateMonitorCmd}`);
+      console.log(`  Settings file:     ${settingsPath}`);
     });
 
   hooks
@@ -143,12 +149,16 @@ export function registerHooksCommand(program: Command): void {
         const s = loadClaudeSettings(p);
         const hasStatusline = s.statusLine?.command?.includes(HOOK_MARKER) || false;
         const hasMonitor = s.hooks?.PostToolUse?.some(
-          (g) => g.hooks.some((h) => h.command.includes(HOOK_MARKER))
+          (g) => g.hooks.some((h) => h.command.includes('maestro-context-monitor'))
+        ) || false;
+        const hasDelegateMonitor = s.hooks?.PostToolUse?.some(
+          (g) => g.hooks.some((h) => h.command.includes('maestro-delegate-monitor'))
         ) || false;
 
         console.log(`${label} (${p}):`);
-        console.log(`  Statusline:      ${hasStatusline ? 'installed' : 'not installed'}`);
-        console.log(`  Context monitor: ${hasMonitor ? 'installed' : 'not installed'}`);
+        console.log(`  Statusline:        ${hasStatusline ? 'installed' : 'not installed'}`);
+        console.log(`  Context monitor:   ${hasMonitor ? 'installed' : 'not installed'}`);
+        console.log(`  Delegate monitor:  ${hasDelegateMonitor ? 'installed' : 'not installed'}`);
       }
     });
 }

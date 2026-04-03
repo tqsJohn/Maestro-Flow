@@ -41,6 +41,8 @@ export function registerDelegateCommand(program: Command): void {
     .option('--id <id>', 'Execution ID (auto-generated if omitted)')
     .option('--resume [id]', 'Resume previous session (last if no id)')
     .option('--includeDirs <dirs>', 'Additional directories (comma-separated)')
+    .option('--session <id>', 'Claude Code session ID for completion notifications')
+    .option('--backend <type>', 'Adapter backend: direct (default) or terminal (tmux/wezterm)')
     .action(async (prompt: string | undefined, opts: {
       to?: string;
       mode: string;
@@ -50,6 +52,8 @@ export function registerDelegateCommand(program: Command): void {
       id?: string;
       resume?: string | true;
       includeDirs?: string;
+      session?: string;
+      backend?: string;
     }) => {
       if (!prompt) {
         console.error('error: prompt is required. Usage: maestro delegate "your prompt"');
@@ -68,6 +72,8 @@ export function registerDelegateCommand(program: Command): void {
         process.exit(1);
       }
 
+      const backend = (opts.backend === 'terminal' ? 'terminal' : 'direct') as 'direct' | 'terminal';
+
       try {
         const runner = new CliAgentRunner();
         const exitCode = await runner.run({
@@ -80,6 +86,8 @@ export function registerDelegateCommand(program: Command): void {
           execId: opts.id,
           resume: opts.resume === true ? 'last' : opts.resume,
           includeDirs: opts.includeDirs?.split(',').map(d => d.trim()).filter(Boolean),
+          sessionId: opts.session,
+          backend,
         });
         process.exit(exitCode);
       } catch (err) {

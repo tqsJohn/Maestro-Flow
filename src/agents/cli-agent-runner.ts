@@ -4,13 +4,15 @@
 // exit handling for the `maestro cli` command.
 // ---------------------------------------------------------------------------
 
-import { resolve } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { DashboardBridge } from './dashboard-bridge.js';
 import { CliHistoryStore, type EntryLike } from './cli-history-store.js';
 import { loadTemplate, loadProtocol } from '../config/template-discovery.js';
+import { NOTIFY_PREFIX } from '../hooks/constants.js';
 
 // ---------------------------------------------------------------------------
 // Re-declare minimal types locally to avoid cross-rootDir imports from
@@ -85,6 +87,8 @@ export interface CliRunOptions {
   execId?: string;
   resume?: string;
   includeDirs?: string[];
+  sessionId?: string;
+  backend?: 'direct' | 'terminal';
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +101,18 @@ const TOOL_TO_AGENT_TYPE: Record<string, AgentType> = {
   codex: 'codex',
   claude: 'claude-code',
   opencode: 'opencode',
+};
+
+// ---------------------------------------------------------------------------
+// AgentType -> terminal CLI command mapping
+// ---------------------------------------------------------------------------
+
+const AGENT_TYPE_TO_TERMINAL_CMD: Record<string, string> = {
+  'gemini': 'gemini',
+  'qwen': 'qwen',
+  'codex': 'codex',
+  'claude-code': 'claude',
+  'opencode': 'opencode',
 };
 
 // ---------------------------------------------------------------------------
@@ -169,7 +185,18 @@ async function loadAdapterModule(adapterFile: string): Promise<Record<string, un
   return await import(fileUrl) as Record<string, unknown>;
 }
 
-async function createAdapter(agentType: AgentType): Promise<AdapterLike> {
+async function createAdapter(agentType: AgentType, backend?: 'direct' | 'terminal'): Promise<AdapterLike> {
+  if (backend === 'terminal') {
+    const { detectBackend } = await import('./terminal-backend.js');
+    const { TerminalAdapter } = await import('./terminal-adapter.js');
+    const termBackend = detectBackend();
+    if (!termBackend) {
+      throw new Error('No terminal multiplexer detected (need TMUX or WEZTERM_PANE env)');
+    }
+    const cmd = AGENT_TYPE_TO_TERMINAL_CMD[agentType] ?? agentType;
+    return new TerminalAdapter(termBackend, cmd) as unknown as AdapterLike;
+  }
+
   switch (agentType) {
     case 'gemini': {
       const mod = await loadAdapterModule('stream-json-adapter.js');
@@ -272,6 +299,38 @@ export class CliAgentRunner {
   }
 
   /**
+   * Send MCP channel notification (primary path).
+   * If maestro MCP server is running in this process, push a
+   * notifications/claude/channel message directly.
+   */
+  private static sendChannelNotification(
+    _sessionId: string,
+    execId: string,
+    tool: string,
+    mode: string,
+    exitCode: number,
+  ): void {
+    try {
+      // Dynamic import to avoid circular dependency — getMcpServer is exported
+      // from mcp/server.ts which may not be loaded in CLI-only mode.
+      const { getMcpServer } = require('../mcp/server.js') as { getMcpServer: () => import('@modelcontextprotocol/sdk/server/index.js').Server | null };
+      const server = getMcpServer();
+      if (!server) return;
+
+      const status = exitCode === 0 ? 'done' : `exit:${exitCode}`;
+      const content = `[DELEGATE COMPLETED] ${execId} (${tool}/${mode}) ${status}\nUse \`maestro delegate output ${execId}\` for full result.`;
+
+      // Fire-and-forget notification via MCP protocol
+      server.notification({
+        method: 'notifications/claude/channel',
+        params: { content, meta: { exec_id: execId, tool, mode, exit_code: String(exitCode) } },
+      }).catch(() => { /* best-effort */ });
+    } catch {
+      // MCP server module not available (CLI-only mode) — hook fallback handles it
+    }
+  }
+
+  /**
    * Run a CLI agent to completion and return its exit code (0 = success).
    */
   async run(options: CliRunOptions): Promise<number> {
@@ -306,7 +365,7 @@ export class CliAgentRunner {
     // Assemble final prompt: protocol + user prompt + template
     const finalPrompt = await assemblePrompt(userPrompt, options.mode, options.rule);
 
-    const adapter = await createAdapter(agentType);
+    const adapter = await createAdapter(agentType, options.backend);
 
     // Optional Dashboard bridge — connect silently, don't block startup
     const bridge = new DashboardBridge();
@@ -334,6 +393,7 @@ export class CliAgentRunner {
     const saveMeta = (exitCode: number) => {
       if (metaWritten) return;
       metaWritten = true;
+      const completedAt = new Date().toISOString();
       store.saveMeta(execId, {
         execId,
         tool: options.tool,
@@ -342,9 +402,31 @@ export class CliAgentRunner {
         prompt: options.prompt.substring(0, 500),
         workDir: options.workDir,
         startedAt: agentProcess.startedAt,
-        completedAt: new Date().toISOString(),
+        completedAt,
         exitCode,
       });
+
+      // Write delegate completion notification (for hook fallback)
+      const sessionId = options.sessionId;
+      if (sessionId) {
+        try {
+          const notifyPath = join(tmpdir(), `${NOTIFY_PREFIX}${sessionId}.jsonl`);
+          const entry = JSON.stringify({
+            execId,
+            tool: options.tool,
+            mode: options.mode,
+            prompt: options.prompt.substring(0, 200),
+            exitCode,
+            completedAt,
+          });
+          appendFileSync(notifyPath, entry + '\n', 'utf-8');
+
+          // Try MCP channel notification (primary path)
+          CliAgentRunner.sendChannelNotification(sessionId, execId, options.tool, options.mode, exitCode);
+        } catch {
+          // Non-critical — notification is best-effort
+        }
+      }
     };
 
     const processExitHandler = () => {

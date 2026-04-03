@@ -18,6 +18,9 @@ export const AUTO_COMPACT_BUFFER_PCT = 16.5;
 /** Bridge file prefix in os.tmpdir() */
 export const BRIDGE_PREFIX = 'maestro-ctx-';
 
+/** Delegate notification file prefix in os.tmpdir() */
+export const NOTIFY_PREFIX = 'maestro-notify-';
+
 /** Max ms to wait for stdin before exiting (Windows pipe safety) */
 export const STDIN_TIMEOUT_MS = 3000;
 

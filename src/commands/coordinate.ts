@@ -82,7 +82,7 @@ function createSpawnFn(): SpawnFn {
   };
 }
 
-function createWalker(workflowRoot: string, opts?: { parallel?: boolean }) {
+async function createWalker(workflowRoot: string, opts?: { parallel?: boolean; backend?: string }) {
   const { chainsRoot, templateDir, sessionDir } = resolvePaths(workflowRoot);
   const loader = new GraphLoader(chainsRoot);
   const evaluator = new DefaultExprEvaluator();
@@ -92,9 +92,19 @@ function createWalker(workflowRoot: string, opts?: { parallel?: boolean }) {
   const executor = new CliExecutor(spawnFn);
   const router = new IntentRouter(loader, chainsRoot);
 
+  // Detect terminal backend when --backend terminal is set
+  let terminalBackend: import('../agents/terminal-backend.js').TerminalBackend | undefined;
+  if (opts?.backend === 'terminal') {
+    const { detectBackend } = await import('../agents/terminal-backend.js');
+    terminalBackend = detectBackend() ?? undefined;
+    if (!terminalBackend) {
+      console.error('[coordinate] Warning: no terminal multiplexer detected (need TMUX or WEZTERM_PANE env), falling back to direct');
+    }
+  }
+
   // Inject parallel executor when --parallel flag is set
   const parallelExecutor = opts?.parallel
-    ? new DefaultParallelExecutor(new ParallelCliRunner(spawnFn))
+    ? new DefaultParallelExecutor(new ParallelCliRunner(spawnFn, terminalBackend))
     : undefined;
 
   const walker = new GraphWalker(
@@ -169,10 +179,11 @@ export function registerCoordinateCommand(program: Command): void {
     .option('--tool <tool>', 'Agent tool to use', 'claude')
     .option('-y, --yes', 'Auto mode — inject auto-confirm flags')
     .option('--parallel', 'Enable parallel execution for fork/join nodes')
-    .action(async (intentWords: string[], opts: { chain?: string; tool: string; yes?: boolean; parallel?: boolean }) => {
+    .option('--backend <type>', 'Adapter backend: direct (default) or terminal (tmux/wezterm)')
+    .action(async (intentWords: string[], opts: { chain?: string; tool: string; yes?: boolean; parallel?: boolean; backend?: string }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(workflowRoot, { parallel: opts.parallel });
+      const { walker, router } = await createWalker(workflowRoot, { parallel: opts.parallel, backend: opts.backend });
 
       try {
         const graphId = router.resolve(intent, opts.chain);
@@ -202,7 +213,7 @@ export function registerCoordinateCommand(program: Command): void {
     .description('Execute next step of a paused session')
     .action(async (sessionId: string | undefined) => {
       const workflowRoot = resolve(process.cwd());
-      const { walker } = createWalker(workflowRoot);
+      const { walker } = await createWalker(workflowRoot);
 
       try {
         const state = await walker.next(sessionId);
@@ -220,9 +231,9 @@ export function registerCoordinateCommand(program: Command): void {
   coord
     .command('status [sessionId]')
     .description('Show current session state')
-    .action((sessionId: string | undefined) => {
+    .action(async (sessionId: string | undefined) => {
       const workflowRoot = resolve(process.cwd());
-      const { walker } = createWalker(workflowRoot);
+      const { walker } = await createWalker(workflowRoot);
 
       try {
         const state = walker.getState(sessionId);
@@ -245,6 +256,7 @@ export function registerCoordinateCommand(program: Command): void {
     .option('--tool <tool>', 'Agent tool to use', 'claude')
     .option('--dry-run', 'Show graph traversal plan without executing')
     .option('--parallel', 'Enable parallel execution for fork/join nodes')
+    .option('--backend <type>', 'Adapter backend: direct (default) or terminal (tmux/wezterm)')
     .action(async (intentWords: string[], opts: {
       yes?: boolean;
       continue?: string | true;
@@ -252,10 +264,11 @@ export function registerCoordinateCommand(program: Command): void {
       tool: string;
       dryRun?: boolean;
       parallel?: boolean;
+      backend?: string;
     }) => {
       const intent = intentWords.join(' ');
       const workflowRoot = resolve(process.cwd());
-      const { walker, router } = createWalker(workflowRoot, { parallel: opts.parallel });
+      const { walker, router } = await createWalker(workflowRoot, { parallel: opts.parallel, backend: opts.backend });
 
       try {
         let state;
