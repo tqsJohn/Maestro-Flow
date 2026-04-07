@@ -234,7 +234,7 @@ maestro install
 ```bash
 git clone https://github.com/catlog22/Maestro-Flow.git
 cd Maestro-Flow
-npm install && npm run build
+npm install && npm run build && npm install -g .
 maestro install
 ```
 

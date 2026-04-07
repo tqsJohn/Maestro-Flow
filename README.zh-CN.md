@@ -220,12 +220,27 @@ Maestro-Flow 不挑一个 AI —— 它让它们一起干：
 
 ### 安装
 
+#### npm（推荐）
+
+```bash
+npm install -g maestro-flow
+
+# 安装 workflows、commands、agents、templates
+maestro install
+```
+
+#### 从源码编译
+
 ```bash
 git clone https://github.com/catlog22/Maestro-Flow.git
 cd Maestro-Flow
-npm install && npm run build
+npm install && npm run build && npm install -g .
+maestro install
+```
 
-# 启动仪表盘
+#### 启动仪表盘
+
+```bash
 cd dashboard && npm install && npm run dev
 # → http://127.0.0.1:3001
 ```
