@@ -39,6 +39,7 @@ Phase or task: $ARGUMENTS (optional)
 Context files resolved from target directory:
 - verification.json (must_haves, gaps from maestro-verify)
 - validation.json (coverage, requirement mapping)
+- review.json (findings from quality-review, if exists)
 - index.json (success_criteria, execution results)
 - plan.json (task overview)
 - .summaries/TASK-*.md (execution summaries)
@@ -47,6 +48,11 @@ Context files resolved from target directory:
 
 <execution>
 Follow '~/.maestro/workflows/test.md' completely.
+
+**Review findings integration (when review.json exists):**
+- Extract critical/high findings from review.json.findings_by_dimension as additional test scenarios
+- These review-derived scenarios are prioritized and marked `source: "review_finding"`
+- When review.json verdict is "BLOCK" and review-finding tests fail, auto-enter gap-fix loop without user confirmation (Step 12 auto-fix condition)
 
 **Next-step routing on completion:**
 - All tests pass → Skill({ skill: "maestro-phase-transition", args: "{phase}" })
