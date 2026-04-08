@@ -26,6 +26,7 @@ import { CodexCliAdapter } from './agents/codex-cli-adapter.js';
 import { CodexAppServerAdapter } from './agents/codex-app-server-adapter.js';
 import { OpenCodeAdapter } from './agents/opencode-adapter.js';
 import { AgentSdkAdapter } from './agents/agent-sdk-adapter.js';
+import { DelegateBrokerMonitor } from './agents/delegate-broker-monitor.js';
 import { ExecutionScheduler } from './execution/execution-scheduler.js';
 import { ExecutionJournal } from './execution/execution-journal.js';
 import { WaveExecutor } from './execution/wave-executor.js';
@@ -79,6 +80,8 @@ async function main(): Promise<void> {
   agentManager.registerAdapter(new CodexAppServerAdapter());
   agentManager.registerAdapter(new OpenCodeAdapter());
   agentManager.registerAdapter(new AgentSdkAdapter(workflowRoot));
+  const delegateBrokerMonitor = new DelegateBrokerMonitor({ agentManager, eventBus });
+  delegateBrokerMonitor.start();
 
   // ---------------------------------------------------------------------------
   // Execution Scheduler — orchestrates issue execution via agent processes
@@ -241,6 +244,7 @@ async function main(): Promise<void> {
     commanderAgent.stop();
     await executionScheduler.destroy();
     await agentManager.stopAll();
+    delegateBrokerMonitor.stop();
     wsManager.destroy();
     sseHub.destroy();
     await fsWatcher.stop();

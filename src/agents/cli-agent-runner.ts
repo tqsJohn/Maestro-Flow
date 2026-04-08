@@ -7,12 +7,14 @@
 import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { DashboardBridge } from './dashboard-bridge.js';
 import { CliHistoryStore, type EntryLike } from './cli-history-store.js';
 import { loadTemplate, loadProtocol } from '../config/template-discovery.js';
 import { NOTIFY_PREFIX } from '../hooks/constants.js';
+import { DelegateBrokerClient, type DelegateBrokerApi, type JsonObject } from '../async/index.js';
 
 // ---------------------------------------------------------------------------
 // Re-declare minimal types locally to avoid cross-rootDir imports from
@@ -73,6 +75,23 @@ interface AdapterLike {
   onEntry(processId: string, cb: (entry: NormalizedEntry) => void): () => void;
 }
 
+interface DashboardBridgeLike {
+  tryConnect(url: string, timeoutMs?: number): Promise<boolean>;
+  forwardSpawn(process: unknown): void;
+  forwardEntry(entry: unknown): void;
+  forwardStopped(processId: string): void;
+  close(): void;
+}
+
+export interface CliAgentRunnerDependencies {
+  brokerClient?: DelegateBrokerApi;
+  createAdapter?: (agentType: AgentType, backend?: 'direct' | 'terminal') => Promise<AdapterLike>;
+  createBridge?: () => DashboardBridgeLike;
+  spawnDetachedDelegate?: (options: CliRunOptions, execId: string, prompt: string) => boolean;
+  now?: () => string;
+  renderEntry?: (entry: NormalizedEntry) => void;
+}
+
 // ---------------------------------------------------------------------------
 // Public options
 // ---------------------------------------------------------------------------
@@ -127,7 +146,7 @@ const TOOL_PREFIX: Record<string, string> = {
   opencode: 'opc',
 };
 
-function generateExecId(tool: string): string {
+export function generateCliExecId(tool: string): string {
   const prefix = TOOL_PREFIX[tool] ?? 'run';
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
@@ -272,11 +291,157 @@ function renderEntry(entry: NormalizedEntry): void {
   }
 }
 
+function buildJobMetadata(options: CliRunOptions): JsonObject {
+  const metadata: JsonObject = {
+    tool: options.tool,
+    mode: options.mode,
+    workDir: options.workDir,
+    prompt: options.prompt.substring(0, 200),
+  };
+
+  if (options.model) {
+    metadata.model = options.model;
+  }
+  if (options.rule) {
+    metadata.rule = options.rule;
+  }
+  if (options.backend) {
+    metadata.backend = options.backend;
+  }
+  if (options.sessionId) {
+    metadata.sessionId = options.sessionId;
+  }
+  if (options.includeDirs && options.includeDirs.length > 0) {
+    metadata.includeDirs = options.includeDirs;
+  }
+
+  return metadata;
+}
+
+function mergeJsonObjects(base: JsonObject, patch?: JsonObject): JsonObject {
+  return patch ? { ...base, ...patch } : { ...base };
+}
+
+function spawnQueuedDelegateWorker(
+  options: CliRunOptions,
+  execId: string,
+  prompt: string,
+): boolean {
+  const entryScript = process.argv[1];
+  if (!entryScript) {
+    return false;
+  }
+
+  const args = [
+    entryScript,
+    'delegate',
+    prompt,
+    '--worker',
+    '--to',
+    options.tool,
+    '--mode',
+    options.mode,
+    '--cd',
+    options.workDir,
+    '--id',
+    execId,
+    '--backend',
+    options.backend ?? 'direct',
+    '--resume',
+    execId,
+  ];
+
+  if (options.model) {
+    args.push('--model', options.model);
+  }
+  if (options.rule) {
+    args.push('--rule', options.rule);
+  }
+  if (options.includeDirs && options.includeDirs.length > 0) {
+    args.push('--includeDirs', options.includeDirs.join(','));
+  }
+  if (options.sessionId) {
+    args.push('--session', options.sessionId);
+  }
+
+  const child = spawn(process.execPath, args, {
+    cwd: options.workDir,
+    detached: true,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      MAESTRO_DISABLE_DASHBOARD_BRIDGE: '1',
+    },
+  });
+  child.unref();
+  return true;
+}
+
+function isTerminalStatus(status: string | undefined): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function summarizeEntry(entry: NormalizedEntry): string {
+  switch (entry.type) {
+    case 'assistant_message':
+      return entry.content.replace(/\s+/g, ' ').trim().slice(0, 200) || 'Assistant response updated';
+    case 'tool_use':
+      return `Tool ${entry.name} ${entry.status}`;
+    case 'file_change':
+      return `File ${entry.action}: ${entry.path}`;
+    case 'command_exec':
+      return `Command: ${entry.command}`;
+    case 'error':
+      return entry.message;
+    case 'status_change':
+      return `Status changed to ${entry.status}`;
+    default:
+      return `Event: ${entry.type}`;
+  }
+}
+
+function shouldPublishSnapshot(entry: NormalizedEntry): boolean {
+  switch (entry.type) {
+    case 'assistant_message':
+      return entry.partial !== true;
+    case 'tool_use':
+      return entry.status === 'completed' || entry.status === 'failed';
+    case 'file_change':
+    case 'command_exec':
+    case 'error':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function createNoopBridge(): DashboardBridgeLike {
+  return {
+    async tryConnect() {
+      return false;
+    },
+    forwardSpawn() {
+      return;
+    },
+    forwardEntry() {
+      return;
+    },
+    forwardStopped() {
+      return;
+    },
+    close() {
+      return;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CliAgentRunner
 // ---------------------------------------------------------------------------
 
 export class CliAgentRunner {
+  constructor(private readonly dependencies: CliAgentRunnerDependencies = {}) {}
+
   /** Resolve dashboard WS URL from env → config → default port 3001 */
   private static getDashboardWsUrl(): string {
     const envPort = process.env.MAESTRO_DASHBOARD_PORT;
@@ -308,6 +473,7 @@ export class CliAgentRunner {
     execId: string,
     tool: string,
     mode: string,
+    status: 'completed' | 'failed' | 'cancelled',
     exitCode: number,
   ): void {
     try {
@@ -317,13 +483,25 @@ export class CliAgentRunner {
       const server = getMcpServer();
       if (!server) return;
 
-      const status = exitCode === 0 ? 'done' : `exit:${exitCode}`;
-      const content = `[DELEGATE COMPLETED] ${execId} (${tool}/${mode}) ${status}\nUse \`maestro delegate output ${execId}\` for full result.`;
+      const label = status === 'completed'
+        ? 'DELEGATE COMPLETED'
+        : status === 'cancelled'
+          ? 'DELEGATE CANCELLED'
+          : 'DELEGATE FAILED';
+      const result = status === 'completed'
+        ? 'done'
+        : status === 'cancelled'
+          ? 'cancelled'
+          : `exit:${exitCode}`;
+      const content = `[${label}] ${execId} (${tool}/${mode}) ${result}\nUse \`maestro delegate output ${execId}\` for full result.`;
 
       // Fire-and-forget notification via MCP protocol
       server.notification({
         method: 'notifications/claude/channel',
-        params: { content, meta: { exec_id: execId, tool, mode, exit_code: String(exitCode) } },
+        params: {
+          content,
+          meta: { exec_id: execId, tool, mode, exit_code: String(exitCode), status },
+        },
       }).catch(() => { /* best-effort */ });
     } catch {
       // MCP server module not available (CLI-only mode) — hook fallback handles it
@@ -341,11 +519,14 @@ export class CliAgentRunner {
     }
 
     // Generate or use provided execution ID
-    const execId = options.execId ?? generateExecId(options.tool);
+    const execId = options.execId ?? generateCliExecId(options.tool);
     process.stderr.write(`[MAESTRO_EXEC_ID=${execId}]\n`);
 
     // History store for persistence and resume
     const store = new CliHistoryStore();
+    const broker = this.dependencies.brokerClient ?? new DelegateBrokerClient();
+    const now = this.dependencies.now ?? (() => new Date().toISOString());
+    const jobMetadata = buildJobMetadata(options);
 
     // Handle --resume: prepend previous session context to user prompt
     let userPrompt = options.prompt;
@@ -365,11 +546,17 @@ export class CliAgentRunner {
     // Assemble final prompt: protocol + user prompt + template
     const finalPrompt = await assemblePrompt(userPrompt, options.mode, options.rule);
 
-    const adapter = await createAdapter(agentType, options.backend);
+    const adapterFactory = this.dependencies.createAdapter ?? createAdapter;
+    const adapter = await adapterFactory(agentType, options.backend);
 
     // Optional Dashboard bridge — connect silently, don't block startup
-    const bridge = new DashboardBridge();
-    const bridgeConnected = await bridge.tryConnect(CliAgentRunner.getDashboardWsUrl(), 1000);
+    const bridgeEnabled = process.env.MAESTRO_DISABLE_DASHBOARD_BRIDGE !== '1';
+    const bridge = bridgeEnabled
+      ? (this.dependencies.createBridge?.() ?? new DashboardBridge())
+      : createNoopBridge();
+    const bridgeConnected = bridgeEnabled
+      ? await bridge.tryConnect(CliAgentRunner.getDashboardWsUrl(), 1000)
+      : false;
     if (!bridgeConnected) {
       process.stderr.write('[Dashboard not connected — real-time view unavailable]\n');
     }
@@ -384,16 +571,67 @@ export class CliAgentRunner {
 
     const agentProcess = await adapter.spawn(config);
     bridge.forwardSpawn(agentProcess as unknown as Parameters<typeof bridge.forwardSpawn>[0]);
+    const agentJobMetadata = {
+      ...jobMetadata,
+      agentProcessId: agentProcess.id,
+    } as JsonObject;
+    store.saveMeta(execId, {
+      execId,
+      tool: options.tool,
+      model: options.model,
+      mode: options.mode,
+      prompt: options.prompt.substring(0, 500),
+      workDir: options.workDir,
+      startedAt: agentProcess.startedAt,
+    });
+
+    const publishEvent = (
+      type: string,
+      status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled',
+      summary: string,
+      extraPayload: JsonObject = {},
+      extraJobMetadata?: JsonObject,
+    ) => {
+      try {
+        const snapshot = store.buildSnapshot(execId);
+        broker.publishEvent({
+          jobId: execId,
+          type,
+          status,
+          snapshot: snapshot as unknown as JsonObject | undefined,
+          payload: {
+            execId,
+            summary,
+            ...extraPayload,
+          },
+          jobMetadata: mergeJsonObjects(agentJobMetadata, extraJobMetadata),
+        });
+      } catch {
+        // Broker publication is best-effort and must not break CLI execution
+      }
+    };
+
+    publishEvent('status_update', 'running', `Delegate started for ${options.tool}/${options.mode}`);
 
     // Safety net: if the process exits without a stopped event (e.g. Windows
     // shell process tree doesn't fire exit/close reliably), write meta.json
     // from the synchronous process.on('exit') handler as a last resort.
     let metaWritten = false;
+    let cancellationRequested = Boolean(broker.getJob(execId)?.metadata?.cancelRequestedAt);
+    let cancellationInitiated = false;
+    let cancellationPoller: NodeJS.Timeout | null = null;
 
-    const saveMeta = (exitCode: number) => {
+    const clearCancellationPoller = () => {
+      if (cancellationPoller) {
+        clearInterval(cancellationPoller);
+        cancellationPoller = null;
+      }
+    };
+
+    const saveMeta = (status: 'completed' | 'failed' | 'cancelled', exitCode: number) => {
       if (metaWritten) return;
       metaWritten = true;
-      const completedAt = new Date().toISOString();
+      const completedAt = now();
       store.saveMeta(execId, {
         execId,
         tool: options.tool,
@@ -404,7 +642,23 @@ export class CliAgentRunner {
         startedAt: agentProcess.startedAt,
         completedAt,
         exitCode,
+        ...(status === 'cancelled' ? { cancelledAt: completedAt } : {}),
       });
+
+      publishEvent(
+        status,
+        status,
+        status === 'completed'
+          ? `Delegate completed: ${execId}`
+          : status === 'cancelled'
+            ? `Delegate cancelled: ${execId}`
+            : `Delegate failed: ${execId}`,
+        {
+          exitCode,
+          completedAt,
+          status,
+        },
+      );
 
       // Write delegate completion notification (for hook fallback)
       const sessionId = options.sessionId;
@@ -418,11 +672,12 @@ export class CliAgentRunner {
             prompt: options.prompt.substring(0, 200),
             exitCode,
             completedAt,
+            status,
           });
           appendFileSync(notifyPath, entry + '\n', 'utf-8');
 
           // Try MCP channel notification (primary path)
-          CliAgentRunner.sendChannelNotification(sessionId, execId, options.tool, options.mode, exitCode);
+          CliAgentRunner.sendChannelNotification(sessionId, execId, options.tool, options.mode, status, exitCode);
         } catch {
           // Non-critical — notification is best-effort
         }
@@ -430,36 +685,138 @@ export class CliAgentRunner {
     };
 
     const processExitHandler = () => {
-      saveMeta(0);
+      saveMeta(cancellationRequested ? 'cancelled' : 'completed', cancellationRequested ? 130 : 0);
     };
     process.on('exit', processExitHandler);
+
+    const requestCancellation = async (): Promise<void> => {
+      cancellationRequested = true;
+      if (cancellationInitiated) {
+        return;
+      }
+      cancellationInitiated = true;
+      publishEvent('status_update', 'running', `Cancellation requested for ${execId}`, {
+        cancelRequested: true,
+      });
+      try {
+        await adapter.stop(agentProcess.id);
+      } catch {
+        // Adapter stop failures are surfaced by subsequent process status events.
+      }
+    };
+
+    const dispatchQueuedFollowup = (finalStatus: 'completed' | 'failed' | 'cancelled'): void => {
+      let queuedMessage: ReturnType<typeof broker.listMessages>[number] | undefined;
+      try {
+        queuedMessage = broker.listMessages(execId).find((message) => (
+          message.status === 'queued'
+          && (
+            (message.delivery === 'interrupt_resume' && finalStatus === 'cancelled')
+            || (message.delivery === 'after_complete' && finalStatus === 'completed')
+          )
+        ));
+      } catch {
+        return;
+      }
+
+      if (!queuedMessage) {
+        return;
+      }
+
+      const dispatchedAt = now();
+      let launched = false;
+      try {
+        launched = (this.dependencies.spawnDetachedDelegate ?? spawnQueuedDelegateWorker)(
+          options,
+          execId,
+          queuedMessage.message,
+        );
+      } catch {
+        launched = false;
+      }
+      if (!launched) {
+        broker.updateMessage({
+          jobId: execId,
+          messageId: queuedMessage.messageId,
+          status: 'dropped',
+          dispatchReason: 'missing-entry-script',
+          now: dispatchedAt,
+        });
+        return;
+      }
+
+      broker.updateMessage({
+        jobId: execId,
+        messageId: queuedMessage.messageId,
+        status: 'dispatched',
+        dispatchReason: finalStatus,
+        now: dispatchedAt,
+      });
+
+      publishEvent('status_update', finalStatus, `Queued follow-up dispatched via ${queuedMessage.delivery}`, {
+        delivery: queuedMessage.delivery,
+        messageId: queuedMessage.messageId,
+      }, {
+        cancelRequestedAt: null,
+        cancelRequestedBy: null,
+        cancelReason: null,
+      });
+    };
+
+    if (!isTerminalStatus(broker.getJob(execId)?.status)) {
+      cancellationPoller = setInterval(() => {
+        try {
+          const job = broker.getJob(execId);
+          if (job?.metadata?.cancelRequestedAt && !cancellationInitiated) {
+            void requestCancellation();
+          }
+        } catch {
+          // Best-effort polling only.
+        }
+      }, 750);
+    }
+    if (cancellationRequested) {
+      void requestCancellation();
+    }
 
     return new Promise<number>((resolvePromise) => {
       const unsubscribe = adapter.onEntry(agentProcess.id, (entry) => {
         // Persist entry to JSONL history before rendering
         store.appendEntry(execId, entry as unknown as EntryLike);
 
-        renderEntry(entry);
+        (this.dependencies.renderEntry ?? renderEntry)(entry);
         bridge.forwardEntry(entry as unknown as Parameters<typeof bridge.forwardEntry>[0]);
+
+        if (shouldPublishSnapshot(entry)) {
+          publishEvent('snapshot', 'running', summarizeEntry(entry), {
+            entryType: entry.type,
+          });
+        }
 
         // Resolve when the agent process stops
         if (entry.type === 'status_change' && entry.status === 'stopped') {
-          saveMeta(0);
+          clearCancellationPoller();
+          const finalStatus = cancellationRequested ? 'cancelled' : 'completed';
+          saveMeta(finalStatus, cancellationRequested ? 130 : 0);
+          dispatchQueuedFollowup(finalStatus);
           process.removeListener('exit', processExitHandler);
           bridge.forwardStopped(agentProcess.id);
           bridge.close();
           unsubscribe();
-          resolvePromise(0);
+          resolvePromise(cancellationRequested ? 130 : 0);
         }
 
         // Resolve with error code on error status
         if (entry.type === 'status_change' && entry.status === 'error') {
-          saveMeta(1);
+          clearCancellationPoller();
+          const finalStatus = cancellationRequested ? 'cancelled' : 'failed';
+          saveMeta(finalStatus, cancellationRequested ? 130 : 1);
+          dispatchQueuedFollowup(finalStatus);
           process.removeListener('exit', processExitHandler);
           bridge.forwardStopped(agentProcess.id);
           bridge.close();
           unsubscribe();
-          resolvePromise(1);
+          resolvePromise(cancellationRequested ? 130 : 1);
         }
       });
     });

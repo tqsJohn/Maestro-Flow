@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { CLI_HISTORY_DIR_NAME } from '../../shared/constants.js';
+import { DelegateBrokerClient } from '../../../../src/async/index.js';
 
 interface ExecutionMeta {
   execId: string;
@@ -19,7 +20,11 @@ interface ExecutionMeta {
   workDir: string;
   startedAt: string;
   completedAt?: string;
+  cancelledAt?: string;
   exitCode?: number;
+  asyncDelegate?: boolean;
+  delegateStatus?: string | null;
+  cancelRequestedAt?: string | null;
 }
 
 function getCliHistoryDir(): string {
@@ -35,6 +40,7 @@ function getCliHistoryDir(): string {
  */
 export function createCliHistoryRoutes(): Hono {
   const app = new Hono();
+  const broker = new DelegateBrokerClient();
 
   // GET /api/cli-history
   app.get('/api/cli-history', (c) => {
@@ -56,7 +62,19 @@ export function createCliHistoryRoutes(): Hono {
       for (const f of files) {
         try {
           const raw = readFileSync(join(dir, f.name), 'utf-8');
-          results.push(JSON.parse(raw) as ExecutionMeta);
+          const meta = JSON.parse(raw) as ExecutionMeta;
+          const job = broker.getJob(meta.execId);
+          const cancelRequestedAt = job?.metadata && typeof job.metadata.cancelRequestedAt === 'string'
+            ? job.metadata.cancelRequestedAt
+            : null;
+          results.push({
+            ...meta,
+            asyncDelegate: Boolean(job),
+            delegateStatus: cancelRequestedAt && (job?.status === 'queued' || job?.status === 'running')
+              ? 'cancelling'
+              : job?.status ?? null,
+            cancelRequestedAt,
+          });
         } catch {
           // skip corrupt meta files
         }

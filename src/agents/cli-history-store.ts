@@ -32,7 +32,22 @@ export interface ExecutionMeta {
   workDir: string;
   startedAt: string;
   completedAt?: string;
+  cancelledAt?: string;
   exitCode?: number;
+}
+
+export interface ExecutionSnapshot {
+  execId: string;
+  tool: string;
+  mode: string;
+  workDir: string;
+  prompt: string;
+  startedAt: string;
+  completedAt: string | null;
+  exitCode: number | null;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  outputPreview: string;
+  outputChars: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +68,7 @@ const RESUME_CONTEXT_WARN_CHARS = 32_000;
 
 /** Max chars per tool_use result or command_exec output in resume context. */
 const RESUME_ENTRY_MAX_CHARS = 4_096;
+const SNAPSHOT_OUTPUT_PREVIEW_CHARS = 240;
 
 // ---------------------------------------------------------------------------
 // CliHistoryStore
@@ -229,6 +245,38 @@ export class CliHistoryStore {
       }
     }
     return parts.join('');
+  }
+
+  /** Build a compact snapshot for async broker updates from persisted history. */
+  buildSnapshot(execId: string): ExecutionSnapshot | null {
+    const meta = this.loadMeta(execId);
+    if (!meta) {
+      return null;
+    }
+
+    const output = this.getOutput(execId);
+    const normalizedOutput = output.replace(/\s+/g, ' ').trim();
+    const status = meta.cancelledAt
+      ? 'cancelled'
+      : meta.exitCode === undefined && !meta.completedAt
+        ? 'running'
+        : meta.exitCode === 0
+          ? 'completed'
+          : 'failed';
+
+    return {
+      execId: meta.execId,
+      tool: meta.tool,
+      mode: meta.mode,
+      workDir: meta.workDir,
+      prompt: meta.prompt,
+      startedAt: meta.startedAt,
+      completedAt: meta.completedAt ?? null,
+      exitCode: meta.exitCode ?? null,
+      status,
+      outputPreview: truncate(normalizedOutput, SNAPSHOT_OUTPUT_PREVIEW_CHARS),
+      outputChars: output.length,
+    };
   }
 }
 

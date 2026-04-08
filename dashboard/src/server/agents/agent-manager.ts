@@ -235,8 +235,11 @@ export class AgentManager {
 
   /** Register a CLI-bridged process (forwarded via DashboardBridge WS) */
   registerCliProcess(process: AgentProcess): void {
-    this.cliProcesses.set(process.id, process);
-    this.entryHistory.set(process.id, []);
+    const existing = this.cliProcesses.get(process.id);
+    this.cliProcesses.set(process.id, existing ? { ...existing, ...process } : process);
+    if (!this.entryHistory.has(process.id)) {
+      this.entryHistory.set(process.id, []);
+    }
   }
 
   /** Buffer an entry for a CLI-bridged process */
@@ -251,18 +254,24 @@ export class AgentManager {
   }
 
   /** Update status of a CLI-bridged process and schedule delayed cleanup */
-  updateCliProcessStatus(processId: string, status: 'stopped' | 'error'): void {
+  updateCliProcessStatus(processId: string, status: AgentProcess['status']): void {
     const proc = this.cliProcesses.get(processId);
     if (proc) {
       proc.status = status;
-      // Delay cleanup so frontends can still load entries after reconnect
       const existing = this.cliCleanupTimers.get(processId);
-      if (existing) clearTimeout(existing);
-      this.cliCleanupTimers.set(processId, setTimeout(() => {
-        this.entryHistory.delete(processId);
-        this.cliProcesses.delete(processId);
+      if (existing) {
+        clearTimeout(existing);
         this.cliCleanupTimers.delete(processId);
-      }, this.CLI_CLEANUP_DELAY_MS));
+      }
+
+      if (status === 'stopped' || status === 'error') {
+        // Delay cleanup so frontends can still load entries after reconnect
+        this.cliCleanupTimers.set(processId, setTimeout(() => {
+          this.entryHistory.delete(processId);
+          this.cliProcesses.delete(processId);
+          this.cliCleanupTimers.delete(processId);
+        }, this.CLI_CLEANUP_DELAY_MS));
+      }
     }
   }
 

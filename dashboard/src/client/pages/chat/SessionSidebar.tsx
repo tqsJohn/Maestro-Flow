@@ -14,8 +14,14 @@ interface CliHistoryMeta {
   workDir: string;
   startedAt: string;
   completedAt?: string;
+  cancelledAt?: string;
   exitCode?: number;
+  asyncDelegate?: boolean;
+  delegateStatus?: string | null;
+  cancelRequestedAt?: string | null;
 }
+
+type HistoryFilter = 'all' | 'async' | 'other';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,27 +45,74 @@ function formatDate(iso: string): string {
   }
 }
 
+function isAsyncDelegateMeta(meta: CliHistoryMeta): boolean {
+  return meta.asyncDelegate === true;
+}
+
+function statusBadge(meta: CliHistoryMeta): { label: string; bg: string; fg: string } | null {
+  if (meta.delegateStatus === 'cancelling') {
+    return {
+      label: 'Cancelling',
+      bg: 'var(--color-tint-planning)',
+      fg: 'var(--color-accent-orange)',
+    };
+  }
+  if (meta.cancelledAt || meta.delegateStatus === 'cancelled') {
+    return {
+      label: 'Cancelled',
+      bg: 'var(--color-bg-hover)',
+      fg: 'var(--color-text-secondary)',
+    };
+  }
+  if (meta.exitCode !== undefined) {
+    return {
+      label: meta.exitCode === 0 ? 'OK' : `Exit ${meta.exitCode}`,
+      bg: meta.exitCode === 0 ? 'var(--color-tint-exploring)' : 'var(--color-tint-blocked)',
+      fg: meta.exitCode === 0 ? 'var(--color-accent-green)' : 'var(--color-accent-red)',
+    };
+  }
+  if (meta.delegateStatus) {
+    return {
+      label: meta.delegateStatus,
+      bg: 'var(--color-tint-exploring)',
+      fg: 'var(--color-accent-blue)',
+    };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // HistoryPanel — right-side sliding panel with rich history cards
 // ---------------------------------------------------------------------------
 
 export function HistoryPanel({ open }: { open: boolean }) {
   const [history, setHistory] = useState<CliHistoryMeta[]>([]);
+  const [filter, setFilter] = useState<HistoryFilter>('async');
   const processes = useAgentStore((s) => s.processes);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
     fetch('/api/cli-history?limit=20')
       .then((r) => (r.ok ? r.json() : []))
       .then((data: CliHistoryMeta[]) => setHistory(data))
       .catch(() => {});
-  }, []);
+  }, [open]);
 
   // Filter out items already loaded as active processes
   const activeIds = useMemo(() => new Set(Object.keys(processes)), [processes]);
-  const filteredHistory = useMemo(
-    () => history.filter((m) => !activeIds.has(m.execId) && !activeIds.has(`cli-history-${m.execId}`)),
-    [history, activeIds],
-  );
+  const visibleHistory = useMemo(() => {
+    const base = history.filter((m) => !activeIds.has(m.execId) && !activeIds.has(`cli-history-${m.execId}`));
+    switch (filter) {
+      case 'async':
+        return base.filter(isAsyncDelegateMeta);
+      case 'other':
+        return base.filter((meta) => !isAsyncDelegateMeta(meta));
+      default:
+        return base;
+    }
+  }, [history, activeIds, filter]);
 
   return (
     <div
@@ -86,14 +139,35 @@ export function HistoryPanel({ open }: { open: boolean }) {
         </span>
       </div>
 
+      <div className="flex gap-1 px-2 py-2 border-b shrink-0" style={{ borderColor: 'var(--color-border-divider)' }}>
+        {([
+          ['async', 'Async'],
+          ['all', 'All'],
+          ['other', 'Other CLI'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setFilter(value)}
+            className="px-2 py-1 rounded-md text-[11px] border-none cursor-pointer transition-colors duration-150"
+            style={{
+              backgroundColor: filter === value ? 'var(--color-bg-active)' : 'transparent',
+              color: filter === value ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Cards */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredHistory.length === 0 ? (
+        {visibleHistory.length === 0 ? (
           <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
             No history entries
           </div>
         ) : (
-          filteredHistory.map((meta) => (
+          visibleHistory.map((meta) => (
             <HistoryCard
               key={meta.execId}
               meta={meta}
@@ -128,7 +202,13 @@ function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (exec
     const syntheticProcess: AgentProcess = {
       id: processId,
       type: agentType,
-      status: 'stopped',
+      status: meta.delegateStatus === 'cancelling'
+        ? 'stopping'
+        : meta.delegateStatus === 'queued'
+          ? 'spawning'
+          : meta.delegateStatus === 'running'
+            ? 'running'
+            : 'stopped',
       config: {
         type: agentType,
         prompt: meta.prompt,
@@ -193,15 +273,16 @@ function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (exec
     onRemove(meta.execId);
   };
 
-  const exitBadge = meta.exitCode !== undefined ? (
+  const exit = statusBadge(meta);
+  const exitBadge = exit ? (
     <span
       className="text-[10px] font-medium px-[5px] py-[1px] rounded"
       style={{
-        backgroundColor: meta.exitCode === 0 ? 'var(--color-tint-exploring)' : 'var(--color-tint-blocked)',
-        color: meta.exitCode === 0 ? 'var(--color-accent-green)' : 'var(--color-accent-red)',
+        backgroundColor: exit.bg,
+        color: exit.fg,
       }}
     >
-      {meta.exitCode === 0 ? 'OK' : `Exit ${meta.exitCode}`}
+      {exit.label}
     </span>
   ) : null;
 
@@ -225,6 +306,17 @@ function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (exec
           <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
             {label}
           </span>
+          {meta.asyncDelegate && (
+            <span
+              className="text-[9px] font-semibold px-[4px] py-[1px] rounded"
+              style={{
+                backgroundColor: 'var(--color-tint-exploring)',
+                color: 'var(--color-accent-blue)',
+              }}
+            >
+              ASYNC
+            </span>
+          )}
           {exitBadge}
         </div>
 

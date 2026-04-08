@@ -368,11 +368,12 @@ function SessionDot({
 }) {
   const color = AGENT_DOT_COLORS[process.type] ?? 'var(--color-text-tertiary)';
   const isRunning = process.status === 'running' || process.status === 'spawning';
+  const asyncDelegate = process.id.startsWith('cli-history-');
 
   return (
     <span
       role="listitem"
-      title={`${process.type} — ${process.status}`}
+      title={`${process.type}${asyncDelegate ? ' — async delegate' : ''} — ${process.status}`}
       onClick={onSelect}
       className={[
         'relative w-2 h-2 rounded-full cursor-pointer transition-transform duration-150 hover:scale-[1.4]',
@@ -434,6 +435,7 @@ function SessionItem({
   const setActive = useAgentStore((s) => s.setActiveProcessId);
   const navigate = useNavigate();
   const elapsed = getElapsed(process.startedAt);
+  const asyncDelegate = process.id.startsWith('cli-history-');
 
   return (
     <button
@@ -454,6 +456,17 @@ function SessionItem({
       <span className="flex-1 font-medium text-text-primary truncate">
         {process.type}
       </span>
+      {asyncDelegate && (
+        <span
+          className="text-[9px] font-semibold px-[4px] py-[1px] rounded shrink-0"
+          style={{
+            backgroundColor: 'var(--color-tint-exploring)',
+            color: 'var(--color-accent-blue)',
+          }}
+        >
+          ASYNC
+        </span>
+      )}
       <span className="text-[10px] text-text-placeholder shrink-0">
         {elapsed}
       </span>

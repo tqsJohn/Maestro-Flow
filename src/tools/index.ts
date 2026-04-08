@@ -1,8 +1,10 @@
 import type { ToolRegistry } from '../core/tool-registry.js';
-import type { Tool, ToolResult } from '../types/index.js';
+import type { ToolResult } from '../types/index.js';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { CliHistoryStore, type EntryLike, type ExecutionMeta } from '../agents/cli-history-store.js';
+import { DelegateBrokerClient } from '../async/index.js';
 import { loadSpecs, type SpecCategory } from './spec-loader.js';
 import { initSpecSystem } from './spec-init.js';
 import {
@@ -22,6 +24,127 @@ import * as readFileTool from './read-file.js';
 import * as readManyFilesTool from './read-many-files.js';
 import * as teamMsgTool from './team-msg.js';
 import * as coreMemoryTool from './core-memory.js';
+
+function jsonResult(payload: unknown, isError = false): ToolResult {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+    ...(isError ? { isError: true } : {}),
+  };
+}
+
+function deriveExecutionStatus(meta: ExecutionMeta | null): string {
+  if (!meta) {
+    return 'unknown';
+  }
+
+  if (meta.cancelledAt) {
+    return 'cancelled';
+  }
+
+  if (meta.exitCode === undefined && !meta.completedAt) {
+    return 'running';
+  }
+
+  if (meta.exitCode === 0) {
+    return 'completed';
+  }
+
+  return meta.exitCode === undefined ? 'unknown' : `exit:${meta.exitCode}`;
+}
+
+function deriveDelegateStatus(
+  meta: ExecutionMeta | null,
+  job: { status: string; metadata?: Record<string, unknown> | null } | null,
+): string {
+  if (
+    (job?.status === 'running' || job?.status === 'queued')
+    && job.metadata
+    && typeof job.metadata.cancelRequestedAt === 'string'
+  ) {
+    return 'cancelling';
+  }
+  return job?.status ?? deriveExecutionStatus(meta);
+}
+
+function readExecutionEntries(store: CliHistoryStore, execId: string): EntryLike[] {
+  try {
+    const raw = readFileSync(store.jsonlPathFor(execId), 'utf-8');
+    return raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as EntryLike;
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is EntryLike => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+function summarizeHistoryEntry(entry: EntryLike): Record<string, unknown> {
+  return {
+    type: entry.type,
+    status: entry.status ?? null,
+    name: entry.name ?? null,
+    content: entry.type === 'assistant_message'
+      ? String(entry.content ?? '').slice(0, 160)
+      : null,
+    message: entry.type === 'error'
+      ? String(entry.message ?? '')
+      : null,
+  };
+}
+
+function summarizeBrokerEvent(event: {
+  eventId: number;
+  sequence: number;
+  type: string;
+  createdAt: string;
+  status?: string;
+  snapshot?: unknown;
+  payload: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    eventId: event.eventId,
+    sequence: event.sequence,
+    type: event.type,
+    createdAt: event.createdAt,
+    status: event.status ?? null,
+    summary: typeof event.payload.summary === 'string'
+      ? event.payload.summary
+      : typeof event.payload.message === 'string'
+        ? event.payload.message
+        : null,
+    snapshot: event.snapshot ?? null,
+  };
+}
+
+function summarizeQueuedMessage(message: {
+  messageId: string;
+  createdAt: string;
+  delivery: string;
+  message: string;
+  status: string;
+  requestedBy?: string;
+  dispatchedAt?: string;
+  dispatchReason?: string;
+}): Record<string, unknown> {
+  return {
+    messageId: message.messageId,
+    createdAt: message.createdAt,
+    delivery: message.delivery,
+    status: message.status,
+    requestedBy: message.requestedBy ?? null,
+    dispatchedAt: message.dispatchedAt ?? null,
+    dispatchReason: message.dispatchReason ?? null,
+    preview: message.message.slice(0, 160),
+  };
+}
 
 /**
  * Register a CCW-style tool (with schema + handler exports) into the maestro registry.
@@ -50,6 +173,9 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
   registerCcwTool(registry, readManyFilesTool);
   registerCcwTool(registry, teamMsgTool);
   registerCcwTool(registry, coreMemoryTool);
+
+  const historyStore = new CliHistoryStore();
+  const delegateBroker = new DelegateBrokerClient();
 
   // --- Maestro-native tools (inline) ---
 
@@ -147,6 +273,327 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
       ].join('\n');
 
       return { content: [{ type: 'text', text }] };
+    },
+  });
+
+  registry.register({
+    name: 'delegate_message',
+    description: 'Queue a follow-up message for a running async delegate using interrupt_resume or after_complete delivery.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+        message: { type: 'string', description: 'Follow-up user message to queue' },
+        delivery: {
+          type: 'string',
+          enum: ['interrupt_resume', 'after_complete'],
+          description: 'interrupt_resume cancels current execution then resumes; after_complete waits for successful completion.',
+        },
+      },
+      required: ['execId', 'message', 'delivery'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      const message = String(input.message ?? '').trim();
+      const delivery = String(input.delivery ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+      if (!message) {
+        return jsonResult({ error: 'message is required' }, true);
+      }
+      if (delivery !== 'interrupt_resume' && delivery !== 'after_complete') {
+        return jsonResult({ error: 'delivery must be interrupt_resume or after_complete' }, true);
+      }
+
+      const meta = historyStore.loadMeta(execId);
+      const job = delegateBroker.getJob(execId);
+      if (!meta && !job) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+      if (!job) {
+        return jsonResult({ error: `Delegate broker state unavailable for active execution: ${execId}` }, true);
+      }
+
+      const currentStatus = deriveDelegateStatus(meta, job);
+      if (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled') {
+        return jsonResult({
+          error: `delegate_message requires an active async delegate. Current status: ${currentStatus}`,
+        }, true);
+      }
+
+      const queued = delegateBroker.queueMessage({
+        jobId: execId,
+        message,
+        delivery: delivery as 'interrupt_resume' | 'after_complete',
+        requestedBy: 'mcp:delegate_message',
+      });
+
+      if (delivery === 'interrupt_resume') {
+        delegateBroker.requestCancel({
+          jobId: execId,
+          requestedBy: 'mcp:delegate_message',
+          reason: 'interrupt_resume follow-up queued',
+        });
+      }
+
+      return jsonResult({
+        execId,
+        accepted: true,
+        delivery,
+        status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
+        queuedMessage: summarizeQueuedMessage(queued),
+        queueDepth: delegateBroker.listMessages(execId).filter((item) => item.status === 'queued').length,
+        tools: {
+          status: 'delegate_status',
+          tail: 'delegate_tail',
+          messages: 'delegate_messages',
+          cancel: 'delegate_cancel',
+        },
+      });
+    },
+  });
+
+  registry.register({
+    name: 'delegate_messages',
+    description: 'Inspect queued and dispatched follow-up messages for an async delegate execution.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+      },
+      required: ['execId'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+
+      const meta = historyStore.loadMeta(execId);
+      const job = delegateBroker.getJob(execId);
+      if (!meta && !job) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+
+      const messages = delegateBroker.listMessages(execId).map(summarizeQueuedMessage);
+      return jsonResult({
+        execId,
+        status: deriveDelegateStatus(meta, job),
+        messages,
+      });
+    },
+  });
+
+  registry.register({
+    name: 'delegate_status',
+    description: 'Inspect async delegate job status using broker snapshots plus CLI history metadata.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+        eventLimit: { type: 'number', description: 'How many recent broker events to include', default: 5 },
+      },
+      required: ['execId'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+
+      const meta = historyStore.loadMeta(execId);
+      const job = delegateBroker.getJob(execId);
+
+      if (!meta && !job) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+
+      const eventLimit = typeof input.eventLimit === 'number' ? Math.max(1, Math.floor(input.eventLimit)) : 5;
+      const recentEvents = delegateBroker
+        .listJobEvents(execId)
+        .slice(-eventLimit)
+        .map(summarizeBrokerEvent);
+
+      return jsonResult({
+        execId,
+        status: deriveDelegateStatus(meta, job),
+        meta: meta
+          ? {
+              tool: meta.tool,
+              model: meta.model ?? null,
+              mode: meta.mode,
+              workDir: meta.workDir,
+              startedAt: meta.startedAt,
+              completedAt: meta.completedAt ?? null,
+              exitCode: meta.exitCode ?? null,
+            }
+          : null,
+        job: job
+          ? {
+              status: job.status,
+              createdAt: job.createdAt,
+              updatedAt: job.updatedAt,
+              lastEventType: job.lastEventType,
+              lastEventId: job.lastEventId,
+              latestSnapshot: job.latestSnapshot,
+              metadata: job.metadata ?? null,
+            }
+          : null,
+        queuedMessages: delegateBroker.listMessages(execId).map(summarizeQueuedMessage),
+        recentEvents,
+        tools: {
+          message: 'delegate_message',
+          messages: 'delegate_messages',
+          output: 'delegate_output',
+          tail: 'delegate_tail',
+          cancel: 'delegate_cancel',
+        },
+      });
+    },
+  });
+
+  registry.register({
+    name: 'delegate_output',
+    description: 'Get the persisted assistant output for an async delegate execution.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+      },
+      required: ['execId'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+
+      const meta = historyStore.loadMeta(execId);
+      if (!meta) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+
+      const output = historyStore.getOutput(execId);
+      if (!output) {
+        return jsonResult({ error: `No output available for: ${execId}` }, true);
+      }
+
+      return jsonResult({
+        execId,
+        status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
+        meta: {
+          tool: meta.tool,
+          model: meta.model ?? null,
+          mode: meta.mode,
+          startedAt: meta.startedAt,
+          completedAt: meta.completedAt ?? null,
+          exitCode: meta.exitCode ?? null,
+        },
+        output,
+      });
+    },
+  });
+
+  registry.register({
+    name: 'delegate_tail',
+    description: 'Get recent broker events for an async delegate execution.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+        limit: { type: 'number', description: 'Maximum number of events to include', default: 10 },
+      },
+      required: ['execId'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+
+      const limit = typeof input.limit === 'number' ? Math.max(1, Math.floor(input.limit)) : 10;
+      const meta = historyStore.loadMeta(execId);
+      const events = delegateBroker.listJobEvents(execId);
+
+      if (!meta && events.length === 0) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+
+      const entries = readExecutionEntries(historyStore, execId).slice(-limit).map(summarizeHistoryEntry);
+
+      return jsonResult({
+        execId,
+        status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
+        events: events.slice(-limit).map(summarizeBrokerEvent),
+        historyTail: entries,
+        queuedMessages: delegateBroker.listMessages(execId).map(summarizeQueuedMessage),
+      });
+    },
+  });
+
+  registry.register({
+    name: 'delegate_cancel',
+    description: 'Request cancellation for an async delegate execution and return the resulting broker state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        execId: { type: 'string', description: 'Delegate execution/job ID' },
+      },
+      required: ['execId'],
+    },
+    async handler(input) {
+      const execId = String(input.execId ?? '').trim();
+      if (!execId) {
+        return jsonResult({ error: 'execId is required' }, true);
+      }
+
+      const meta = historyStore.loadMeta(execId);
+      const job = delegateBroker.getJob(execId);
+
+      if (!meta && !job) {
+        return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
+      }
+
+      const currentStatus = deriveDelegateStatus(meta, job);
+      if (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled') {
+        return jsonResult({
+          execId,
+          supported: true,
+          cancelled: currentStatus === 'cancelled',
+          status: currentStatus,
+          message: `Delegate job is already ${currentStatus}.`,
+          tools: {
+            status: 'delegate_status',
+            tail: 'delegate_tail',
+            output: 'delegate_output',
+          },
+        });
+      }
+
+      const updatedJob = delegateBroker.requestCancel({
+        jobId: execId,
+        requestedBy: 'mcp:delegate_cancel',
+      });
+
+      return jsonResult({
+        execId,
+        supported: true,
+        cancelled: false,
+        status: deriveDelegateStatus(meta, updatedJob),
+        message: 'Cancellation requested. Use delegate_status or delegate_tail to follow shutdown progress.',
+        job: {
+          status: updatedJob.status,
+          updatedAt: updatedJob.updatedAt,
+          lastEventType: updatedJob.lastEventType,
+          metadata: updatedJob.metadata ?? null,
+        },
+        tools: {
+          status: 'delegate_status',
+          tail: 'delegate_tail',
+          output: 'delegate_output',
+        },
+      });
     },
   });
 

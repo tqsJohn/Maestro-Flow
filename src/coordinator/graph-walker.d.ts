@@ -1,5 +1,6 @@
 import type { ChainGraph, WalkerState, CommandExecutor, PromptAssembler, ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
+import type { ParallelCommandExecutor } from './parallel-executor.js';
 export interface StartOptions {
     tool: string;
     autoMode: boolean;
@@ -17,8 +18,9 @@ export declare class GraphWalker {
     private readonly evaluator;
     private readonly emitter?;
     private readonly sessionDir?;
+    private readonly parallelExecutor?;
     private activeState;
-    constructor(loader: GraphLoader, assembler: PromptAssembler, executor: CommandExecutor, analyzer: StepAnalyzer | null, outputParser: OutputParser, evaluator: ExprEvaluator, emitter?: WalkerEventEmitter | undefined, sessionDir?: string | undefined);
+    constructor(loader: GraphLoader, assembler: PromptAssembler, executor: CommandExecutor, analyzer: StepAnalyzer | null, outputParser: OutputParser, evaluator: ExprEvaluator, emitter?: WalkerEventEmitter | undefined, sessionDir?: string | undefined, parallelExecutor?: ParallelCommandExecutor | undefined);
     start(graphId: string, intent: string, options: StartOptions): Promise<WalkerState>;
     resume(sessionId?: string): Promise<WalkerState>;
     /** Load session state without executing — for status queries. */

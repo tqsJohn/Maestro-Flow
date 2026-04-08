@@ -43,6 +43,10 @@ const STATUS_LABELS: Record<string, string> = {
   error: 'Error',
 };
 
+function isAsyncDelegateProcess(process: AgentProcess): boolean {
+  return process.id.startsWith('cli-history-');
+}
+
 // ---------------------------------------------------------------------------
 // WelcomeView
 // ---------------------------------------------------------------------------
@@ -190,8 +194,9 @@ function TabButton({
 }) {
   const dotColor = AGENT_DOT_COLORS[process.type] ?? 'var(--color-text-tertiary)';
   const label = AGENT_LABELS[process.type] ?? process.type;
+  const asyncDelegate = isAsyncDelegateProcess(process);
 
-  const tooltipText = `${label} · ${STATUS_LABELS[process.status] ?? process.status}\n${process.config.prompt.slice(0, 100)}${process.config.prompt.length > 100 ? '…' : ''}\n${formatTime(process.startedAt)} · ${process.type}`;
+  const tooltipText = `${label}${asyncDelegate ? ' · Async Delegate' : ''} · ${STATUS_LABELS[process.status] ?? process.status}\n${process.config.prompt.slice(0, 100)}${process.config.prompt.length > 100 ? '…' : ''}\n${formatTime(process.startedAt)} · ${process.type}`;
 
   return (
     <button
@@ -219,6 +224,17 @@ function TabButton({
     >
       <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: isActive ? '#fff' : dotColor }} />
       {label}
+      {asyncDelegate && (
+        <span
+          className="px-[4px] py-[1px] rounded text-[9px] font-semibold"
+          style={{
+            backgroundColor: isActive ? 'rgba(255,255,255,0.16)' : 'var(--color-tint-exploring)',
+            color: isActive ? '#fff' : 'var(--color-accent-blue)',
+          }}
+        >
+          ASYNC
+        </span>
+      )}
 
       {/* Dismiss X */}
       {onDismiss && (

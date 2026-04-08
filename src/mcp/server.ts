@@ -7,9 +7,11 @@ import {
 import { ToolRegistry } from '../core/tool-registry.js';
 import { loadConfig } from '../config/index.js';
 import { registerBuiltinTools } from '../tools/index.js';
+import { DelegateChannelRelay } from './delegate-channel-relay.js';
 
 // Exported for use by CliAgentRunner to push delegate-completion notifications
 let _server: Server | null = null;
+let _delegateRelay: DelegateChannelRelay | null = null;
 
 export function getMcpServer(): Server | null {
   return _server;
@@ -62,6 +64,10 @@ export async function startMcpServer(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  const relay = new DelegateChannelRelay({ server });
+  await relay.start();
+  _delegateRelay = relay;
 }
 
 startMcpServer().catch((err) => {

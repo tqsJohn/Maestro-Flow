@@ -2,17 +2,37 @@
 // `maestro delegate` — prompt-first task delegation
 // ---------------------------------------------------------------------------
 
-import type { Command } from 'commander';
+import { spawn, type SpawnOptions } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Command, Option } from 'commander';
 import { CliAgentRunner } from '../agents/cli-agent-runner.js';
-import { CliHistoryStore } from '../agents/cli-history-store.js';
+import { CliHistoryStore, type EntryLike } from '../agents/cli-history-store.js';
 import type { ExecutionMeta } from '../agents/cli-history-store.js';
+import { generateCliExecId } from '../agents/cli-agent-runner.js';
 import { loadCliToolsConfig, selectTool } from '../config/cli-tools-config.js';
+import { DelegateBrokerClient, type JsonObject, type DelegateJobEvent, type DelegateJobRecord } from '../async/index.js';
 
 function statusLabel(meta: ExecutionMeta): string {
+  if (meta.cancelledAt) return 'cancelled';
   if (meta.exitCode === undefined && !meta.completedAt) return 'running';
   if (meta.exitCode === 0) return 'done';
   return `exit:${meta.exitCode ?? '?'}`;
+}
+
+function deriveDelegateStatus(meta: ExecutionMeta | null, job: DelegateJobRecord | null): string {
+  if (
+    job
+    && (job.status === 'running' || job.status === 'queued')
+    && job.metadata
+    && typeof job.metadata.cancelRequestedAt === 'string'
+  ) {
+    return 'cancelling';
+  }
+  if (job) {
+    return job.status;
+  }
+  return meta ? statusLabel(meta) : 'unknown';
 }
 
 function truncate(text: string, max: number): string {
@@ -23,6 +43,205 @@ function truncate(text: string, max: number): string {
 
 function padRight(str: string, len: number): string {
   return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
+}
+
+function summarizeBrokerEvent(event: DelegateJobEvent): string {
+  const payloadSummary = typeof event.payload.summary === 'string'
+    ? event.payload.summary
+    : typeof event.payload.message === 'string'
+      ? event.payload.message
+      : null;
+  const progress = event.snapshot && typeof event.snapshot.progress === 'number'
+    ? ` progress=${event.snapshot.progress}%`
+    : '';
+  return `${event.eventId} ${event.type}${event.status ? ` (${event.status})` : ''}${progress}${payloadSummary ? ` ${payloadSummary}` : ''}`;
+}
+
+function summarizeHistoryEntry(entry: EntryLike): string {
+  switch (entry.type) {
+    case 'assistant_message':
+      return `assistant: ${truncate(String(entry.content ?? ''), 120)}`;
+    case 'tool_use':
+      return `tool ${String(entry.name ?? '?')}: ${String(entry.status ?? 'unknown')}`;
+    case 'error':
+      return `error: ${String(entry.message ?? '')}`;
+    case 'status_change':
+      return `status: ${String(entry.status ?? '')}`;
+    default:
+      return `${entry.type}`;
+  }
+}
+
+function readExecutionEntries(store: CliHistoryStore, execId: string): EntryLike[] {
+  try {
+    const raw = readFileSync(store.jsonlPathFor(execId), 'utf-8');
+    return raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as EntryLike;
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is EntryLike => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+interface DelegateExecutionRequest {
+  prompt: string;
+  tool: string;
+  mode: 'analysis' | 'write';
+  model?: string;
+  workDir: string;
+  rule?: string;
+  execId: string;
+  resume?: string;
+  includeDirs?: string[];
+  sessionId?: string;
+  backend: 'direct' | 'terminal';
+}
+
+interface ChildProcessLike {
+  pid?: number;
+  unref(): void;
+}
+
+interface SpawnLike {
+  (command: string, args: readonly string[], options: SpawnOptions): ChildProcessLike;
+}
+
+export interface LaunchDetachedDelegateOptions {
+  historyStore?: CliHistoryStore;
+  brokerClient?: DelegateBrokerClient;
+  spawnProcess?: SpawnLike;
+  entryScript?: string;
+  env?: NodeJS.ProcessEnv;
+  now?: () => string;
+}
+
+function createRunningMeta(request: DelegateExecutionRequest, startedAt: string): ExecutionMeta {
+  return {
+    execId: request.execId,
+    tool: request.tool,
+    model: request.model,
+    mode: request.mode,
+    prompt: request.prompt.substring(0, 500),
+    workDir: request.workDir,
+    startedAt,
+  };
+}
+
+function saveFailedMeta(
+  store: CliHistoryStore,
+  request: DelegateExecutionRequest,
+  completedAt: string,
+): void {
+  const existing = store.loadMeta(request.execId);
+  store.saveMeta(request.execId, {
+    ...(existing ?? createRunningMeta(request, completedAt)),
+    completedAt,
+    exitCode: 1,
+  });
+}
+
+function buildJobMetadata(request: DelegateExecutionRequest, workerPid?: number): JsonObject {
+  const metadata: JsonObject = {
+    tool: request.tool,
+    mode: request.mode,
+    workDir: request.workDir,
+    prompt: request.prompt.substring(0, 200),
+    backend: request.backend,
+  };
+  if (request.model) {
+    metadata.model = request.model;
+  }
+  if (request.rule) {
+    metadata.rule = request.rule;
+  }
+  if (request.sessionId) {
+    metadata.sessionId = request.sessionId;
+  }
+  if (workerPid !== undefined) {
+    metadata.workerPid = workerPid;
+  }
+  return metadata;
+}
+
+export function buildDetachedDelegateWorkerArgs(
+  request: DelegateExecutionRequest,
+  entryScript = process.argv[1],
+): string[] {
+  if (!entryScript) {
+    throw new Error('Cannot determine maestro entry script for detached delegate worker.');
+  }
+
+  const args = [entryScript, 'delegate', request.prompt, '--worker', '--to', request.tool, '--mode', request.mode, '--cd', request.workDir, '--id', request.execId, '--backend', request.backend];
+
+  if (request.model) {
+    args.push('--model', request.model);
+  }
+  if (request.rule) {
+    args.push('--rule', request.rule);
+  }
+  if (request.resume) {
+    args.push('--resume', request.resume);
+  }
+  if (request.includeDirs && request.includeDirs.length > 0) {
+    args.push('--includeDirs', request.includeDirs.join(','));
+  }
+  if (request.sessionId) {
+    args.push('--session', request.sessionId);
+  }
+
+  return args;
+}
+
+export function launchDetachedDelegateWorker(
+  request: DelegateExecutionRequest,
+  options: LaunchDetachedDelegateOptions = {},
+): void {
+  const store = options.historyStore ?? new CliHistoryStore();
+  const broker = options.brokerClient ?? new DelegateBrokerClient();
+  const now = options.now ?? (() => new Date().toISOString());
+  const startedAt = now();
+  const runningMeta = createRunningMeta(request, startedAt);
+  store.saveMeta(request.execId, runningMeta);
+
+  try {
+    const args = buildDetachedDelegateWorkerArgs(request, options.entryScript);
+    const spawnProcess = options.spawnProcess ?? spawn;
+    const env = {
+      ...(options.env ?? process.env),
+      MAESTRO_DISABLE_DASHBOARD_BRIDGE: '1',
+    };
+    const child = spawnProcess(process.execPath, args, {
+      cwd: request.workDir,
+      detached: true,
+      stdio: 'ignore',
+      env,
+    });
+    try {
+      broker.publishEvent({
+        jobId: request.execId,
+        type: 'queued',
+        status: 'queued',
+        payload: { summary: `Delegate queued for ${request.tool}/${request.mode}` },
+        jobMetadata: buildJobMetadata(request, child.pid),
+        now: startedAt,
+      });
+    } catch {
+      // Broker initialization is best-effort for detached launch.
+    }
+    child.unref();
+  } catch (error) {
+    saveFailedMeta(store, request, now());
+    throw error;
+  }
 }
 
 export function registerDelegateCommand(program: Command): void {
@@ -43,6 +262,8 @@ export function registerDelegateCommand(program: Command): void {
     .option('--includeDirs <dirs>', 'Additional directories (comma-separated)')
     .option('--session <id>', 'Claude Code session ID for completion notifications')
     .option('--backend <type>', 'Adapter backend: direct (default) or terminal (tmux/wezterm)')
+    .option('--async', 'Run the delegate in the background and return immediately')
+    .addOption(new Option('--worker').hideHelp())
     .action(async (prompt: string | undefined, opts: {
       to?: string;
       mode: string;
@@ -54,6 +275,8 @@ export function registerDelegateCommand(program: Command): void {
       includeDirs?: string;
       session?: string;
       backend?: string;
+      async?: boolean;
+      worker?: boolean;
     }) => {
       if (!prompt) {
         console.error('error: prompt is required. Usage: maestro delegate "your prompt"');
@@ -73,24 +296,38 @@ export function registerDelegateCommand(program: Command): void {
       }
 
       const backend = (opts.backend === 'terminal' ? 'terminal' : 'direct') as 'direct' | 'terminal';
+      const execId = opts.id ?? generateCliExecId(toolName);
+      const workDir = resolve(opts.cd ?? process.cwd());
+      const resume = opts.resume === true ? 'last' : opts.resume;
+      const includeDirs = opts.includeDirs?.split(',').map(d => d.trim()).filter(Boolean);
+      const request: DelegateExecutionRequest = {
+        prompt,
+        tool: toolName,
+        mode,
+        model,
+        workDir,
+        rule: opts.rule,
+        execId,
+        resume,
+        includeDirs,
+        sessionId: opts.session,
+        backend,
+      };
 
       try {
+        if (opts.async && !opts.worker) {
+          process.stderr.write(`[MAESTRO_EXEC_ID=${execId}]\n`);
+          launchDetachedDelegateWorker(request);
+          console.log(`Started async delegate: ${execId}`);
+          console.log(`Use \`maestro delegate output ${execId}\` to inspect the result.`);
+          return;
+        }
+
         const runner = new CliAgentRunner();
-        const exitCode = await runner.run({
-          prompt,
-          tool: toolName,
-          mode,
-          model,
-          workDir: resolve(opts.cd ?? process.cwd()),
-          rule: opts.rule,
-          execId: opts.id,
-          resume: opts.resume === true ? 'last' : opts.resume,
-          includeDirs: opts.includeDirs?.split(',').map(d => d.trim()).filter(Boolean),
-          sessionId: opts.session,
-          backend,
-        });
+        const exitCode = await runner.run(request);
         process.exit(exitCode);
       } catch (err) {
+        saveFailedMeta(new CliHistoryStore(), request, new Date().toISOString());
         const message = err instanceof Error ? err.message : String(err);
         console.error(`Delegate failed: ${message}`);
         process.exit(1);
@@ -176,5 +413,110 @@ export function registerDelegateCommand(program: Command): void {
       }
 
       process.stdout.write(output);
+    });
+
+  delegate
+    .command('status <id>')
+    .description('Inspect broker + history state for a delegated execution')
+    .option('--events <n>', 'Number of recent broker events to show', '5')
+    .action((id: string, opts: { events?: string }) => {
+      const store = new CliHistoryStore();
+      const broker = new DelegateBrokerClient();
+      const meta = store.loadMeta(id);
+      const job = broker.getJob(id);
+
+      if (!meta && !job) {
+        console.error(`Execution not found: ${id}`);
+        process.exit(1);
+      }
+
+      const eventLimit = Math.max(1, parseInt(opts.events ?? '5', 10) || 5);
+      const events = broker.listJobEvents(id).slice(-eventLimit);
+      const status = deriveDelegateStatus(meta, job);
+
+      console.log(`ID:     ${id}`);
+      console.log(`Status: ${status}`);
+      if (meta) {
+        console.log(`Tool:   ${meta.tool}`);
+        console.log(`Mode:   ${meta.mode}`);
+        console.log(`Start:  ${meta.startedAt}`);
+        if (meta.completedAt) {
+          console.log(`End:    ${meta.completedAt}`);
+        }
+      }
+      if (job) {
+        console.log(`Job:    ${job.lastEventType} @ ${job.updatedAt}`);
+        if (job.metadata?.cancelRequestedAt && typeof job.metadata.cancelRequestedAt === 'string') {
+          console.log(`Cancel: requested at ${job.metadata.cancelRequestedAt}`);
+        }
+        if (job.latestSnapshot && typeof job.latestSnapshot.outputPreview === 'string') {
+          console.log(`Preview: ${job.latestSnapshot.outputPreview}`);
+        }
+      }
+      if (events.length > 0) {
+        console.log('Recent events:');
+        for (const event of events) {
+          console.log(`  - ${summarizeBrokerEvent(event)}`);
+        }
+      }
+    });
+
+  delegate
+    .command('tail <id>')
+    .description('Show recent broker events and persisted history for a delegated execution')
+    .option('--events <n>', 'Number of broker events to show', '10')
+    .option('--history <n>', 'Number of history entries to show', '10')
+    .action((id: string, opts: { events?: string; history?: string }) => {
+      const store = new CliHistoryStore();
+      const broker = new DelegateBrokerClient();
+      const meta = store.loadMeta(id);
+      const events = broker.listJobEvents(id);
+      const historyEntries = readExecutionEntries(store, id);
+
+      if (!meta && events.length === 0 && historyEntries.length === 0) {
+        console.error(`Execution not found: ${id}`);
+        process.exit(1);
+      }
+
+      const eventLimit = Math.max(1, parseInt(opts.events ?? '10', 10) || 10);
+      const historyLimit = Math.max(1, parseInt(opts.history ?? '10', 10) || 10);
+      console.log(`== Broker Events (${Math.min(eventLimit, events.length)}/${events.length}) ==`);
+      for (const event of events.slice(-eventLimit)) {
+        console.log(summarizeBrokerEvent(event));
+      }
+      console.log('');
+      console.log(`== History Tail (${Math.min(historyLimit, historyEntries.length)}/${historyEntries.length}) ==`);
+      for (const entry of historyEntries.slice(-historyLimit)) {
+        console.log(summarizeHistoryEntry(entry));
+      }
+    });
+
+  delegate
+    .command('cancel <id>')
+    .description('Request cancellation for an async delegated execution')
+    .action((id: string) => {
+      const store = new CliHistoryStore();
+      const broker = new DelegateBrokerClient();
+      const meta = store.loadMeta(id);
+      const job = broker.getJob(id);
+
+      if (!meta && !job) {
+        console.error(`Execution not found: ${id}`);
+        process.exit(1);
+      }
+
+      const currentStatus = deriveDelegateStatus(meta, job);
+      if (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled') {
+        console.log(`Delegate ${id} is already ${currentStatus}.`);
+        return;
+      }
+
+      const updated = broker.requestCancel({
+        jobId: id,
+        requestedBy: 'cli:delegate:cancel',
+      });
+      console.log(`Cancellation requested for ${id}.`);
+      console.log(`Current status: ${deriveDelegateStatus(meta, updated)}`);
+      console.log('Use `maestro delegate status <id>` or `maestro delegate tail <id>` to follow progress.');
     });
 }
