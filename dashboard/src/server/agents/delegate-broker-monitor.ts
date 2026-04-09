@@ -8,6 +8,7 @@ import {
   type DelegateBrokerApi,
   type DelegateJobEvent,
   type DelegateJobRecord,
+  type DelegateQueuedMessage,
 } from '../../../../src/async/index.js';
 
 export interface DelegateBrokerMonitorOptions {
@@ -86,6 +87,44 @@ function extractSummary(event: DelegateJobEvent): string | undefined {
   return undefined;
 }
 
+function readQueuedMessages(metadata: unknown): DelegateQueuedMessage[] {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+  const queuedMessages = (metadata as { queuedMessages?: unknown }).queuedMessages;
+  if (!Array.isArray(queuedMessages)) {
+    return [];
+  }
+  return queuedMessages.filter(
+    (item): item is DelegateQueuedMessage =>
+      Boolean(item)
+      && typeof item === 'object'
+      && typeof (item as { messageId?: unknown }).messageId === 'string'
+      && typeof (item as { message?: unknown }).message === 'string',
+  );
+}
+
+function extractQueuedMessage(
+  job: DelegateJobRecord | null,
+  event: DelegateJobEvent,
+): DelegateQueuedMessage | undefined {
+  const payload = event.payload as Record<string, unknown>;
+  const messageId = readString(payload.messageId);
+  if (!messageId) {
+    return undefined;
+  }
+  return readQueuedMessages(job?.metadata ?? event.metadata).find(
+    (item) => item.messageId === messageId,
+  );
+}
+
+function buildFollowUpReason(prefix: string, queuedMessage: DelegateQueuedMessage | undefined): string {
+  if (!queuedMessage) {
+    return prefix;
+  }
+  return `${prefix} (${queuedMessage.delivery})`;
+}
+
 function buildProcess(jobId: string, job: DelegateJobRecord | null, event: DelegateJobEvent): AgentProcess {
   const metadata = job?.metadata ?? event.metadata ?? {};
   const tool = readString(metadata.tool);
@@ -106,6 +145,7 @@ function buildProcess(jobId: string, job: DelegateJobRecord | null, event: Deleg
       ...(model ? { model } : {}),
     },
     startedAt: job?.createdAt ?? event.createdAt,
+    interactive: true,
     ...(typeof metadata.workerPid === 'number' ? { pid: metadata.workerPid } : {}),
   };
 }
@@ -184,12 +224,51 @@ export class DelegateBrokerMonitor {
     const job = this.broker.getJob(event.jobId);
     const process = buildProcess(event.jobId, job, event);
     const state = this.ensureProcess(job, event, process);
+    const queuedMessage = extractQueuedMessage(job, event);
 
     if (event.type === 'cancel_requested') {
       const entry = EntryNormalizer.statusChange(process.id, 'stopping', 'Cancellation requested');
       this.pushEntry(process.id, entry);
       this.agentManager.updateCliProcessStatus(process.id, 'stopping');
       this.eventBus.emit('agent:status', { processId: process.id, status: 'stopping', reason: 'Cancellation requested' });
+      return;
+    }
+
+    if (event.type === 'message_queued') {
+      if (queuedMessage) {
+        this.pushEntry(process.id, EntryNormalizer.userMessage(process.id, queuedMessage.message));
+      }
+      const reason = buildFollowUpReason('Follow-up queued', queuedMessage);
+      this.agentManager.updateCliProcessStatus(process.id, process.status);
+      this.eventBus.emit('agent:status', { processId: process.id, status: process.status, reason });
+      return;
+    }
+
+    if (event.type === 'message_dispatched') {
+      const reason = buildFollowUpReason('Follow-up dispatched', queuedMessage);
+      this.pushEntry(process.id, EntryNormalizer.statusChange(process.id, process.status, reason));
+      this.agentManager.updateCliProcessStatus(process.id, process.status);
+      this.eventBus.emit('agent:status', { processId: process.id, status: process.status, reason });
+      return;
+    }
+
+    if (event.type === 'message_dropped') {
+      const payload = event.payload as Record<string, unknown>;
+      const dropReason = readString(payload.reason);
+      const reason = dropReason
+        ? `Follow-up dropped: ${dropReason}`
+        : 'Follow-up dropped';
+      this.pushEntry(process.id, EntryNormalizer.error(process.id, reason));
+      this.agentManager.updateCliProcessStatus(process.id, process.status);
+      this.eventBus.emit('agent:status', { processId: process.id, status: process.status, reason });
+      return;
+    }
+
+    if (event.type === 'message_injected') {
+      const reason = buildFollowUpReason('Follow-up injected', queuedMessage);
+      this.pushEntry(process.id, EntryNormalizer.statusChange(process.id, process.status, reason));
+      this.agentManager.updateCliProcessStatus(process.id, process.status);
+      this.eventBus.emit('agent:status', { processId: process.id, status: process.status, reason });
       return;
     }
 

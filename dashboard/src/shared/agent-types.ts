@@ -31,6 +31,8 @@ export interface AgentConfig {
   settingsFile?: string;
   /** Path to .env file for loading environment variables before spawn */
   envFile?: string;
+  /** When true, spawn in interactive mode (stdin kept open for follow-up messages) */
+  interactive?: boolean;
 }
 
 /** Runtime state of a spawned agent process */

@@ -106,8 +106,8 @@ export interface RequestCancelInput {
   now?: string;
 }
 
-export type DelegateMessageDelivery = 'interrupt_resume' | 'after_complete';
-export type DelegateMessageStatus = 'queued' | 'dispatched' | 'dropped';
+export type DelegateMessageDelivery = 'interrupt_resume' | 'after_complete' | 'streaming';
+export type DelegateMessageStatus = 'queued' | 'dispatched' | 'dropped' | 'injected';
 
 export interface DelegateQueuedMessage {
   messageId: string;
@@ -136,6 +136,11 @@ export interface UpdateMessageInput {
   now?: string;
 }
 
+export interface CheckTimeoutsInput {
+  timeoutMs?: number;
+  now?: string;
+}
+
 export interface DelegateBrokerApi {
   registerSession(input: RegisterSessionInput): DelegateSessionRecord;
   heartbeat(input: HeartbeatInput): DelegateSessionRecord;
@@ -148,6 +153,7 @@ export interface DelegateBrokerApi {
   queueMessage(input: QueueMessageInput): DelegateQueuedMessage;
   listMessages(jobId: string): DelegateQueuedMessage[];
   updateMessage(input: UpdateMessageInput): DelegateQueuedMessage | null;
+  checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[];
 }
 
 interface StoredJobEvent extends DelegateJobEvent {
@@ -171,6 +177,7 @@ export interface FileDelegateBrokerOptions {
 const DEFAULT_BROKER_STATE_PATH = join(paths.data, 'async', 'delegate-broker.json');
 const DEFAULT_BROKER_DB_PATH = join(paths.data, 'async', 'delegate-broker.sqlite');
 const TERMINAL_STATUSES = new Set<DelegateJobStatus>(['completed', 'failed', 'cancelled']);
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 function createEmptyState(): DelegateBrokerState {
   return {
@@ -263,11 +270,11 @@ function buildCancelPayload(input: RequestCancelInput): JsonObject {
 }
 
 function isDelegateMessageDelivery(value: JsonValue | undefined): value is DelegateMessageDelivery {
-  return value === 'interrupt_resume' || value === 'after_complete';
+  return value === 'interrupt_resume' || value === 'after_complete' || value === 'streaming';
 }
 
 function isDelegateMessageStatus(value: JsonValue | undefined): value is DelegateMessageStatus {
-  return value === 'queued' || value === 'dispatched' || value === 'dropped';
+  return value === 'queued' || value === 'dispatched' || value === 'dropped' || value === 'injected';
 }
 
 function readQueuedMessages(metadata: JsonObject | undefined): DelegateQueuedMessage[] {
@@ -642,7 +649,9 @@ export class FileDelegateBroker implements DelegateBrokerApi {
       const eventId = state.nextEventId++;
       const eventType = input.status === 'dispatched'
         ? 'message_dispatched'
-        : 'message_dropped';
+        : input.status === 'injected'
+          ? 'message_injected'
+          : 'message_dropped';
       const event: StoredJobEvent = {
         eventId,
         sequence: events.length + 1,
@@ -654,7 +663,9 @@ export class FileDelegateBroker implements DelegateBrokerApi {
         payload: {
           summary: input.status === 'dispatched'
             ? `Dispatched ${updatedMessage.delivery} follow-up message`
-            : `Dropped ${updatedMessage.delivery} follow-up message`,
+            : input.status === 'injected'
+              ? `Injected ${updatedMessage.delivery} follow-up message`
+              : `Dropped ${updatedMessage.delivery} follow-up message`,
           delivery: updatedMessage.delivery,
           messageId: updatedMessage.messageId,
           ...(input.dispatchReason ? { reason: input.dispatchReason } : {}),
@@ -673,6 +684,57 @@ export class FileDelegateBroker implements DelegateBrokerApi {
         metadata,
       };
       return updatedMessage;
+    });
+  }
+
+  checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[] {
+    const timeoutMs = input?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const now = input?.now ?? new Date().toISOString();
+    const nowMs = new Date(now).getTime();
+
+    return this.updateState((state) => {
+      const timedOut: DelegateJobRecord[] = [];
+
+      for (const job of Object.values(state.jobs)) {
+        if (isTerminalStatus(job.status)) {
+          continue;
+        }
+
+        const createdMs = new Date(job.createdAt).getTime();
+        if (nowMs - createdMs < timeoutMs) {
+          continue;
+        }
+
+        const events = state.eventsByJob[job.jobId] ?? [];
+        const eventId = state.nextEventId++;
+        const event: StoredJobEvent = {
+          eventId,
+          sequence: events.length + 1,
+          jobId: job.jobId,
+          type: 'failed',
+          createdAt: now,
+          status: 'failed',
+          snapshot: job.latestSnapshot ?? undefined,
+          payload: { summary: 'Timed out', reason: 'timeout' },
+          metadata: job.metadata,
+          ackedBy: {},
+        };
+
+        events.push(event);
+        state.eventsByJob[job.jobId] = events;
+
+        const updatedJob: DelegateJobRecord = {
+          ...job,
+          status: 'failed',
+          updatedAt: now,
+          lastEventId: eventId,
+          lastEventType: 'failed',
+        };
+        state.jobs[job.jobId] = updatedJob;
+        timedOut.push(updatedJob);
+      }
+
+      return timedOut;
     });
   }
 
@@ -1072,7 +1134,7 @@ export class SqliteDelegateBroker implements DelegateBrokerApi {
       const metadata = writeQueuedMessages(existingJob.metadata, queuedMessages);
       const sequenceRow = this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS value FROM delegate_events WHERE job_id = ?').get(input.jobId);
       const sequence = Number(sequenceRow?.value ?? 0) + 1;
-      const eventType = input.status === 'dispatched' ? 'message_dispatched' : 'message_dropped';
+      const eventType = input.status === 'dispatched' ? 'message_dispatched' : input.status === 'injected' ? 'message_injected' : 'message_dropped';
       const eventResult = this.db.prepare(`
         INSERT INTO delegate_events (sequence, job_id, type, created_at, status, snapshot, payload, metadata)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1086,7 +1148,9 @@ export class SqliteDelegateBroker implements DelegateBrokerApi {
         JSON.stringify({
           summary: input.status === 'dispatched'
             ? `Dispatched ${updatedMessage.delivery} follow-up message`
-            : `Dropped ${updatedMessage.delivery} follow-up message`,
+            : input.status === 'injected'
+              ? `Injected ${updatedMessage.delivery} follow-up message`
+              : `Dropped ${updatedMessage.delivery} follow-up message`,
           delivery: updatedMessage.delivery,
           messageId: updatedMessage.messageId,
           ...(input.dispatchReason ? { reason: input.dispatchReason } : {}),
@@ -1102,6 +1166,65 @@ export class SqliteDelegateBroker implements DelegateBrokerApi {
       `).run(now, eventId, eventType, writeJson(metadata), input.jobId);
 
       return updatedMessage;
+    });
+  }
+
+  checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[] {
+    const timeoutMs = input?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const now = input?.now ?? new Date().toISOString();
+    const nowMs = new Date(now).getTime();
+
+    return this.transaction(() => {
+      const rows = this.db.prepare(`
+        SELECT job_id, status, created_at, updated_at, last_event_id, last_event_type, latest_snapshot, metadata
+        FROM delegate_jobs
+        WHERE status NOT IN ('completed', 'failed', 'cancelled')
+      `).all() as unknown as JobRow[];
+
+      const timedOut: DelegateJobRecord[] = [];
+
+      for (const row of rows) {
+        const createdMs = new Date(row.created_at).getTime();
+        if (nowMs - createdMs < timeoutMs) {
+          continue;
+        }
+
+        const metadata = readJsonObject(row.metadata);
+        const snapshot = readJsonObject(row.latest_snapshot);
+        const sequenceRow = this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS value FROM delegate_events WHERE job_id = ?').get(row.job_id);
+        const sequence = Number(sequenceRow?.value ?? 0) + 1;
+        const eventResult = this.db.prepare(`
+          INSERT INTO delegate_events (sequence, job_id, type, created_at, status, snapshot, payload, metadata)
+          VALUES (?, ?, 'failed', ?, 'failed', ?, ?, ?)
+        `).run(
+          sequence,
+          row.job_id,
+          now,
+          writeJson(snapshot),
+          JSON.stringify({ summary: 'Timed out', reason: 'timeout' }),
+          writeJson(metadata),
+        );
+        const eventId = Number(eventResult.lastInsertRowid ?? 0);
+
+        this.db.prepare(`
+          UPDATE delegate_jobs
+          SET status = 'failed', updated_at = ?, last_event_id = ?, last_event_type = 'failed'
+          WHERE job_id = ?
+        `).run(now, eventId, row.job_id);
+
+        timedOut.push({
+          jobId: row.job_id,
+          status: 'failed',
+          createdAt: row.created_at,
+          updatedAt: now,
+          lastEventId: eventId,
+          lastEventType: 'failed',
+          latestSnapshot: snapshot ?? null,
+          metadata,
+        });
+      }
+
+      return timedOut;
     });
   }
 

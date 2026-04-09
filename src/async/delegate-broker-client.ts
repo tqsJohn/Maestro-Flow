@@ -1,5 +1,6 @@
 import type {
   AckEventsInput,
+  CheckTimeoutsInput,
   DelegateBrokerApi,
   DelegateJobEvent,
   DelegateJobRecord,
@@ -69,5 +70,9 @@ export class DelegateBrokerClient implements DelegateBrokerApi {
 
   updateMessage(input: UpdateMessageInput): DelegateQueuedMessage | null {
     return this.broker.updateMessage(input);
+  }
+
+  checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[] {
+    return this.broker.checkTimeouts(input);
   }
 }

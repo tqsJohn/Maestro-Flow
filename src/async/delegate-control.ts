@@ -1,0 +1,236 @@
+import { CliHistoryStore, type ExecutionMeta } from '../agents/cli-history-store.js';
+import {
+  type DelegateBrokerApi,
+  type DelegateMessageDelivery,
+  type DelegateQueuedMessage,
+} from './delegate-broker.js';
+import { DelegateBrokerClient } from './delegate-broker-client.js';
+import {
+  launchDetachedDelegateWorker,
+  type DelegateExecutionRequest,
+} from '../commands/delegate.js';
+
+type DelegateJobLike = {
+  status: string;
+  metadata?: Record<string, unknown> | null;
+} | null;
+
+export interface DelegateMessageInput {
+  execId: string;
+  message: string;
+  delivery: DelegateMessageDelivery;
+  requestedBy?: string;
+}
+
+export interface DelegateMessageResult {
+  execId: string;
+  accepted: true;
+  delivery: DelegateMessageDelivery;
+  status: string;
+  queuedMessage: DelegateQueuedMessage;
+  immediateDispatch: boolean;
+  previousStatus: string;
+  queueDepth: number;
+}
+
+export interface DelegateMessageDependencies {
+  historyStore?: CliHistoryStore;
+  delegateBroker?: DelegateBrokerApi;
+  launchDetachedDelegate?: (request: DelegateExecutionRequest) => void;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter(
+    (item): item is string => typeof item === 'string',
+  );
+  return strings.length > 0 ? strings : undefined;
+}
+
+export function normalizeDelegateExecId(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('cli-history-')
+    ? trimmed.slice('cli-history-'.length)
+    : trimmed;
+}
+
+export function deriveExecutionStatus(meta: ExecutionMeta | null): string {
+  if (!meta) {
+    return 'unknown';
+  }
+
+  if (meta.cancelledAt) {
+    return 'cancelled';
+  }
+
+  if (meta.exitCode === undefined && !meta.completedAt) {
+    return 'running';
+  }
+
+  if (meta.exitCode === 0) {
+    return 'completed';
+  }
+
+  return meta.exitCode === undefined ? 'unknown' : `exit:${meta.exitCode}`;
+}
+
+export function deriveDelegateStatus(
+  meta: ExecutionMeta | null,
+  job: DelegateJobLike,
+): string {
+  if (
+    (job?.status === 'running' || job?.status === 'queued')
+    && job.metadata
+    && typeof job.metadata.cancelRequestedAt === 'string'
+  ) {
+    return 'cancelling';
+  }
+  return job?.status ?? deriveExecutionStatus(meta);
+}
+
+export function buildDelegateRequestFromState(
+  execId: string,
+  message: string,
+  meta: ExecutionMeta | null,
+  job: { metadata?: Record<string, unknown> | null } | null,
+): DelegateExecutionRequest | null {
+  const metadata = job?.metadata ?? null;
+  const tool = meta?.tool ?? (typeof metadata?.tool === 'string' ? metadata.tool : null);
+  const metaMode = meta?.mode === 'analysis' || meta?.mode === 'write'
+    ? meta.mode
+    : null;
+  const metadataMode = metadata?.mode === 'analysis' || metadata?.mode === 'write'
+    ? metadata.mode
+    : null;
+  const mode: 'analysis' | 'write' | null = metaMode ?? metadataMode;
+  const workDir = meta?.workDir ?? (typeof metadata?.workDir === 'string' ? metadata.workDir : null);
+  if (!tool || !mode || !workDir) {
+    return null;
+  }
+
+  return {
+    prompt: message,
+    tool,
+    mode,
+    model: meta?.model ?? (typeof metadata?.model === 'string' ? metadata.model : undefined),
+    workDir,
+    rule: typeof metadata?.rule === 'string' ? metadata.rule : undefined,
+    execId,
+    resume: execId,
+    includeDirs: readStringArray(metadata?.includeDirs),
+    sessionId: typeof metadata?.sessionId === 'string' ? metadata.sessionId : undefined,
+    backend: metadata?.backend === 'terminal' ? 'terminal' : 'direct',
+  };
+}
+
+export function handleDelegateMessage(
+  input: DelegateMessageInput,
+  dependencies: DelegateMessageDependencies = {},
+): DelegateMessageResult {
+  const historyStore = dependencies.historyStore ?? new CliHistoryStore();
+  const delegateBroker = dependencies.delegateBroker ?? new DelegateBrokerClient();
+  const launchDelegate = dependencies.launchDetachedDelegate ?? launchDetachedDelegateWorker;
+  const execId = normalizeDelegateExecId(input.execId);
+  const message = input.message.trim();
+
+  if (!execId) {
+    throw new Error('execId is required');
+  }
+  if (!message) {
+    throw new Error('message is required');
+  }
+
+  const meta = historyStore.loadMeta(execId);
+  const job = delegateBroker.getJob(execId);
+  if (!meta && !job) {
+    throw new Error(`Delegate execution not found: ${execId}`);
+  }
+  if (!job) {
+    throw new Error(`Delegate broker state unavailable for: ${execId}`);
+  }
+
+  const currentStatus = deriveDelegateStatus(meta, job);
+  const queued = delegateBroker.queueMessage({
+    jobId: execId,
+    message,
+    delivery: input.delivery,
+    requestedBy: input.requestedBy,
+  });
+
+  let statusAfterQueue = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
+  let immediateDispatch = false;
+
+  if (
+    currentStatus === 'completed'
+    || currentStatus === 'failed'
+    || currentStatus === 'cancelled'
+  ) {
+    const request = buildDelegateRequestFromState(execId, message, meta, job);
+    if (!request) {
+      delegateBroker.updateMessage({
+        jobId: execId,
+        messageId: queued.messageId,
+        status: 'dropped',
+        dispatchReason: 'missing-delegate-context',
+      });
+      throw new Error(
+        `Unable to reconstruct delegate request for terminal execution: ${execId}`,
+      );
+    }
+
+    try {
+      launchDelegate(request);
+      delegateBroker.updateMessage({
+        jobId: execId,
+        messageId: queued.messageId,
+        status: 'dispatched',
+        dispatchReason: `terminal:${currentStatus}`,
+      });
+      immediateDispatch = true;
+      statusAfterQueue = deriveDelegateStatus(
+        historyStore.loadMeta(execId),
+        delegateBroker.getJob(execId),
+      );
+    } catch {
+      delegateBroker.updateMessage({
+        jobId: execId,
+        messageId: queued.messageId,
+        status: 'dropped',
+        dispatchReason: 'launch-failed',
+      });
+      throw new Error(`Failed to relaunch delegate for terminal execution: ${execId}`);
+    }
+  } else if (input.delivery === 'streaming') {
+    // Streaming delivery: queue the message for poller pickup without cancelling
+    // the running process. The cancellationPoller in cli-agent-runner will
+    // inject the message via adapter.sendMessage().
+    statusAfterQueue = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
+  } else if (input.delivery === 'interrupt_resume') {
+    delegateBroker.requestCancel({
+      jobId: execId,
+      requestedBy: input.requestedBy,
+      reason: 'interrupt_resume follow-up queued',
+    });
+    statusAfterQueue = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
+  }
+
+  const queuedMessage = delegateBroker
+    .listMessages(execId)
+    .find((item: DelegateQueuedMessage) => item.messageId === queued.messageId) ?? queued;
+
+  return {
+    execId,
+    accepted: true,
+    delivery: input.delivery,
+    status: statusAfterQueue,
+    queuedMessage,
+    immediateDispatch,
+    previousStatus: currentStatus,
+    queueDepth: delegateBroker
+      .listMessages(execId)
+      .filter((item: DelegateQueuedMessage) => item.status === 'queued')
+      .length,
+  };
+}

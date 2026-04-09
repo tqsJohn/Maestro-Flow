@@ -197,6 +197,73 @@ describe('Delegate broker', () => {
     assert.equal(client.listJobEvents('job-message').at(-1)?.type, 'message_dispatched');
   });
 
+  it('checkTimeouts marks running jobs as failed after timeout', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-timeout-1',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'running' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-timeout-2',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'also running' },
+      now: '2026-04-07T00:10:00.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-done',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'already done' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    // Check with 5 minute timeout at T+6 minutes — only job-timeout-1 should time out
+    const timedOut = client.checkTimeouts({
+      timeoutMs: 5 * 60 * 1000,
+      now: '2026-04-07T00:06:00.000Z',
+    });
+
+    assert.equal(timedOut.length, 1);
+    assert.equal(timedOut[0].jobId, 'job-timeout-1');
+    assert.equal(timedOut[0].status, 'failed');
+    assert.equal(timedOut[0].lastEventType, 'failed');
+
+    // Verify the failed event was recorded
+    const events = client.listJobEvents('job-timeout-1');
+    const failedEvent = events.find((e) => e.type === 'failed');
+    assert.ok(failedEvent);
+    assert.deepEqual(failedEvent?.payload, { summary: 'Timed out', reason: 'timeout' });
+
+    // Verify completed job was not touched
+    const doneJob = client.getJob('job-done');
+    assert.equal(doneJob?.status, 'completed');
+  });
+
+  it('checkTimeouts does not affect jobs within timeout window', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-fresh',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'just started' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const timedOut = client.checkTimeouts({
+      timeoutMs: 30 * 60 * 1000,
+      now: '2026-04-07T00:10:00.000Z',
+    });
+
+    assert.equal(timedOut.length, 0);
+    assert.equal(client.getJob('job-fresh')?.status, 'running');
+  });
+
   it('supports sqlite-backed persistence with WAL mode', () => {
     const broker = new SqliteDelegateBroker({ dbPath });
     const client = new DelegateBrokerClient({ broker });
@@ -223,5 +290,34 @@ describe('Delegate broker', () => {
     assert.equal(job.metadata?.cancelRequestedBy, 'sqlite-test');
     assert.equal(reopened.listJobEvents('sqlite-job').length, 2);
     reopened.close();
+  });
+
+  it('checkTimeouts works with sqlite broker', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+
+    client.publishEvent({
+      jobId: 'sqlite-timeout-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'running' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const timedOut = client.checkTimeouts({
+      timeoutMs: 5 * 60 * 1000,
+      now: '2026-04-07T00:06:00.000Z',
+    });
+
+    assert.equal(timedOut.length, 1);
+    assert.equal(timedOut[0].jobId, 'sqlite-timeout-job');
+    assert.equal(timedOut[0].status, 'failed');
+
+    const events = client.listJobEvents('sqlite-timeout-job');
+    const failedEvent = events.find((e) => e.type === 'failed');
+    assert.ok(failedEvent);
+    assert.deepEqual(failedEvent?.payload, { summary: 'Timed out', reason: 'timeout' });
+
+    broker.close();
   });
 });

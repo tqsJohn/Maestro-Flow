@@ -93,9 +93,83 @@ describe('DelegateChannelRelay', () => {
     for (const notification of notifications) {
       assert.ok(notification.params.content.length <= 240);
       assert.equal(notification.params.meta.job_id, 'job-1');
+      assert.equal(notification.params.meta.exec_id, 'job-1');
     }
 
     const remaining = broker.pollEvents({ sessionId: 'relay-test' });
     assert.deepEqual(remaining, []);
+  });
+
+  it('includes exec_id alias in notification meta', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'relay-exec-id-test',
+      pollIntervalMs: 20,
+    });
+
+    broker.publishEvent({
+      jobId: 'job-42',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'done' },
+      now: '2026-04-07T02:00:00.000Z',
+    });
+
+    await relay.start();
+    await delay(80);
+    relay.stop();
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].params.meta.job_id, 'job-42');
+    assert.equal(notifications[0].params.meta.exec_id, 'job-42');
+    assert.equal(notifications[0].params.meta.event_type, 'completed');
+    assert.equal(notifications[0].params.meta.status, 'completed');
+  });
+
+  it('stops polling after 3 consecutive failures', async () => {
+    let heartbeatCount = 0;
+    let pollCount = 0;
+    const failingBroker = {
+      registerSession() { return {} as ReturnType<DelegateBrokerClient['registerSession']>; },
+      heartbeat() {
+        heartbeatCount++;
+        // Succeed on first call (from start's initial pollOnce) then fail
+        if (heartbeatCount > 1) {
+          throw new Error('broker unavailable');
+        }
+      },
+      pollEvents() { pollCount++; return []; },
+      ack() { return 0; },
+      getJob() { return null; },
+      listJobEvents() { return []; },
+      requestCancel() { return {} as ReturnType<DelegateBrokerClient['requestCancel']>; },
+      queueMessage() { return {} as ReturnType<DelegateBrokerClient['queueMessage']>; },
+      listMessages() { return []; },
+      updateMessage() { return null; },
+      checkTimeouts() { return []; },
+    };
+
+    const relay = new DelegateChannelRelay({
+      server: { async notification() {} },
+      broker: failingBroker,
+      sessionId: 'relay-health-test',
+      pollIntervalMs: 10,
+    });
+
+    await relay.start();  // First pollOnce succeeds
+    await delay(200);     // Give time for interval polls to fail 3 times
+    relay.stop();
+
+    // heartbeat 1 = initial success, then 3+ failures before circuit breaker trips
+    assert.ok(heartbeatCount >= 4, `Expected at least 4 heartbeat calls, got ${heartbeatCount}`);
+    assert.equal(pollCount, 1, 'Only the initial successful poll should have proceeded');
   });
 });

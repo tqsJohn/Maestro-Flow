@@ -122,18 +122,32 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   // --- Lifecycle hooks -----------------------------------------------------
 
+  /** Whether this adapter supports interactive follow-up messages */
+  supportsInteractive(): boolean {
+    return true;
+  }
+
   protected async doSpawn(
     processId: string,
     config: AgentConfig,
   ): Promise<AgentProcess> {
-    // Build CLI arguments — use --print for one-shot prompts.
-    // stdin is kept open only when --input-format=stream-json is used (interactive).
-    const args = [
-      '--output-format=stream-json',
-      '--verbose',
-      '--print',
-      config.prompt,
-    ];
+    const interactive = config.interactive === true;
+
+    // Build CLI arguments:
+    // - Interactive mode: --input-format=stream-json (stdin kept open for follow-ups)
+    // - Default mode: --print (one-shot, stdin closed immediately)
+    const args = interactive
+      ? [
+          '--output-format=stream-json',
+          '--input-format=stream-json',
+          '--verbose',
+        ]
+      : [
+          '--output-format=stream-json',
+          '--verbose',
+          '--print',
+          config.prompt,
+        ];
 
     // Resolve CLI entry point for direct node invocation (avoids cmd.exe
     // wrapper nesting on Windows which causes stdout buffering).
@@ -163,9 +177,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       throw new Error('Failed to spawn Claude Code: stdio streams not available');
     }
 
-    // Close stdin immediately for --print mode. Without this, the child process
-    // blocks indefinitely waiting for stdin input on Windows pipes.
-    child.stdin.end();
+    if (interactive) {
+      // Interactive mode: send initial prompt as a stream-json user_message,
+      // keep stdin open for follow-up messages via doSendMessage.
+      const initMsg = JSON.stringify({ type: 'user_message', content: config.prompt });
+      child.stdin.write(initMsg + '\n');
+    } else {
+      // One-shot --print mode: close stdin immediately. Without this, the child
+      // process blocks indefinitely waiting for stdin input on Windows pipes.
+      child.stdin.end();
+    }
 
     // Heartbeat monitor: detect stale streams (60s silence)
     const monitor = new StreamMonitor(() => {

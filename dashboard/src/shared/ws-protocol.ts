@@ -90,6 +90,7 @@ export type WsClientMessage =
   | WsClientSpawnMessage
   | WsClientStopMessage
   | WsClientMessageMessage
+  | WsClientDelegateMessage
   | WsClientApproveMessage
   | WsClientCliBridgeSpawnMessage
   | WsClientCliBridgeEntryMessage
@@ -127,6 +128,14 @@ export interface WsClientMessageMessage {
   action: 'message';
   processId: string;
   content: string;
+}
+
+export interface WsClientDelegateMessage {
+  action: 'delegate:message';
+  processId?: string;
+  execId?: string;
+  content: string;
+  delivery: 'interrupt_resume' | 'after_complete' | 'streaming';
 }
 
 export interface WsClientApproveMessage {

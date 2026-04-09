@@ -14,6 +14,11 @@ const { registerBuiltinTools } = await import('./index.js');
 
 describe('registerBuiltinTools delegate tools', () => {
   beforeEach(() => {
+    try {
+      rmSync(TEST_MAESTRO_HOME, { recursive: true, force: true });
+    } catch {
+      // SQLite temp files may still be held briefly.
+    }
     mkdirSync(TEST_MAESTRO_HOME, { recursive: true });
   });
 
@@ -153,6 +158,64 @@ describe('registerBuiltinTools delegate tools', () => {
     const queuedMessages = statusJson.queuedMessages as Array<Record<string, unknown>>;
     assert.equal(queuedMessages.length, 1);
     assert.equal(queuedMessages[0].delivery, 'after_complete');
+  });
+
+  it('relaunches terminal delegates immediately when delegate_message is sent after completion', async () => {
+    const launches: Array<Record<string, unknown>> = [];
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      launchDetachedDelegate(request) {
+        launches.push(request as unknown as Record<string, unknown>);
+      },
+    });
+
+    const store = new CliHistoryStore();
+    const broker = new DelegateBrokerClient();
+    store.saveMeta('job-done', {
+      execId: 'job-done',
+      tool: 'codex',
+      model: 'gpt-5.4',
+      mode: 'analysis',
+      prompt: 'Completed delegate',
+      workDir: 'D:/maestro2',
+      startedAt: '2026-04-08T12:10:00.000Z',
+      completedAt: '2026-04-08T12:11:00.000Z',
+      exitCode: 0,
+    });
+    broker.publishEvent({
+      jobId: 'job-done',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'done' },
+      jobMetadata: {
+        tool: 'codex',
+        mode: 'analysis',
+        workDir: 'D:/maestro2',
+        model: 'gpt-5.4',
+        backend: 'direct',
+      },
+      now: '2026-04-08T12:11:00.000Z',
+    });
+
+    const result = await registry.execute('delegate_message', {
+      execId: 'job-done',
+      message: 'Continue with the next step',
+      delivery: 'after_complete',
+    });
+    const json = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    assert.equal(json.accepted, true);
+    assert.equal(json.immediateDispatch, true);
+    assert.equal(json.previousStatus, 'completed');
+    assert.equal(launches.length, 1);
+    assert.equal(launches[0].execId, 'job-done');
+    assert.equal(launches[0].resume, 'job-done');
+
+    const messagesResult = await registry.execute('delegate_messages', { execId: 'job-done' });
+    const messagesJson = JSON.parse(messagesResult.content[0].text) as Record<string, unknown>;
+    const messages = messagesJson.messages as Array<Record<string, unknown>>;
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].status, 'dispatched');
+    assert.equal(messages[0].dispatchReason, 'terminal:completed');
   });
 
   it('requests cancellation through the broker for delegate_cancel', async () => {

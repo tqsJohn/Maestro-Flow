@@ -44,23 +44,51 @@ describe('DelegateBrokerMonitor', () => {
             createdAt: '2026-04-08T10:00:00.000Z',
             status: 'queued',
             payload: { summary: 'Queued for execution' },
-            metadata: { tool: 'codex', prompt: 'Inspect async delegate', workDir: 'D:/maestro2' },
+            metadata: {
+              tool: 'codex',
+              prompt: 'Inspect async delegate',
+              workDir: 'D:/maestro2',
+              queuedMessages: [],
+            },
           },
           {
             eventId: 2,
             sequence: 2,
             jobId: 'job-1',
-            type: 'snapshot',
+            type: 'message_queued',
             createdAt: '2026-04-08T10:00:01.000Z',
             status: 'running',
-            payload: { summary: 'Collecting context' },
+            payload: { summary: 'Queued after_complete follow-up message', messageId: 'msg-2' },
+            metadata: {
+              tool: 'codex',
+              prompt: 'Inspect async delegate',
+              workDir: 'D:/maestro2',
+              queuedMessages: [
+                {
+                  messageId: 'msg-2',
+                  createdAt: '2026-04-08T10:00:01.000Z',
+                  delivery: 'after_complete',
+                  message: 'Continue with verification after this pass',
+                  status: 'queued',
+                },
+              ],
+            },
           },
           {
             eventId: 3,
             sequence: 3,
             jobId: 'job-1',
-            type: 'completed',
+            type: 'snapshot',
             createdAt: '2026-04-08T10:00:02.000Z',
+            status: 'running',
+            payload: { summary: 'Collecting context' },
+          },
+          {
+            eventId: 4,
+            sequence: 4,
+            jobId: 'job-1',
+            type: 'completed',
+            createdAt: '2026-04-08T10:00:03.000Z',
             status: 'completed',
             payload: { summary: 'Finished successfully' },
           },
@@ -71,11 +99,24 @@ describe('DelegateBrokerMonitor', () => {
         jobId: 'job-1',
         status: 'completed',
         createdAt: '2026-04-08T10:00:00.000Z',
-        updatedAt: '2026-04-08T10:00:02.000Z',
-        lastEventId: 3,
+        updatedAt: '2026-04-08T10:00:03.000Z',
+        lastEventId: 4,
         lastEventType: 'completed',
         latestSnapshot: { outputPreview: 'Finished successfully' },
-        metadata: { tool: 'codex', prompt: 'Inspect async delegate', workDir: 'D:/maestro2' },
+        metadata: {
+          tool: 'codex',
+          prompt: 'Inspect async delegate',
+          workDir: 'D:/maestro2',
+          queuedMessages: [
+            {
+              messageId: 'msg-2',
+              createdAt: '2026-04-08T10:00:01.000Z',
+              delivery: 'after_complete',
+              message: 'Continue with verification after this pass',
+              status: 'queued',
+            },
+          ],
+        },
       })),
       listJobEvents: vi.fn(() => []),
       requestCancel: vi.fn(),
@@ -95,9 +136,11 @@ describe('DelegateBrokerMonitor', () => {
     const process = agentManager.listProcesses().find((item) => item.id === 'cli-history-job-1');
     expect(process).toBeTruthy();
     expect(process?.status).toBe('stopped');
+    expect(process?.interactive).toBe(true);
 
     const entries = agentManager.getEntries('cli-history-job-1');
-    expect(entries.some((entry) => entry.type === 'user_message')).toBe(true);
+    expect(entries.some((entry) => entry.type === 'user_message' && 'content' in entry && entry.content === 'Inspect async delegate')).toBe(true);
+    expect(entries.some((entry) => entry.type === 'user_message' && 'content' in entry && entry.content === 'Continue with verification after this pass')).toBe(true);
     expect(entries.some((entry) => entry.type === 'assistant_message')).toBe(true);
     expect(entries.some((entry) => entry.type === 'status_change')).toBe(true);
     expect(broker.ack).toHaveBeenCalled();

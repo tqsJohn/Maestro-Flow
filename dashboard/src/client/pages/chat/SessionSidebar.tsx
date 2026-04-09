@@ -21,6 +21,16 @@ interface CliHistoryMeta {
   cancelRequestedAt?: string | null;
 }
 
+interface CliHistoryQueuedMessage {
+  messageId: string;
+  createdAt: string;
+  delivery: 'interrupt_resume' | 'after_complete';
+  message: string;
+  status: 'queued' | 'dispatched' | 'dropped';
+  dispatchedAt?: string;
+  dispatchReason?: string;
+}
+
 type HistoryFilter = 'all' | 'async' | 'other';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +57,41 @@ function formatDate(iso: string): string {
 
 function isAsyncDelegateMeta(meta: CliHistoryMeta): boolean {
   return meta.asyncDelegate === true;
+}
+
+function buildQueuedMessageEntries(
+  processId: string,
+  messages: CliHistoryQueuedMessage[],
+): NormalizedEntry[] {
+  const entries: NormalizedEntry[] = [];
+
+  for (const message of messages) {
+    if (message.status === 'dispatched') {
+      continue;
+    }
+
+    entries.push({
+      id: `${message.messageId}:user`,
+      processId,
+      timestamp: message.createdAt,
+      type: 'user_message',
+      content: message.message,
+    });
+
+    if (message.status === 'dropped') {
+      entries.push({
+        id: `${message.messageId}:error`,
+        processId,
+        timestamp: message.dispatchedAt ?? message.createdAt,
+        type: 'error',
+        message: message.dispatchReason
+          ? `Follow-up dropped: ${message.dispatchReason}`
+          : 'Follow-up dropped',
+      });
+    }
+  }
+
+  return entries;
 }
 
 function statusBadge(meta: CliHistoryMeta): { label: string; bg: string; fg: string } | null {
@@ -215,14 +260,21 @@ function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (exec
         workDir: meta.workDir,
       },
       startedAt: meta.startedAt,
+      interactive: meta.asyncDelegate === true,
     };
     addProcess(syntheticProcess);
     setActiveProcessId(processId);
 
     try {
-      const res = await fetch(`/api/cli-history/${encodeURIComponent(meta.execId)}/entries`);
-      if (res.ok) {
-        const raw = (await res.json()) as NormalizedEntry[];
+      const [entriesRes, messagesRes] = await Promise.all([
+        fetch(`/api/cli-history/${encodeURIComponent(meta.execId)}/entries`),
+        meta.asyncDelegate
+          ? fetch(`/api/cli-history/${encodeURIComponent(meta.execId)}/messages`)
+          : Promise.resolve(null),
+      ]);
+
+      if (entriesRes.ok) {
+        const raw = (await entriesRes.json()) as NormalizedEntry[];
         // Post-process history entries:
         // 1. Consolidate consecutive assistant_message fragments into single messages
         // 2. Clear partial flag on assistant messages (session is complete)
@@ -258,6 +310,13 @@ function HistoryCard({ meta, onRemove }: { meta: CliHistoryMeta; onRemove: (exec
           merged.push(fixed);
         }
         for (const entry of merged) {
+          addEntry(processId, entry);
+        }
+      }
+
+      if (messagesRes?.ok) {
+        const messages = (await messagesRes.json()) as CliHistoryQueuedMessage[];
+        for (const entry of buildQueuedMessageEntries(processId, messages)) {
           addEntry(processId, entry);
         }
       }

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CliHistoryStore, type EntryLike, type ExecutionMeta } from '../agents/cli-history-store.js';
 import { DelegateBrokerClient } from '../async/index.js';
+import { launchDetachedDelegateWorker, type DelegateExecutionRequest } from '../commands/delegate.js';
+import { handleDelegateMessage } from '../async/delegate-control.js';
 import { loadSpecs, type SpecCategory } from './spec-loader.js';
 import { initSpecSystem } from './spec-init.js';
 import {
@@ -146,6 +148,10 @@ function summarizeQueuedMessage(message: {
   };
 }
 
+type BuiltinToolDependencies = {
+  launchDetachedDelegate?: (request: DelegateExecutionRequest) => void;
+};
+
 /**
  * Register a CCW-style tool (with schema + handler exports) into the maestro registry.
  * Adapts CCW's { success, result, error } format to maestro's { content, isError } format.
@@ -165,7 +171,10 @@ function registerCcwTool(
   });
 }
 
-export function registerBuiltinTools(registry: ToolRegistry): void {
+export function registerBuiltinTools(
+  registry: ToolRegistry,
+  dependencies: BuiltinToolDependencies = {},
+): void {
   // --- CCW-ported tools (modular) ---
   registerCcwTool(registry, editFileTool);
   registerCcwTool(registry, writeFileTool);
@@ -176,6 +185,7 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
   const historyStore = new CliHistoryStore();
   const delegateBroker = new DelegateBrokerClient();
+  const launchDelegate = dependencies.launchDetachedDelegate ?? launchDetachedDelegateWorker;
 
   // --- Maestro-native tools (inline) ---
 
@@ -278,7 +288,7 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
   registry.register({
     name: 'delegate_message',
-    description: 'Queue a follow-up message for a running async delegate using interrupt_resume or after_complete delivery.',
+    description: 'Queue or dispatch a follow-up message for an async delegate using interrupt_resume or after_complete delivery.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,38 +322,35 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
         return jsonResult({ error: `Delegate execution not found: ${execId}` }, true);
       }
       if (!job) {
-        return jsonResult({ error: `Delegate broker state unavailable for active execution: ${execId}` }, true);
+        return jsonResult({ error: `Delegate broker state unavailable for: ${execId}` }, true);
       }
 
-      const currentStatus = deriveDelegateStatus(meta, job);
-      if (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled') {
-        return jsonResult({
-          error: `delegate_message requires an active async delegate. Current status: ${currentStatus}`,
-        }, true);
-      }
-
-      const queued = delegateBroker.queueMessage({
-        jobId: execId,
-        message,
-        delivery: delivery as 'interrupt_resume' | 'after_complete',
-        requestedBy: 'mcp:delegate_message',
-      });
-
-      if (delivery === 'interrupt_resume') {
-        delegateBroker.requestCancel({
-          jobId: execId,
+      let result;
+      try {
+        result = handleDelegateMessage({
+          execId,
+          message,
+          delivery: delivery as 'interrupt_resume' | 'after_complete',
           requestedBy: 'mcp:delegate_message',
-          reason: 'interrupt_resume follow-up queued',
+        }, {
+          historyStore,
+          delegateBroker,
+          launchDetachedDelegate: launchDelegate,
         });
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        return jsonResult({ error: messageText }, true);
       }
 
       return jsonResult({
-        execId,
-        accepted: true,
-        delivery,
-        status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
-        queuedMessage: summarizeQueuedMessage(queued),
-        queueDepth: delegateBroker.listMessages(execId).filter((item) => item.status === 'queued').length,
+        execId: result.execId,
+        accepted: result.accepted,
+        delivery: result.delivery,
+        status: result.status,
+        queuedMessage: summarizeQueuedMessage(result.queuedMessage),
+        immediateDispatch: result.immediateDispatch,
+        previousStatus: result.previousStatus,
+        queueDepth: result.queueDepth,
         tools: {
           status: 'delegate_status',
           tail: 'delegate_tail',

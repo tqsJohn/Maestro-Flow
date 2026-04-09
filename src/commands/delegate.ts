@@ -92,7 +92,7 @@ function readExecutionEntries(store: CliHistoryStore, execId: string): EntryLike
   }
 }
 
-interface DelegateExecutionRequest {
+export interface DelegateExecutionRequest {
   prompt: string;
   tool: string;
   mode: 'analysis' | 'write';
@@ -156,6 +156,9 @@ function buildJobMetadata(request: DelegateExecutionRequest, workerPid?: number)
     workDir: request.workDir,
     prompt: request.prompt.substring(0, 200),
     backend: request.backend,
+    cancelRequestedAt: null,
+    cancelRequestedBy: null,
+    cancelReason: null,
   };
   if (request.model) {
     metadata.model = request.model;

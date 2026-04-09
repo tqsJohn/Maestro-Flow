@@ -26,6 +26,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/quality-debug', desc: 'Parallel hypothesis debugging', color: 'var(--color-accent-blue)', bg: 'var(--color-tint-exploring)' },
 ];
 
+type DelegateMessageDelivery = 'interrupt_resume' | 'after_complete' | 'streaming';
+
 interface ChatInputProps {
   processId?: string | null;
   /** Executor type — fallback for interactivity when process not yet resolved */
@@ -38,6 +40,7 @@ const INTERACTIVE_EXECUTOR_FALLBACK = new Set<AgentType>(['claude-code']);
 export function ChatInput({ processId: externalProcessId, executor }: ChatInputProps = {}) {
   const [text, setText] = useState('');
   const [agentType, setAgentType] = useState<AgentType>('claude-code');
+  const [delegateDelivery, setDelegateDelivery] = useState<DelegateMessageDelivery>('after_complete');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,12 +51,19 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
 
   const effectiveProcessId = externalProcessId !== undefined ? externalProcessId : storeProcessId;
   const activeProcess = effectiveProcessId ? processes[effectiveProcessId] ?? null : null;
+  const isAsyncDelegateSession = Boolean(
+    effectiveProcessId
+    && effectiveProcessId.startsWith('cli-history-')
+    && activeProcess?.interactive === true,
+  );
 
   // Use process.interactive flag if available, fallback to executor type heuristic
   const isNonInteractive =
     activeProcess != null
       ? activeProcess.interactive === false
       : executor != null && !INTERACTIVE_EXECUTOR_FALLBACK.has(executor);
+  const isDisabled = (externalProcessId !== undefined && !effectiveProcessId)
+    || (!isAsyncDelegateSession && isNonInteractive);
 
   // -- IME-safe composition input --
   const { compositionHandlers, createKeyDownHandler } = useCompositionInput();
@@ -75,11 +85,20 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
     if (!trimmed) return;
 
     if (effectiveProcessId && activeProcess) {
-      sendWsMessage({
-        action: 'message',
-        processId: effectiveProcessId,
-        content: trimmed,
-      });
+      if (isAsyncDelegateSession) {
+        sendWsMessage({
+          action: 'delegate:message',
+          processId: effectiveProcessId,
+          content: trimmed,
+          delivery: delegateDelivery,
+        });
+      } else {
+        sendWsMessage({
+          action: 'message',
+          processId: effectiveProcessId,
+          content: trimmed,
+        });
+      }
     } else if (externalProcessId === undefined) {
       // Only spawn new agents when not in external processId mode
       sendWsMessage({
@@ -97,7 +116,16 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [text, effectiveProcessId, activeProcess, agentType, externalProcessId, slashController]);
+  }, [
+    text,
+    effectiveProcessId,
+    activeProcess,
+    agentType,
+    externalProcessId,
+    slashController,
+    isAsyncDelegateSession,
+    delegateDelivery,
+  ]);
 
   // Compose keydown: slash controller intercepts first, then Enter-to-send
   const handleKeyDown = createKeyDownHandler(handleSend, slashController.onKeyDown);
@@ -213,8 +241,14 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
             onInput={handleInput}
             onKeyDown={handleKeyDown}
             {...compositionHandlers}
-            disabled={isNonInteractive || (externalProcessId !== undefined && !effectiveProcessId)}
-            placeholder={effectiveProcessId ? 'Send a message...' : 'Send a message, / for commands...'}
+            disabled={isDisabled}
+            placeholder={
+              isAsyncDelegateSession
+                ? 'Queue a follow-up for this async delegate...'
+                : effectiveProcessId
+                  ? 'Send a message...'
+                  : 'Send a message, / for commands...'
+            }
             rows={isMultiline ? 3 : 1}
             className={`w-full resize-none border-none leading-[1.5] bg-transparent outline-none disabled:opacity-40 disabled:cursor-not-allowed ${isMultiline ? 'min-h-[72px] max-h-[200px]' : 'min-h-[42px] max-h-[42px]'}`}
             style={{ color: 'var(--color-text-primary)', fontSize: 'var(--style-composer-textarea-size)', padding: 'var(--style-composer-padding)' }}
@@ -254,6 +288,30 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
             {/* Context usage indicator */}
             <ContextUsageIndicator processId={effectiveProcessId} />
 
+            {isAsyncDelegateSession && (
+              <div
+                className="flex items-center gap-[5px] px-[10px] py-[3px] text-[11px] font-medium"
+                style={{
+                  border: 'var(--style-btn-secondary-border)',
+                  backgroundColor: 'var(--style-btn-secondary-bg)',
+                  borderRadius: 'var(--style-btn-secondary-radius)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <span style={{ color: 'var(--color-text-tertiary)' }}>Delivery</span>
+                <select
+                  value={delegateDelivery}
+                  onChange={(e) => setDelegateDelivery(e.target.value as DelegateMessageDelivery)}
+                  className="border-none bg-transparent cursor-pointer outline-none appearance-none text-[11px] font-medium"
+                  style={{ color: 'inherit' }}
+                >
+                  <option value="after_complete">After Complete</option>
+                  <option value="interrupt_resume">Interrupt Resume</option>
+                  <option value="streaming">Streaming</option>
+                </select>
+              </div>
+            )}
+
             {/* Agent selector */}
             <div
               className="flex items-center gap-[5px] ml-auto px-[10px] py-[3px] cursor-pointer text-[11px] font-medium transition-colors duration-150"
@@ -288,7 +346,7 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
             <button
               type="button"
               onClick={handleSend}
-              disabled={!text.trim() || isNonInteractive || (externalProcessId !== undefined && !effectiveProcessId)}
+              disabled={!text.trim() || isDisabled}
               className="shrink-0 w-[34px] h-[30px] rounded-[8px] flex items-center justify-center transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 ml-1 border-none cursor-pointer"
               style={{ backgroundColor: 'var(--style-send-btn-bg)', color: 'var(--style-send-btn-color)' }}
               aria-label="Send message"
@@ -301,9 +359,15 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
           className="flex gap-3 mt-[5px] px-[6px] text-[10px]"
           style={{ color: 'var(--color-text-placeholder)' }}
         >
-          <span><kbd className="font-mono text-[10px] px-1 border rounded-[3px]" style={{ borderColor: 'var(--color-border-divider)', backgroundColor: 'var(--color-bg-secondary)' }}>Enter</kbd> send</span>
+          <span><kbd className="font-mono text-[10px] px-1 border rounded-[3px]" style={{ borderColor: 'var(--color-border-divider)', backgroundColor: 'var(--color-bg-secondary)' }}>Enter</kbd> {isAsyncDelegateSession ? 'queue' : 'send'}</span>
           <span><kbd className="font-mono text-[10px] px-1 border rounded-[3px]" style={{ borderColor: 'var(--color-border-divider)', backgroundColor: 'var(--color-bg-secondary)' }}>/</kbd> skills</span>
-          <span className="ml-auto">{AGENT_LABELS[showAgentSelector ? agentType : currentModel]} &middot; opus-4.6</span>
+          <span className="ml-auto">
+            {AGENT_LABELS[showAgentSelector ? agentType : currentModel]}
+            {' \u00b7 '}
+            {isAsyncDelegateSession
+              ? (delegateDelivery === 'after_complete' ? 'after complete' : delegateDelivery === 'streaming' ? 'streaming' : 'interrupt resume')
+              : 'opus-4.6'}
+          </span>
         </div>
       </div>
     </div>

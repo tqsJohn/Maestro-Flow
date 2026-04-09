@@ -7,6 +7,9 @@ import type { AgentManager } from '../../agents/agent-manager.js';
 import type { DashboardEventBus } from '../../state/event-bus.js';
 import { loadDashboardAgentSettings } from '../../config.js';
 import { EntryNormalizer } from '../../agents/entry-normalizer.js';
+import { handleDelegateMessage } from '../../../../../src/async/delegate-control.js';
+
+type DelegateMessageHandler = typeof handleDelegateMessage;
 
 // ---------------------------------------------------------------------------
 // AgentWsHandler — spawn, stop, message, approve, CLI bridge forwarding
@@ -17,6 +20,7 @@ export class AgentWsHandler implements WsHandler {
     'spawn',
     'stop',
     'message',
+    'delegate:message',
     'approve',
     'cli:spawned',
     'cli:entry',
@@ -27,6 +31,7 @@ export class AgentWsHandler implements WsHandler {
     private readonly agentManager: AgentManager,
     private readonly eventBus: DashboardEventBus,
     private readonly workflowRoot: string,
+    private readonly delegateMessage: DelegateMessageHandler = handleDelegateMessage,
   ) {}
 
   async handle(
@@ -52,6 +57,34 @@ export class AgentWsHandler implements WsHandler {
           msg.content as string,
         );
         break;
+
+      case 'delegate:message': {
+        const delivery = msg.delivery as string;
+        const content = String(msg.content ?? '').trim();
+        const execId = typeof msg.execId === 'string' && msg.execId.trim()
+          ? msg.execId.trim()
+          : typeof msg.processId === 'string'
+            ? msg.processId
+            : '';
+
+        if (!execId) {
+          throw new Error('processId or execId is required');
+        }
+        if (!content) {
+          throw new Error('content is required');
+        }
+        if (delivery !== 'interrupt_resume' && delivery !== 'after_complete' && delivery !== 'streaming') {
+          throw new Error('delivery must be interrupt_resume, after_complete, or streaming');
+        }
+
+        this.delegateMessage({
+          execId,
+          message: content,
+          delivery,
+          requestedBy: 'dashboard:ws:delegate_message',
+        });
+        break;
+      }
 
       case 'approve':
         await this.agentManager.respondApproval({

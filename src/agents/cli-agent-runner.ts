@@ -73,6 +73,8 @@ interface AdapterLike {
   spawn(config: AgentConfig): Promise<AgentProcess>;
   stop(processId: string): Promise<void>;
   onEntry(processId: string, cb: (entry: NormalizedEntry) => void): () => void;
+  sendMessage?(processId: string, content: string): Promise<void>;
+  supportsInteractive?(): boolean;
 }
 
 interface DashboardBridgeLike {
@@ -297,6 +299,9 @@ function buildJobMetadata(options: CliRunOptions): JsonObject {
     mode: options.mode,
     workDir: options.workDir,
     prompt: options.prompt.substring(0, 200),
+    cancelRequestedAt: null,
+    cancelRequestedBy: null,
+    cancelReason: null,
   };
 
   if (options.model) {
@@ -500,11 +505,11 @@ export class CliAgentRunner {
         method: 'notifications/claude/channel',
         params: {
           content,
-          meta: { exec_id: execId, tool, mode, exit_code: String(exitCode), status },
+          meta: { exec_id: execId, job_id: execId, tool, mode, exit_code: String(exitCode), event_type: status, status },
         },
-      }).catch(() => { /* best-effort */ });
-    } catch {
-      // MCP server module not available (CLI-only mode) — hook fallback handles it
+      }).catch((err: unknown) => { console.error(`[${execId}] MCP notification send failed: ${err instanceof Error ? err.message : err}`); });
+    } catch (err) {
+      console.error(`[${execId}] MCP server not available for channel notification: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -663,6 +668,7 @@ export class CliAgentRunner {
       // Write delegate completion notification (for hook fallback)
       const sessionId = options.sessionId;
       if (sessionId) {
+        // JSONL file write (for hook fallback)
         try {
           const notifyPath = join(tmpdir(), `${NOTIFY_PREFIX}${sessionId}.jsonl`);
           const entry = JSON.stringify({
@@ -675,11 +681,15 @@ export class CliAgentRunner {
             status,
           });
           appendFileSync(notifyPath, entry + '\n', 'utf-8');
+        } catch (err) {
+          console.error(`[${execId}] Failed to write JSONL notification: ${err instanceof Error ? err.message : err}`);
+        }
 
-          // Try MCP channel notification (primary path)
+        // MCP channel notification (primary path)
+        try {
           CliAgentRunner.sendChannelNotification(sessionId, execId, options.tool, options.mode, status, exitCode);
-        } catch {
-          // Non-critical — notification is best-effort
+        } catch (err) {
+          console.error(`[${execId}] Failed to send channel notification: ${err instanceof Error ? err.message : err}`);
         }
       }
     };
@@ -711,7 +721,8 @@ export class CliAgentRunner {
         queuedMessage = broker.listMessages(execId).find((message) => (
           message.status === 'queued'
           && (
-            (message.delivery === 'interrupt_resume' && finalStatus === 'cancelled')
+            (message.delivery === 'interrupt_resume'
+              && (finalStatus === 'cancelled' || finalStatus === 'completed' || finalStatus === 'failed'))
             || (message.delivery === 'after_complete' && finalStatus === 'completed')
           )
         ));
@@ -763,6 +774,7 @@ export class CliAgentRunner {
       });
     };
 
+    const inFlightMessageIds = new Set<string>();
     if (!isTerminalStatus(broker.getJob(execId)?.status)) {
       cancellationPoller = setInterval(() => {
         try {
@@ -772,6 +784,49 @@ export class CliAgentRunner {
           }
         } catch {
           // Best-effort polling only.
+        }
+
+        // Poll for streaming messages and inject via adapter.sendMessage()
+        try {
+          const streamingMessages = broker.listMessages(execId)
+            .filter((msg) => msg.status === 'queued' && msg.delivery === 'streaming' && !inFlightMessageIds.has(msg.messageId))
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+          for (const msg of streamingMessages) {
+            const polledNow = now();
+            if (adapter.sendMessage && (adapter.supportsInteractive?.() !== false)) {
+              inFlightMessageIds.add(msg.messageId);
+              void adapter.sendMessage(agentProcess.id, msg.message).then(() => {
+                broker.updateMessage({
+                  jobId: execId,
+                  messageId: msg.messageId,
+                  status: 'injected',
+                  dispatchReason: 'streaming-injected',
+                  now: polledNow,
+                });
+              }).catch(() => {
+                broker.updateMessage({
+                  jobId: execId,
+                  messageId: msg.messageId,
+                  status: 'dropped',
+                  dispatchReason: 'send-failed',
+                  now: polledNow,
+                });
+              }).finally(() => {
+                inFlightMessageIds.delete(msg.messageId);
+              });
+            } else {
+              broker.updateMessage({
+                jobId: execId,
+                messageId: msg.messageId,
+                status: 'dropped',
+                dispatchReason: 'adapter-no-interactive',
+                now: polledNow,
+              });
+            }
+          }
+        } catch {
+          // Best-effort streaming message polling.
         }
       }, 750);
     }

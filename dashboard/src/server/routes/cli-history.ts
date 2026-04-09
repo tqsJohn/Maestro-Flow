@@ -37,6 +37,7 @@ function getCliHistoryDir(): string {
  *
  * GET /api/cli-history            - list recent executions (?limit=20)
  * GET /api/cli-history/:id/entries - load JSONL entries for an execution
+ * GET /api/cli-history/:id/messages - load queued follow-up messages for an async delegate
  */
 export function createCliHistoryRoutes(): Hono {
   const app = new Hono();
@@ -114,6 +115,17 @@ export function createCliHistoryRoutes(): Hono {
     } catch {
       return c.json({ error: 'Execution not found' }, 404);
     }
+  });
+
+  // GET /api/cli-history/:id/messages
+  app.get('/api/cli-history/:id/messages', (c) => {
+    const id = c.req.param('id');
+
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(id)) {
+      return c.json({ error: 'Invalid execution ID' }, 400);
+    }
+
+    return c.json(broker.listMessages(id));
   });
 
   return app;

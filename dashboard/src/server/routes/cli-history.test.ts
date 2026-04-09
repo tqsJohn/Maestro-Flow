@@ -13,6 +13,7 @@ type MockJob = {
 
 const brokerState = vi.hoisted(() => ({
   jobs: new Map<string, MockJob>(),
+  messages: new Map<string, Array<Record<string, unknown>>>(),
 }));
 
 const fsState = vi.hoisted(() => ({
@@ -56,6 +57,10 @@ vi.mock('../../../../src/async/index.js', () => ({
     getJob(jobId: string) {
       return brokerState.jobs.get(jobId) ?? null;
     }
+
+    listMessages(jobId: string) {
+      return brokerState.messages.get(jobId) ?? [];
+    }
   },
 }));
 
@@ -69,6 +74,7 @@ describe('CLI history routes', () => {
     process.env.MAESTRO_HOME = '/mock-home/.maestro';
     historyDir = join(process.env.MAESTRO_HOME, CLI_HISTORY_DIR_NAME);
     brokerState.jobs.clear();
+    brokerState.messages.clear();
     fsState.files.clear();
     fsState.mtimes.clear();
     ({ createCliHistoryRoutes } = await import('./cli-history.js'));
@@ -76,6 +82,7 @@ describe('CLI history routes', () => {
 
   afterEach(() => {
     brokerState.jobs.clear();
+    brokerState.messages.clear();
     fsState.files.clear();
     fsState.mtimes.clear();
     if (previousMaestroHome === undefined) {
@@ -183,12 +190,43 @@ describe('CLI history routes', () => {
     ]);
   });
 
+  it('returns queued follow-up messages for async delegates', async () => {
+    brokerState.messages.set('exec-async', [
+      {
+        messageId: 'msg-1',
+        createdAt: '2026-04-08T10:01:00.000Z',
+        delivery: 'after_complete',
+        message: 'Continue after this step',
+        status: 'queued',
+      },
+    ]);
+
+    const app = createCliHistoryRoutes();
+    const res = await app.request('/api/cli-history/exec-async/messages');
+    const body = await res.json() as Array<Record<string, unknown>>;
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual([
+      {
+        messageId: 'msg-1',
+        createdAt: '2026-04-08T10:01:00.000Z',
+        delivery: 'after_complete',
+        message: 'Continue after this step',
+        status: 'queued',
+      },
+    ]);
+  });
+
   it('rejects invalid IDs and reports missing executions', async () => {
     const app = createCliHistoryRoutes();
 
     const invalidRes = await app.request('/api/cli-history/bad%20id/entries');
     expect(invalidRes.status).toBe(400);
     expect(await invalidRes.json()).toEqual({ error: 'Invalid execution ID' });
+
+    const invalidMessagesRes = await app.request('/api/cli-history/bad%20id/messages');
+    expect(invalidMessagesRes.status).toBe(400);
+    expect(await invalidMessagesRes.json()).toEqual({ error: 'Invalid execution ID' });
 
     const missingRes = await app.request('/api/cli-history/exec-missing/entries');
     expect(missingRes.status).toBe(404);

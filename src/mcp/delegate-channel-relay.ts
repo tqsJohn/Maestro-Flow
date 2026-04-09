@@ -167,6 +167,7 @@ export class DelegateChannelRelay {
   private pollTimer: NodeJS.Timeout | null = null;
   private running = false;
   private polling = false;
+  private consecutiveFailures = 0;
 
   constructor(options: DelegateChannelRelayOptions) {
     this.server = options.server;
@@ -246,6 +247,15 @@ export class DelegateChannelRelay {
           now: this.now(),
         });
       }
+
+      this.consecutiveFailures = 0;
+    } catch (error) {
+      this.consecutiveFailures += 1;
+      if (this.consecutiveFailures >= 3) {
+        console.warn(`[DelegateChannelRelay] Stopping poll after ${this.consecutiveFailures} consecutive failures`);
+        this.stop();
+      }
+      throw error;
     } finally {
       this.polling = false;
     }
@@ -266,6 +276,7 @@ export class DelegateChannelRelay {
         content: buildNotificationContent(event),
         meta: {
           job_id: event.jobId,
+          exec_id: event.jobId,
           event_id: String(event.eventId),
           event_type: event.type,
           status: String(event.status ?? ''),
