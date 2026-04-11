@@ -9,11 +9,11 @@ import {
   launchDetachedDelegateWorker,
   type DelegateExecutionRequest,
 } from '../commands/delegate.js';
-
-type DelegateJobLike = {
-  status: string;
-  metadata?: Record<string, unknown> | null;
-} | null;
+import {
+  deriveExecutionStatus,
+  deriveDelegateStatus,
+  type DelegateJobLike,
+} from '../utils/cli-format.js';
 
 export interface DelegateMessageInput {
   execId: string;
@@ -56,39 +56,7 @@ export function normalizeDelegateExecId(value: string): string {
     : trimmed;
 }
 
-export function deriveExecutionStatus(meta: ExecutionMeta | null): string {
-  if (!meta) {
-    return 'unknown';
-  }
-
-  if (meta.cancelledAt) {
-    return 'cancelled';
-  }
-
-  if (meta.exitCode === undefined && !meta.completedAt) {
-    return 'running';
-  }
-
-  if (meta.exitCode === 0) {
-    return 'completed';
-  }
-
-  return meta.exitCode === undefined ? 'unknown' : `exit:${meta.exitCode}`;
-}
-
-export function deriveDelegateStatus(
-  meta: ExecutionMeta | null,
-  job: DelegateJobLike,
-): string {
-  if (
-    (job?.status === 'running' || job?.status === 'queued')
-    && job.metadata
-    && typeof job.metadata.cancelRequestedAt === 'string'
-  ) {
-    return 'cancelling';
-  }
-  return job?.status ?? deriveExecutionStatus(meta);
-}
+export { deriveExecutionStatus, deriveDelegateStatus, type DelegateJobLike };
 
 export function buildDelegateRequestFromState(
   execId: string,

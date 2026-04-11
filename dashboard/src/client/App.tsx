@@ -30,6 +30,10 @@ const SpecsPage = lazy(() =>
   import('@/client/pages/SpecsPage.js').then((m) => ({ default: m.SpecsPage })),
 );
 
+const WikiPage = lazy(() =>
+  import('@/client/pages/WikiPage.js').then((m) => ({ default: m.WikiPage })),
+);
+
 const TeamsPage = lazy(() =>
   import('@/client/pages/TeamsPage.js').then((m) => ({ default: m.TeamsPage })),
 );
@@ -109,6 +113,14 @@ export function App() {
             element={
               <Suspense fallback={<LazyFallback />}>
                 <SpecsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="wiki"
+            element={
+              <Suspense fallback={<LazyFallback />}>
+                <WikiPage />
               </Suspense>
             }
           />

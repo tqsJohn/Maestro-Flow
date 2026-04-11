@@ -13,49 +13,18 @@ import { generateCliExecId } from '../agents/cli-agent-runner.js';
 import { loadCliToolsConfig, selectTool } from '../config/cli-tools-config.js';
 import { paths } from '../config/paths.js';
 import { DelegateBrokerClient, type JsonObject, type DelegateJobEvent, type DelegateJobRecord } from '../async/index.js';
+import {
+  deriveExecutionStatus,
+  deriveDelegateStatus,
+  padRight,
+  truncate,
+  readExecutionEntries,
+  summarizeBrokerEventCli,
+} from '../utils/cli-format.js';
 
 function statusLabel(meta: ExecutionMeta): string {
-  if (meta.cancelledAt) return 'cancelled';
-  if (meta.exitCode === undefined && !meta.completedAt) return 'running';
-  if (meta.exitCode === 0) return 'done';
-  return `exit:${meta.exitCode ?? '?'}`;
-}
-
-function deriveDelegateStatus(meta: ExecutionMeta | null, job: DelegateJobRecord | null): string {
-  if (
-    job
-    && (job.status === 'running' || job.status === 'queued')
-    && job.metadata
-    && typeof job.metadata.cancelRequestedAt === 'string'
-  ) {
-    return 'cancelling';
-  }
-  if (job) {
-    return job.status;
-  }
-  return meta ? statusLabel(meta) : 'unknown';
-}
-
-function truncate(text: string, max: number): string {
-  const oneLine = text.replace(/\n/g, ' ').trim();
-  if (oneLine.length <= max) return oneLine;
-  return oneLine.slice(0, max - 3) + '...';
-}
-
-function padRight(str: string, len: number): string {
-  return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
-}
-
-function summarizeBrokerEvent(event: DelegateJobEvent): string {
-  const payloadSummary = typeof event.payload.summary === 'string'
-    ? event.payload.summary
-    : typeof event.payload.message === 'string'
-      ? event.payload.message
-      : null;
-  const progress = event.snapshot && typeof event.snapshot.progress === 'number'
-    ? ` progress=${event.snapshot.progress}%`
-    : '';
-  return `${event.eventId} ${event.type}${event.status ? ` (${event.status})` : ''}${progress}${payloadSummary ? ` ${payloadSummary}` : ''}`;
+  const s = deriveExecutionStatus(meta);
+  return s === 'completed' ? 'done' : s === 'unknown' ? `exit:${meta.exitCode ?? '?'}` : s;
 }
 
 function summarizeHistoryEntry(entry: EntryLike): string {
@@ -70,26 +39,6 @@ function summarizeHistoryEntry(entry: EntryLike): string {
       return `status: ${String(entry.status ?? '')}`;
     default:
       return `${entry.type}`;
-  }
-}
-
-function readExecutionEntries(store: CliHistoryStore, execId: string): EntryLike[] {
-  try {
-    const raw = readFileSync(store.jsonlPathFor(execId), 'utf-8');
-    return raw
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line) as EntryLike;
-        } catch {
-          return null;
-        }
-      })
-      .filter((entry): entry is EntryLike => entry !== null);
-  } catch {
-    return [];
   }
 }
 
@@ -501,7 +450,7 @@ export function registerDelegateCommand(program: Command): void {
       if (events.length > 0) {
         console.log('Recent events:');
         for (const event of events) {
-          console.log(`  - ${summarizeBrokerEvent(event)}`);
+          console.log(`  - ${summarizeBrokerEventCli(event)}`);
         }
       }
     });
@@ -527,7 +476,7 @@ export function registerDelegateCommand(program: Command): void {
       const historyLimit = Math.max(1, parseInt(opts.history ?? '10', 10) || 10);
       console.log(`== Broker Events (${Math.min(eventLimit, events.length)}/${events.length}) ==`);
       for (const event of events.slice(-eventLimit)) {
-        console.log(summarizeBrokerEvent(event));
+        console.log(summarizeBrokerEventCli(event));
       }
       console.log('');
       console.log(`== History Tail (${Math.min(historyLimit, historyEntries.length)}/${historyEntries.length}) ==`);

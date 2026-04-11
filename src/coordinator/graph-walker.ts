@@ -1,6 +1,6 @@
 // Graph Walker — State machine that traverses ChainGraph nodes autonomously.
 
-import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type {
@@ -8,7 +8,7 @@ import type {
   GateNode, JoinNode, TerminalNode, WalkerState, WalkerContext,
   ProjectSnapshot, HistoryEntry, CommandExecutor, PromptAssembler,
   ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter,
-  CoordinateEvent, AssembleRequest, AgentType,
+  CoordinateEvent, AssembleRequest, AgentType, ParsedResult,
 } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
 import type { ParallelCommandExecutor, BranchResult } from './parallel-executor.js';
@@ -196,6 +196,7 @@ export class GraphWalker {
     const assembleReq: AssembleRequest = {
       node,
       node_id: nodeId,
+      session_id: state.session_id,
       context: state.context,
       graph: { id: graph.id, name: graph.name },
       command_index: cmdIndex,
@@ -205,6 +206,11 @@ export class GraphWalker {
     };
 
     const prompt = await this.assembler.assemble(assembleReq);
+
+    // Clean up any stale report file from a prior visit to this node. Without
+    // this, a loop that re-enters `nodeId` (max_visits / retry) would read
+    // yesterday's SUCCESS and skip the real execution check.
+    this.clearNodeReport(state.session_id, nodeId);
 
     state.status = 'waiting_command';
     this.save(state);
@@ -220,7 +226,7 @@ export class GraphWalker {
       cmd: node.cmd,
     });
 
-    const parsed = this.outputParser.parse(execResult.raw_output, node);
+    const parsed = this.loadNodeResult(state.session_id, nodeId, execResult.raw_output, node);
     state.context.result = parsed.structured as unknown as Record<string, unknown>;
 
     // Analyze if applicable
@@ -643,6 +649,58 @@ export class GraphWalker {
       visits: {},
       var: {},
     };
+  }
+
+  private reportPathFor(sessionId: string, nodeId: string): string | null {
+    if (!this.sessionDir) return null;
+    return join(this.sessionDir, sessionId, 'reports', `${nodeId}.json`);
+  }
+
+  private clearNodeReport(sessionId: string, nodeId: string): void {
+    const path = this.reportPathFor(sessionId, nodeId);
+    if (!path) return;
+    try {
+      if (existsSync(path)) unlinkSync(path);
+    } catch { /* best-effort — stale report is worse than a failed cleanup surfacing */ }
+  }
+
+  // File-first result resolution. If the spawned agent called
+  // `maestro coordinate report`, the structured result is already on disk
+  // at a trusted path and is authoritative. Otherwise we fall back to the
+  // legacy stdout parser which requires the `--- COORDINATE RESULT ---`
+  // block. The parser interface stays unchanged.
+  private loadNodeResult(
+    sessionId: string,
+    nodeId: string,
+    rawOutput: string,
+    node: CommandNode,
+  ): ParsedResult {
+    const path = this.reportPathFor(sessionId, nodeId);
+    if (path && existsSync(path)) {
+      try {
+        const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+        const statusRaw = typeof raw.status === 'string' ? raw.status.toUpperCase() : 'FAILURE';
+        const status = statusRaw === 'SUCCESS' ? ('SUCCESS' as const) : ('FAILURE' as const);
+        return {
+          structured: {
+            status,
+            phase: typeof raw.phase === 'string' ? raw.phase : null,
+            verification_status: typeof raw.verification_status === 'string' ? raw.verification_status : null,
+            review_verdict: typeof raw.review_verdict === 'string' ? raw.review_verdict : null,
+            uat_status: typeof raw.uat_status === 'string' ? raw.uat_status : null,
+            artifacts: Array.isArray(raw.artifacts) ? raw.artifacts.filter((x): x is string => typeof x === 'string') : [],
+            summary: typeof raw.summary === 'string' ? raw.summary : '',
+          },
+        };
+      } catch (err) {
+        // Malformed report file — log a warning and fall through to the
+        // legacy parser. Better to surface a parser failure than to trust
+        // corrupted JSON, and the warning is a clue that the `report`
+        // subcommand itself has a bug.
+        console.error(`[walker] Report file at ${path} is malformed: ${err instanceof Error ? err.message : String(err)}. Falling back to stdout parser.`);
+      }
+    }
+    return this.outputParser.parse(rawOutput, node);
   }
 
   private save(state: WalkerState): void {

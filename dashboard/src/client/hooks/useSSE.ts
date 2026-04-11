@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useBoardStore } from '@/client/store/board-store.js';
+import { useWikiStore } from '@/client/store/wiki-store.js';
 import { SSE_ENDPOINT, SSE_EVENT_TYPES } from '@/shared/constants.js';
 import type { BoardState, PhaseCard } from '@/shared/types.js';
 
@@ -73,6 +74,12 @@ export function useSSE(): void {
       // Heartbeat — just confirms connection is alive
       es.addEventListener(SSE_EVENT_TYPES.HEARTBEAT, () => {
         // no-op, connection is alive
+      });
+
+      // Wiki index refreshed on server — refetch if the wiki page is mounted
+      es.addEventListener(SSE_EVENT_TYPES.WIKI_INVALIDATED, () => {
+        void useWikiStore.getState().fetchEntries();
+        void useWikiStore.getState().fetchHealth();
       });
 
       es.onerror = () => {

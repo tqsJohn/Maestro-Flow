@@ -11,25 +11,19 @@ import { CliAgentRunner } from '../agents/cli-agent-runner.js';
 import { CliHistoryStore } from '../agents/cli-history-store.js';
 import type { ExecutionMeta, EntryLike } from '../agents/cli-history-store.js';
 import { loadCliToolsConfig, selectTool } from '../config/cli-tools-config.js';
+import {
+  deriveExecutionStatus,
+  padRight,
+  truncate,
+} from '../utils/cli-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function statusLabel(meta: ExecutionMeta): string {
-  if (meta.exitCode === undefined && !meta.completedAt) return 'running';
-  if (meta.exitCode === 0) return 'done';
-  return `exit:${meta.exitCode ?? '?'}`;
-}
-
-function truncate(text: string, max: number): string {
-  const oneLine = text.replace(/\n/g, ' ').trim();
-  if (oneLine.length <= max) return oneLine;
-  return oneLine.slice(0, max - 3) + '...';
-}
-
-function padRight(str: string, len: number): string {
-  return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
+  const s = deriveExecutionStatus(meta);
+  return s === 'completed' ? 'done' : s === 'unknown' ? `exit:${meta.exitCode ?? '?'}` : s;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,9 +22,28 @@
 {{INTENT}}
 {{/INTENT}}
 
-## Return Format
+## Report Status (Required)
 
-Output MUST end with this exact block:
+Before finishing, run exactly this command (substitute values based on what
+you accomplished). This is the ONLY way the coordinator learns your result —
+text output alone is not read.
+
+```
+maestro coordinate report \
+  --session {{SESSION_ID}} \
+  --node {{NODE_ID}} \
+  --status <SUCCESS|FAILURE> \
+  [--verification <passed|failed|pending>] \
+  [--review <PASS|WARN|BLOCK>] \
+  [--uat <passed|failed|pending>] \
+  [--phase <number>] \
+  [--artifact <path>] [--artifact <path>] \
+  [--summary "<one-line what was accomplished>"]
+```
+
+Legacy fallback (only if the report command is unavailable): append this
+block at the end of your output. The coordinator will parse it as a
+last-resort contract.
 
 ```
 --- COORDINATE RESULT ---

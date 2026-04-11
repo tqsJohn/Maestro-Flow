@@ -61,7 +61,8 @@ export type WsEventType =
   | 'watcher:error'
   | 'workspace:switched'
   | 'heartbeat'
-  | 'connected';
+  | 'connected'
+  | 'wiki:invalidated';
 
 // ---------------------------------------------------------------------------
 // Server → Client messages

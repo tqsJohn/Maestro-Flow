@@ -33,6 +33,14 @@ export class FSWatcher {
       `${this.workflowRoot}/phases/*/index.json`,
       `${this.workflowRoot}/phases/*/.task/TASK-*.json`,
       `${this.workflowRoot}/scratch/*/index.json`,
+      // Wiki index sources — unified /api/wiki endpoint
+      `${this.workflowRoot}/project.md`,
+      `${this.workflowRoot}/roadmap.md`,
+      `${this.workflowRoot}/specs/*.md`,
+      `${this.workflowRoot}/phases/*/*.md`,
+      `${this.workflowRoot}/memory/*.md`,
+      `${this.workflowRoot}/issues/*.jsonl`,
+      `${this.workflowRoot}/learning/*.jsonl`,
     ];
 
     this.watcher = watch(patterns, {
@@ -86,6 +94,9 @@ export class FSWatcher {
 
     const timer = setTimeout(() => {
       this.debounceTimers.delete(filePath);
+      if (isWikiPath(filePath)) {
+        this.eventBus.emit('wiki:invalidated', { at: Date.now(), path: filePath });
+      }
       this.stateManager.applyFileChange(filePath).catch((err: unknown) => {
         console.error(`Failed to apply file change for ${filePath}:`, err);
         this.scheduleFullRebuild();
@@ -94,6 +105,10 @@ export class FSWatcher {
 
     this.debounceTimers.set(filePath, timer);
   }
+
+  // ---- Wiki-path detection -------------------------------------------------
+
+  // Helper used inside debounced callback — see isWikiPath below.
 
   private scheduleFullRebuild(): void {
     // Avoid stacking rebuild timers
@@ -106,4 +121,20 @@ export class FSWatcher {
       });
     }, REBUILD_DELAY_MS);
   }
+}
+
+/**
+ * Detect whether a changed file should invalidate the wiki index.
+ * Covers project/roadmap root markdowns, specs, phase markdowns, memory,
+ * and JSONL sources under issues/ and learning/.
+ */
+function isWikiPath(absPath: string): boolean {
+  const p = absPath.replace(/\\/g, '/');
+  if (p.endsWith('/project.md') || p.endsWith('/roadmap.md')) return true;
+  if (/\/specs\/[^/]+\.md$/.test(p)) return true;
+  if (/\/phases\/[^/]+\/[^/]+\.md$/.test(p)) return true;
+  if (/\/memory\/[^/]+\.md$/.test(p)) return true;
+  if (/\/issues\/[^/]+\.jsonl$/.test(p)) return true;
+  if (/\/learning\/[^/]+\.jsonl$/.test(p)) return true;
+  return false;
 }

@@ -18,6 +18,11 @@ import {
   CRITICAL_THRESHOLD,
 } from '../hooks/constants.js';
 import { ccwResultToMcp } from '../types/tool-schema.js';
+import {
+  deriveDelegateStatus,
+  readExecutionEntries,
+  summarizeBrokerEventStructured,
+} from '../utils/cli-format.js';
 
 // CCW-style tool modules (schema + handler exports)
 import * as editFileTool from './edit-file.js';
@@ -34,60 +39,6 @@ function jsonResult(payload: unknown, isError = false): ToolResult {
   };
 }
 
-function deriveExecutionStatus(meta: ExecutionMeta | null): string {
-  if (!meta) {
-    return 'unknown';
-  }
-
-  if (meta.cancelledAt) {
-    return 'cancelled';
-  }
-
-  if (meta.exitCode === undefined && !meta.completedAt) {
-    return 'running';
-  }
-
-  if (meta.exitCode === 0) {
-    return 'completed';
-  }
-
-  return meta.exitCode === undefined ? 'unknown' : `exit:${meta.exitCode}`;
-}
-
-function deriveDelegateStatus(
-  meta: ExecutionMeta | null,
-  job: { status: string; metadata?: Record<string, unknown> | null } | null,
-): string {
-  if (
-    (job?.status === 'running' || job?.status === 'queued')
-    && job.metadata
-    && typeof job.metadata.cancelRequestedAt === 'string'
-  ) {
-    return 'cancelling';
-  }
-  return job?.status ?? deriveExecutionStatus(meta);
-}
-
-function readExecutionEntries(store: CliHistoryStore, execId: string): EntryLike[] {
-  try {
-    const raw = readFileSync(store.jsonlPathFor(execId), 'utf-8');
-    return raw
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line) as EntryLike;
-        } catch {
-          return null;
-        }
-      })
-      .filter((entry): entry is EntryLike => entry !== null);
-  } catch {
-    return [];
-  }
-}
-
 function summarizeHistoryEntry(entry: EntryLike): Record<string, unknown> {
   return {
     type: entry.type,
@@ -99,30 +50,6 @@ function summarizeHistoryEntry(entry: EntryLike): Record<string, unknown> {
     message: entry.type === 'error'
       ? String(entry.message ?? '')
       : null,
-  };
-}
-
-function summarizeBrokerEvent(event: {
-  eventId: number;
-  sequence: number;
-  type: string;
-  createdAt: string;
-  status?: string;
-  snapshot?: unknown;
-  payload: Record<string, unknown>;
-}): Record<string, unknown> {
-  return {
-    eventId: event.eventId,
-    sequence: event.sequence,
-    type: event.type,
-    createdAt: event.createdAt,
-    status: event.status ?? null,
-    summary: typeof event.payload.summary === 'string'
-      ? event.payload.summary
-      : typeof event.payload.message === 'string'
-        ? event.payload.message
-        : null,
-    snapshot: event.snapshot ?? null,
   };
 }
 
@@ -420,7 +347,7 @@ export function registerBuiltinTools(
       const recentEvents = delegateBroker
         .listJobEvents(execId)
         .slice(-eventLimit)
-        .map(summarizeBrokerEvent);
+        .map(summarizeBrokerEventStructured);
 
       return jsonResult({
         execId,
@@ -532,7 +459,7 @@ export function registerBuiltinTools(
       return jsonResult({
         execId,
         status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
-        events: events.slice(-limit).map(summarizeBrokerEvent),
+        events: events.slice(-limit).map(summarizeBrokerEventStructured),
         historyTail: entries,
         queuedMessages: delegateBroker.listMessages(execId).map(summarizeQueuedMessage),
       });

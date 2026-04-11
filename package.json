@@ -3,16 +3,21 @@
   "version": "0.1.4",
   "description": "Workflow orchestration CLI with MCP endpoint support and extensible architecture",
   "type": "module",
+  "imports": {
+    "#maestro-dashboard/agents/*": "./dashboard/dist-server/dashboard/src/server/agents/*",
+    "#maestro-dashboard/shared/*": "./dashboard/dist-server/dashboard/src/shared/*"
+  },
   "bin": {
     "maestro": "bin/maestro.js",
     "maestro-statusline": "bin/maestro-statusline.js",
     "maestro-context-monitor": "bin/maestro-context-monitor.js"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": [
     "bin",
     "dist",
+    "shared",
     "templates",
     "workflows",
     "chains",

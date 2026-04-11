@@ -21,6 +21,7 @@ import { createCliHistoryRoutes } from './cli-history.js';
 import { createMcpRoutes } from './mcp.js';
 import { createInstallRoutes } from './install.js';
 import { createSpecsRoutes } from './specs.js';
+import { createWikiRoutes } from './wiki.js';
 import { createLinearRoutes } from './linear.js';
 import { createTeamRoutes } from './teams.js';
 import { createCommanderRoutes } from '../commander/commander-routes.js';
@@ -102,6 +103,9 @@ export function createRoutes(
 
   // Specs CRUD routes (dynamic root for workspace switch)
   routes.route('/', createSpecsRoutes(getRoot));
+
+  // Unified wiki endpoint (graph-aware view + scoped writes across .workflow/)
+  routes.route('/', createWikiRoutes(getRoot, eventBus));
 
   // MCP server management routes
   routes.route('/', createMcpRoutes());

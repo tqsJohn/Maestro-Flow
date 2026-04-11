@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "declaration": true,
@@ -12,8 +12,12 @@
     "sourceMap": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "#maestro-dashboard/agents/*": ["./dashboard/dist-server/dashboard/src/server/agents/*"],
+      "#maestro-dashboard/shared/*": ["./dashboard/dist-server/dashboard/src/shared/*"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "shared/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
 }

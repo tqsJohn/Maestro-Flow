@@ -12,6 +12,7 @@ import {
   statSync,
 } from 'node:fs';
 import { paths } from '../config/paths.js';
+import { truncateForHistory } from '../utils/cli-format.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -274,7 +275,7 @@ export class CliHistoryStore {
       completedAt: meta.completedAt ?? null,
       exitCode: meta.exitCode ?? null,
       status,
-      outputPreview: truncate(normalizedOutput, SNAPSHOT_OUTPUT_PREVIEW_CHARS),
+      outputPreview: truncateForHistory(normalizedOutput, SNAPSHOT_OUTPUT_PREVIEW_CHARS),
       outputChars: output.length,
     };
   }
@@ -284,20 +285,16 @@ export class CliHistoryStore {
 // Entry formatting for resume prompt
 // ---------------------------------------------------------------------------
 
-function truncate(s: string, max: number): string {
-  return s.length <= max ? s : s.substring(0, max) + '…[truncated]';
-}
-
 function formatEntry(entry: EntryLike): string {
   switch (entry.type) {
     case 'assistant_message':
       return String(entry.content ?? '');
     case 'tool_use':
-      return `[Tool ${String(entry.name ?? 'unknown')}: ${truncate(String(entry.result ?? ''), RESUME_ENTRY_MAX_CHARS)}]`;
+      return `[Tool ${String(entry.name ?? 'unknown')}: ${truncateForHistory(String(entry.result ?? ''), RESUME_ENTRY_MAX_CHARS)}]`;
     case 'file_change':
       return `[File ${String(entry.action ?? 'change')}: ${String(entry.path ?? '')}]`;
     case 'command_exec': {
-      const output = entry.output ? `\n${truncate(String(entry.output), RESUME_ENTRY_MAX_CHARS)}` : '';
+      const output = entry.output ? `\n${truncateForHistory(String(entry.output), RESUME_ENTRY_MAX_CHARS)}` : '';
       return `[Exec: ${String(entry.command ?? '')}]${output}`;
     }
     case 'error':

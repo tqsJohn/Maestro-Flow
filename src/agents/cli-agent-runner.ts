@@ -4,11 +4,10 @@
 // exit handling for the `maestro cli` command.
 // ---------------------------------------------------------------------------
 
-import { resolve, join, dirname } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { resolve, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { DashboardBridge } from './dashboard-bridge.js';
 import { CliHistoryStore, type EntryLike } from './cli-history-store.js';
@@ -17,57 +16,16 @@ import { NOTIFY_PREFIX } from '../hooks/constants.js';
 import { DelegateBrokerClient, type DelegateBrokerApi, type JsonObject } from '../async/index.js';
 
 // ---------------------------------------------------------------------------
-// Re-declare minimal types locally to avoid cross-rootDir imports from
-// dashboard/src/shared/agent-types.ts. These mirror the canonical types.
+// Types imported from the canonical shared definition
 // ---------------------------------------------------------------------------
 
-type AgentType = 'claude-code' | 'codex' | 'codex-server' | 'gemini' | 'gemini-a2a' | 'qwen' | 'opencode';
-
-type AgentProcessStatus =
-  | 'spawning'
-  | 'running'
-  | 'paused'
-  | 'stopping'
-  | 'stopped'
-  | 'error';
-
-interface AgentConfig {
-  type: AgentType;
-  prompt: string;
-  workDir: string;
-  env?: Record<string, string>;
-  model?: string;
-  approvalMode?: 'suggest' | 'auto';
-  interactive?: boolean;
-}
-
-interface AgentProcess {
-  id: string;
-  type: AgentType;
-  status: AgentProcessStatus;
-  config: AgentConfig;
-  startedAt: string;
-  pid?: number;
-}
-
-interface NormalizedEntryBase {
-  id: string;
-  processId: string;
-  timestamp: string;
-}
-
-type NormalizedEntry =
-  | (NormalizedEntryBase & { type: 'user_message'; content: string })
-  | (NormalizedEntryBase & { type: 'assistant_message'; content: string; partial: boolean })
-  | (NormalizedEntryBase & { type: 'thinking'; content: string })
-  | (NormalizedEntryBase & { type: 'tool_use'; name: string; input: Record<string, unknown>; status: string; result?: string })
-  | (NormalizedEntryBase & { type: 'file_change'; path: string; action: string; diff?: string })
-  | (NormalizedEntryBase & { type: 'command_exec'; command: string; exitCode?: number; output?: string })
-  | (NormalizedEntryBase & { type: 'approval_request'; toolName: string; toolInput: Record<string, unknown>; requestId: string })
-  | (NormalizedEntryBase & { type: 'approval_response'; requestId: string; allowed: boolean })
-  | (NormalizedEntryBase & { type: 'error'; message: string; code?: string })
-  | (NormalizedEntryBase & { type: 'status_change'; status: AgentProcessStatus; reason?: string })
-  | (NormalizedEntryBase & { type: 'token_usage'; inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number });
+import type {
+  AgentType,
+  AgentProcessStatus,
+  AgentConfig,
+  AgentProcess,
+  NormalizedEntry,
+} from '../../shared/agent-types.js';
 
 /** Minimal adapter interface matching BaseAgentAdapter's public surface */
 interface AdapterLike {
@@ -200,25 +158,8 @@ async function assemblePrompt(
 }
 
 // ---------------------------------------------------------------------------
-// Adapter factory — dynamic import avoids rootDir cross-boundary issues
+// Adapter factory — uses package.json imports for cross-rootDir resolution
 // ---------------------------------------------------------------------------
-
-async function loadAdapterModule(adapterFile: string): Promise<Record<string, unknown>> {
-  const baseDir = import.meta.dirname ?? __dirname;
-  // Prefer tsc-compiled output; fall back to legacy vite bundle path
-  const tscAgents = resolve(
-    baseDir, '..', '..', 'dashboard', 'dist-server', 'dashboard', 'src', 'server', 'agents',
-  );
-  const legacyAgents = resolve(
-    baseDir, '..', '..', 'dashboard', 'dist-server', 'server', 'agents',
-  );
-  const tscPath = resolve(tscAgents, adapterFile);
-  const legacyPath = resolve(legacyAgents, adapterFile);
-  const fullPath = existsSync(tscPath) ? tscPath : legacyPath;
-  // Convert to file:// URL for Windows compatibility with dynamic import()
-  const fileUrl = pathToFileURL(fullPath).href;
-  return await import(fileUrl) as Record<string, unknown>;
-}
 
 async function createAdapter(agentType: AgentType, backend?: 'direct' | 'terminal'): Promise<AdapterLike> {
   if (backend === 'terminal') {
@@ -232,7 +173,7 @@ async function createAdapter(agentType: AgentType, backend?: 'direct' | 'termina
     return new TerminalAdapter(termBackend, cmd) as unknown as AdapterLike;
   }
 
-  const mod = await loadAdapterModule('adapter-factory.js');
+  const mod = await import('#maestro-dashboard/agents/adapter-factory.js');
   const factory = mod.createAdapterForType as (type: string) => Promise<AdapterLike>;
   return await factory(agentType);
 }

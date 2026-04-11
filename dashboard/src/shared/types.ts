@@ -96,7 +96,8 @@ export type SSEEventType =
   | 'requirement:refined'
   | 'requirement:committed'
   | 'requirement:progress'
-  | 'workspace:switched';
+  | 'workspace:switched'
+  | 'wiki:invalidated';
 
 // ---------------------------------------------------------------------------
 // Core interfaces — derived from fusion-design.md JSON schemas
@@ -257,6 +258,6 @@ export interface BoardState {
 /** SSE event envelope */
 export interface SSEEvent {
   type: SSEEventType;
-  data: BoardState | PhaseCard | TaskCard | ScratchCard | ProjectState | AgentProcess | NormalizedEntry | ApprovalRequest | AgentStatusPayload | AgentStoppedPayload | AgentTurnCompletedPayload | ExecutionStartedPayload | ExecutionCompletedPayload | ExecutionFailedPayload | SupervisorStatus | CommanderState | Decision | CommanderConfig | AssessMetrics | CoordinateStatusPayload | CoordinateStepPayload | CoordinateAnalysisPayload | CoordinateClarificationPayload | RequirementProgressPayload | RequirementExpandedPayload | RequirementCommittedPayload | RequirementErrorPayload | LearningStats | { taskId: string; taskName: string; taskType: string } | { tasks: ScheduledTask[] } | { extensions: ExtensionInfo[] } | { name: string; error: string } | { workspace: string } | string | null;
+  data: BoardState | PhaseCard | TaskCard | ScratchCard | ProjectState | AgentProcess | NormalizedEntry | ApprovalRequest | AgentStatusPayload | AgentStoppedPayload | AgentTurnCompletedPayload | ExecutionStartedPayload | ExecutionCompletedPayload | ExecutionFailedPayload | SupervisorStatus | CommanderState | Decision | CommanderConfig | AssessMetrics | CoordinateStatusPayload | CoordinateStepPayload | CoordinateAnalysisPayload | CoordinateClarificationPayload | RequirementProgressPayload | RequirementExpandedPayload | RequirementCommittedPayload | RequirementErrorPayload | LearningStats | { taskId: string; taskName: string; taskType: string } | { tasks: ScheduledTask[] } | { extensions: ExtensionInfo[] } | { name: string; error: string } | { workspace: string } | { at: number; path?: string } | string | null;
   timestamp: string;
 }

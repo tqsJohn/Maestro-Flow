@@ -5,9 +5,9 @@
 
 import type { Command } from 'commander';
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { GraphLoader } from '../coordinator/graph-loader.js';
 import { GraphWalker } from '../coordinator/graph-walker.js';
@@ -21,6 +21,17 @@ import { ParallelCliRunner } from '../agents/parallel-cli-runner.js';
 import type { SpawnFn } from '../coordinator/cli-executor.js';
 
 const execFileAsync = promisify(execFile);
+
+// Resolve the maestro CLI entry script (absolute path to the JS file).
+// Runs as `node <entryScript> cli ...` via process.execPath, avoiding Windows
+// .cmd wrapper lookup issues (ENOENT) and argument mangling from shell: true.
+function resolveMaestroEntryScript(): string {
+  const entry = process.argv[1];
+  if (!entry) {
+    throw new Error('[coordinate] Cannot determine maestro entry script (process.argv[1] is empty).');
+  }
+  return entry;
+}
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -36,6 +47,13 @@ function resolvePaths(workflowRoot: string) {
   return { chainsRoot, templateDir, sessionDir };
 }
 
+// Canonical report-file location shared between the `report` subcommand
+// (writer) and GraphWalker (reader). Kept in one place so the path contract
+// can't drift between producer and consumer.
+export function resolveReportPath(sessionDir: string, sessionId: string, nodeId: string): string {
+  return join(sessionDir, sessionId, 'reports', `${nodeId}.json`);
+}
+
 function createSpawnFn(): SpawnFn {
   return async (config) => {
     const startTime = Date.now();
@@ -48,7 +66,9 @@ function createSpawnFn(): SpawnFn {
     console.error(`[coordinate] WorkDir: ${config.workDir}`);
 
     try {
-      const { stdout, stderr } = await execFileAsync('maestro', [
+      const entryScript = resolveMaestroEntryScript();
+      const { stdout, stderr } = await execFileAsync(process.execPath, [
+        entryScript,
         'cli', '-p', config.prompt,
         '--tool', tool,
         '--mode', mode,
@@ -62,11 +82,16 @@ function createSpawnFn(): SpawnFn {
       });
 
       const output = stdout + (stderr ? '\n' + stderr : '');
-      const success = !output.includes('STATUS: FAILURE');
 
+      // The process exited cleanly (no thrown exception). Treat this as
+      // "the shell ran the command"; the walker derives node success from
+      // the report file (preferred) or OutputParser fallback. Do NOT grep
+      // stdout for "STATUS: FAILURE" here — that was a hidden second
+      // parser that competed with OutputParser and misfired on stderr
+      // diagnostics.
       return {
-        output: output || '--- COORDINATE RESULT ---\nSTATUS: SUCCESS\nSUMMARY: Execution completed\n',
-        success,
+        output,
+        success: true,
         execId,
         durationMs: Date.now() - startTime,
       };
@@ -242,6 +267,105 @@ export function registerCoordinateCommand(program: Command): void {
         console.error(`[coordinate] Error: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
       }
+    });
+
+  // -------------------------------------------------------------------------
+  // maestro coordinate report — agent-invoked status writer
+  //
+  // Spawned agents call this to record their node result as a JSON file at
+  // <workflowRoot>/.workflow/.maestro-coordinate/<session>/reports/<node>.json.
+  // GraphWalker reads that file preferentially over stdout parsing, so this
+  // command is the authoritative result channel for a coordinate node.
+  // -------------------------------------------------------------------------
+  const STATUS_CHOICES = ['SUCCESS', 'FAILURE'] as const;
+  const VERIFICATION_CHOICES = ['passed', 'failed', 'pending'] as const;
+  const REVIEW_CHOICES = ['PASS', 'WARN', 'BLOCK'] as const;
+  const UAT_CHOICES = ['passed', 'failed', 'pending'] as const;
+
+  coord
+    .command('report')
+    .description('Write node status as a structured result file (called by spawned agents)')
+    .requiredOption('--session <id>', 'Coordinate session id')
+    .requiredOption('--node <id>', 'Graph node id being reported')
+    .requiredOption('--status <status>', `Node outcome (${STATUS_CHOICES.join('|')})`)
+    .option('--verification <state>', `Verification status (${VERIFICATION_CHOICES.join('|')})`)
+    .option('--review <verdict>', `Review verdict (${REVIEW_CHOICES.join('|')})`)
+    .option('--uat <state>', `UAT status (${UAT_CHOICES.join('|')})`)
+    .option('--phase <value>', 'Phase identifier (number or label)')
+    .option(
+      '--artifact <path>',
+      'Artifact path (repeatable)',
+      (value: string, prior: string[]) => prior.concat(value),
+      [] as string[],
+    )
+    .option('--summary <text>', 'One-line summary of what was accomplished')
+    .option('--workflow-root <dir>', 'Workflow root (defaults to current directory)')
+    .action((opts: {
+      session: string;
+      node: string;
+      status: string;
+      verification?: string;
+      review?: string;
+      uat?: string;
+      phase?: string;
+      artifact: string[];
+      summary?: string;
+      workflowRoot?: string;
+    }) => {
+      // Enum validation — commander's .choices() helper is awkward with
+      // requiredOption, so we validate inline with clear error messages.
+      const status = opts.status.toUpperCase();
+      if (!(STATUS_CHOICES as readonly string[]).includes(status)) {
+        console.error(`[coordinate report] --status must be one of: ${STATUS_CHOICES.join(', ')} (got "${opts.status}")`);
+        process.exit(2);
+      }
+      if (opts.verification !== undefined && !(VERIFICATION_CHOICES as readonly string[]).includes(opts.verification)) {
+        console.error(`[coordinate report] --verification must be one of: ${VERIFICATION_CHOICES.join(', ')} (got "${opts.verification}")`);
+        process.exit(2);
+      }
+      if (opts.review !== undefined && !(REVIEW_CHOICES as readonly string[]).includes(opts.review)) {
+        console.error(`[coordinate report] --review must be one of: ${REVIEW_CHOICES.join(', ')} (got "${opts.review}")`);
+        process.exit(2);
+      }
+      if (opts.uat !== undefined && !(UAT_CHOICES as readonly string[]).includes(opts.uat)) {
+        console.error(`[coordinate report] --uat must be one of: ${UAT_CHOICES.join(', ')} (got "${opts.uat}")`);
+        process.exit(2);
+      }
+
+      const workflowRoot = resolve(opts.workflowRoot ?? process.cwd());
+      const { sessionDir } = resolvePaths(workflowRoot);
+      const reportPath = resolveReportPath(sessionDir, opts.session, opts.node);
+
+      // Structured payload matches ParsedResult.structured so the walker can
+      // drop it directly into ctx.result with no field rename.
+      const payload = {
+        status,
+        phase: opts.phase ?? null,
+        verification_status: opts.verification ?? null,
+        review_verdict: opts.review ?? null,
+        uat_status: opts.uat ?? null,
+        artifacts: opts.artifact,
+        summary: opts.summary ?? '',
+        reported_at: new Date().toISOString(),
+      };
+
+      // Atomic write: stage to .tmp, then rename. Prevents a crashed writer
+      // from leaving a half-written file that the walker would then parse.
+      try {
+        mkdirSync(dirname(reportPath), { recursive: true });
+        const tmpPath = `${reportPath}.tmp`;
+        writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf-8');
+        renameSync(tmpPath, reportPath);
+      } catch (err) {
+        console.error(`[coordinate report] Failed to write report: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      }
+
+      console.error(`[coordinate report] Wrote ${reportPath}`);
+      // Exit 0 even when --status FAILURE: the *report itself* succeeded.
+      // Conflating the two would make it impossible for an agent to report
+      // failure without triggering its own shell error handling.
+      process.exit(0);
     });
 
   // -------------------------------------------------------------------------

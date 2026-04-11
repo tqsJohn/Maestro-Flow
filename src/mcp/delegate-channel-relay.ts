@@ -9,6 +9,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from '../async/index.js';
+import { truncateRaw } from '../utils/cli-format.js';
 
 interface ChannelNotification {
   method: 'notifications/claude/channel';
@@ -58,14 +59,6 @@ const SUPPORTED_EVENT_TYPES = new Set([
 
 function asOneLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
-}
-
-function truncate(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-
-  return `${value.slice(0, max - 3)}...`;
 }
 
 function readString(value: JsonValue | undefined): string | undefined {
@@ -149,10 +142,10 @@ function buildNotificationContent(event: DelegateJobEvent): string {
   const headlineParts = [`[DELEGATE ${status}]`, event.jobId];
 
   if (summary) {
-    headlineParts.push(truncate(summary, 90));
+    headlineParts.push(truncateRaw(summary, 90));
   }
 
-  return truncate(`${headlineParts.join(' ')}\n${toolHint}`, MAX_CHANNEL_TEXT_LENGTH);
+  return truncateRaw(`${headlineParts.join(' ')}\n${toolHint}`, MAX_CHANNEL_TEXT_LENGTH);
 }
 
 export class DelegateChannelRelay {

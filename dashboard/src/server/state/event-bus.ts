@@ -85,6 +85,7 @@ const ALL_EVENT_TYPES: SSEEventType[] = [
   'requirement:committed',
   'requirement:progress',
   'workspace:switched',
+  'wiki:invalidated',
 ];
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,8 @@ export interface DashboardEventMap {
   'requirement:progress': RequirementProgressPayload;
   // Workspace events
   'workspace:switched': { workspace: string };
+  // Wiki index events
+  'wiki:invalidated': { at: number; path?: string };
 }
 
 // ---------------------------------------------------------------------------

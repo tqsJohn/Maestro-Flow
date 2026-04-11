@@ -234,6 +234,7 @@ export interface CommandExecutor {
 export interface AssembleRequest {
   node: CommandNode;
   node_id: string;
+  session_id: string;
   context: WalkerContext;
   graph: { id: string; name: string };
   command_index: number;

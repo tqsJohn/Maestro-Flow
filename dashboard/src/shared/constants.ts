@@ -59,6 +59,7 @@ export const SSE_EVENT_TYPES: Record<string, SSEEventType> = {
   HEARTBEAT: 'heartbeat',
   CONNECTED: 'connected',
   WORKSPACE_SWITCHED: 'workspace:switched',
+  WIKI_INVALIDATED: 'wiki:invalidated',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,22 @@ export const SPECS_API_ENDPOINTS = {
   SPECS: '/api/specs',
   SPECS_FILES: '/api/specs/files',
   SPECS_FILE: '/api/specs/file/:name',
+} as const;
+
+// ---------------------------------------------------------------------------
+// Wiki API endpoint paths
+// ---------------------------------------------------------------------------
+
+export const WIKI_API_ENDPOINTS = {
+  WIKI: '/api/wiki',
+  WIKI_STATS: '/api/wiki/stats',
+  WIKI_HEALTH: '/api/wiki/health',
+  WIKI_GRAPH: '/api/wiki/graph',
+  WIKI_ORPHANS: '/api/wiki/orphans',
+  WIKI_HUBS: '/api/wiki/hubs',
+  WIKI_DETAIL: '/api/wiki/:id',
+  WIKI_BACKLINKS: '/api/wiki/:id/backlinks',
+  WIKI_FORWARD: '/api/wiki/:id/forward',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -171,6 +188,7 @@ export const WS_EVENT_TYPES: Record<string, WsEventType> = {
   PROJECT_UPDATED: 'project:updated',
   WATCHER_ERROR: 'watcher:error',
   WORKSPACE_SWITCHED: 'workspace:switched',
+  WIKI_INVALIDATED: 'wiki:invalidated',
   HEARTBEAT: 'heartbeat',
   CONNECTED: 'connected',
 } as const;
