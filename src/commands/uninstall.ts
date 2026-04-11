@@ -4,6 +4,7 @@
 
 import type { Command } from 'commander';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 import {
   getAllManifests,
   findManifest,
@@ -11,6 +12,7 @@ import {
   deleteManifest,
   type Manifest,
 } from '../core/manifest.js';
+import { deleteOverlayManifest } from '../core/overlay/applier.js';
 import { paths } from '../config/paths.js';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +22,9 @@ import { paths } from '../config/paths.js';
 function uninstallManifest(manifest: Manifest): void {
   const { removed, skipped } = cleanManifestFiles(manifest);
   deleteManifest(manifest);
+  // Drop overlay manifest (but preserve user's ~/.maestro/overlays/ content)
+  const targetBase = manifest.scope === 'global' ? homedir() : manifest.targetPath;
+  deleteOverlayManifest(manifest.scope, targetBase);
   console.error(`  Removed ${removed} files${skipped > 0 ? `, ${skipped} preserved` : ''}`);
 }
 

@@ -51,18 +51,18 @@ describe('AgentWsHandler delegate messaging', () => {
     expect(handler.actions).toContain('delegate:message');
   });
 
-  it('accepts streaming delivery for delegate messages', async () => {
+  it('accepts inject delivery for delegate messages', async () => {
     await handler.handle('delegate:message', {
       action: 'delegate:message',
       processId: 'cli-history-job-2',
-      content: 'Stream this message',
-      delivery: 'streaming',
+      content: 'Inject this message',
+      delivery: 'inject',
     }, ws as any, broadcast);
 
     expect(delegateMessage).toHaveBeenCalledWith({
       execId: 'cli-history-job-2',
-      message: 'Stream this message',
-      delivery: 'streaming',
+      message: 'Inject this message',
+      delivery: 'inject',
       requestedBy: 'dashboard:ws:delegate_message',
     });
     expect(agentManager.sendMessage).not.toHaveBeenCalled();

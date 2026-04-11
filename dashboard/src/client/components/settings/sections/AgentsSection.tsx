@@ -74,6 +74,13 @@ const AGENT_FIELD_CONFIG: Partial<Record<AgentType, AgentFieldConfig>> = {
     showBaseUrl: false,
     showSettingsFile: false,
   },
+  'gemini-a2a': {
+    apiKeyLabel: 'Gemini API Key',
+    apiKeyPlaceholder: 'AIza...',
+    apiKeyEnvHint: 'GEMINI_API_KEY',
+    showBaseUrl: false,
+    showSettingsFile: false,
+  },
   qwen: {
     apiKeyLabel: 'DashScope API Key',
     apiKeyPlaceholder: 'sk-...',
@@ -95,6 +102,7 @@ const AGENT_TYPES: { type: AgentType; label: string }[] = [
   { type: 'agent-sdk', label: 'Agent SDK' },
   { type: 'codex', label: 'Codex' },
   { type: 'gemini', label: 'Gemini' },
+  { type: 'gemini-a2a', label: 'Gemini (A2A)' },
   { type: 'qwen', label: 'Qwen' },
   { type: 'opencode', label: 'OpenCode' },
 ];
@@ -115,6 +123,7 @@ export function AgentsSection() {
       'agent-sdk': 'settings.agents.agent_sdk_desc',
       codex: 'settings.agents.codex_desc',
       gemini: 'settings.agents.gemini_desc',
+      'gemini-a2a': 'settings.agents.gemini_desc',
       qwen: 'settings.agents.qwen_desc',
       opencode: 'settings.agents.opencode_desc',
     };

@@ -74,6 +74,8 @@ function detectTaskType(text) {
     ['execute',           /execute|implement|build|develop|code|实现|开发/i],
     ['verify',            /verif[iy]|validate.*result|验证|校验/i],
     ['review',            /\breview.*code|code.*review|代码.*审查/i],
+    ['retrospective',     /retrospect|retro|复盘|post.?mortem|lessons.*learn|after.?action/i],
+    ['learn',             /^learn\b|capture.*insight|capture.*learning|insight.*log|eureka|学习.*记录|记录.*洞察/i],
     ['test_gen',          /test.*gen|generat.*test|add.*test|写测试/i],
     ['test',              /\btest|uat|测试|验收/i],
     ['debug',             /debug|diagnos|troubleshoot|fix.*bug|调试|排查/i],
@@ -177,6 +179,8 @@ const chainMap = {
   'integration_test':   [{ cmd: 'quality-integration-test', args: '{phase}' }],
   'refactor':           [{ cmd: 'quality-refactor', args: '"{description}"' }],
   'review':             [{ cmd: 'quality-review', args: '{phase}' }],
+  'retrospective':      [{ cmd: 'quality-retrospective', args: '{phase}' }],
+  'learn':              [{ cmd: 'manage-learn', args: '"{description}"' }],
   'sync':               [{ cmd: 'quality-sync', args: '{phase}' }],
   'phase_transition':   [{ cmd: 'maestro-phase-transition' }],
   'phase_add':          [{ cmd: 'maestro-phase-add', args: '"{description}"' }],
@@ -287,6 +291,7 @@ const context = { current_phase: resolvedPhase, user_intent: intent, spec_sessio
 const AUTO_FLAG_MAP = {
   'maestro-analyze': '-y', 'maestro-brainstorm': '-y', 'maestro-ui-design': '-y',
   'maestro-plan': '--auto', 'maestro-spec-generate': '-y', 'quality-test': '--auto-fix',
+  'quality-retrospective': '--auto-yes',
 };
 
 function assembleArgs(step) {

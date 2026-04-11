@@ -134,12 +134,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const interactive = config.interactive === true;
 
     // Build CLI arguments:
-    // - Interactive mode: --input-format=stream-json (stdin kept open for follow-ups)
-    // - Default mode: --print (one-shot, stdin closed immediately)
+    // --input-format=stream-json requires --print (per Claude Code docs).
+    // - Interactive mode: --print --input-format=stream-json (prompt sent via stdin, stdin kept open)
+    // - Default mode: --print with prompt as CLI argument (stdin closed immediately)
     const args = interactive
       ? [
           '--output-format=stream-json',
           '--input-format=stream-json',
+          '--print',
           '--verbose',
         ]
       : [
@@ -148,6 +150,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           '--print',
           config.prompt,
         ];
+
+    // Map approvalMode to Claude Code permission flags.
+    // 'auto' → full auto-approve for write operations.
+    // 'suggest' → allow read-only tools without prompts (analysis mode).
+    if (config.approvalMode === 'auto') {
+      args.push('--permission-mode', 'auto');
+    } else if (config.approvalMode === 'suggest') {
+      args.push('--permission-mode', 'default', '--allowedTools', 'Read,Glob,Grep,WebFetch,WebSearch');
+    }
 
     // Resolve CLI entry point for direct node invocation (avoids cmd.exe
     // wrapper nesting on Windows which causes stdout buffering).
@@ -178,9 +189,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
 
     if (interactive) {
-      // Interactive mode: send initial prompt as a stream-json user_message,
+      // Interactive mode: send initial prompt as stream-json SDKUserMessage,
       // keep stdin open for follow-up messages via doSendMessage.
-      const initMsg = JSON.stringify({ type: 'user_message', content: config.prompt });
+      const initMsg = JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: config.prompt },
+      });
       child.stdin.write(initMsg + '\n');
     } else {
       // One-shot --print mode: close stdin immediately. Without this, the child
@@ -264,6 +278,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.cleanup(processId);
   }
 
+  /** Close stdin to signal no more input — process exits naturally after finishing current work */
+  endInput(processId: string): void {
+    const child = this.childProcesses.get(processId);
+    if (child?.stdin?.writable) {
+      child.stdin.end();
+    }
+  }
+
   protected async doSendMessage(
     processId: string,
     content: string,
@@ -272,7 +294,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (!child?.stdin?.writable) {
       throw new Error(`Cannot send message: stdin not writable for process ${processId}`);
     }
-    const message = JSON.stringify({ type: 'user_message', content });
+    // SDKUserMessage format required by --input-format=stream-json
+    const message = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content },
+    });
     child.stdin.write(message + '\n');
   }
 

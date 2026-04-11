@@ -34,6 +34,7 @@ import {
   getAllManifests,
   type Manifest,
 } from '../core/manifest.js';
+import { applyOverlays, ensureOverlayDir } from '../core/overlay/applier.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -87,6 +88,14 @@ const COMPONENT_DEFS: ComponentDef[] = [
     description: 'Coordinate chain graphs (~/.maestro/chains/)',
     sourcePath: 'chains',
     target: () => join(paths.home, 'chains'),
+    alwaysGlobal: true,
+  },
+  {
+    id: 'overlays',
+    label: 'Overlays',
+    description: 'Command overlay packs (~/.maestro/overlays/_shipped/)',
+    sourcePath: join('overlays', '_shipped'),
+    target: () => join(paths.home, 'overlays', '_shipped'),
     alwaysGlobal: true,
   },
   {
@@ -216,6 +225,31 @@ function restoreDisabledState(items: DisabledItem[], targetBase: string): number
     }
   }
   return restored;
+}
+
+// ---------------------------------------------------------------------------
+// Overlay post-install hook
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply all enabled overlays from ~/.maestro/overlays/ to the just-installed
+ * commands. Safe no-op if the overlay dir is missing or empty. Returns the
+ * number of overlays successfully applied.
+ */
+function applyOverlaysPostInstall(
+  scope: 'global' | 'project',
+  targetBase: string,
+): number {
+  const overlayDir = join(paths.home, 'overlays');
+  try {
+    ensureOverlayDir(overlayDir);
+    const report = applyOverlays({ scope, targetBase, overlayDir });
+    return report.overlaysApplied;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  Overlay apply error: ${msg}`);
+    return 0;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +631,9 @@ async function interactiveInstall(pkgRoot: string, version: string): Promise<voi
   // Restore disabled state
   const disabledRestored = restoreDisabledState(disabledItems, targetBase);
 
+  // Apply overlays (non-invasive command patches)
+  const overlaysAppliedCount = applyOverlaysPostInstall(mode, targetBase);
+
   // MCP registration
   let mcpRegistered = false;
   if (configureMcp && mcpTools.length > 0) {
@@ -614,6 +651,7 @@ async function interactiveInstall(pkgRoot: string, version: string): Promise<voi
   if (totalStats.dirs > 0) console.error(`  │ Dirs:     ${totalStats.dirs} created`);
   if (totalStats.skipped > 0) console.error(`  │ Preserved: ${totalStats.skipped} settings files`);
   if (disabledRestored > 0) console.error(`  │ Disabled:  ${disabledRestored} items restored`);
+  if (overlaysAppliedCount > 0) console.error(`  │ Overlays:  ${overlaysAppliedCount} applied`);
   if (mcpRegistered) console.error('  │ MCP:       maestro-tools registered');
   console.error(`  │ Manifest: ${manifestPath}`);
   console.error('  └──────────────────────────────────────────────');
@@ -687,12 +725,16 @@ function forceInstall(
   // Restore disabled state
   const disabledRestored = restoreDisabledState(disabledItems, targetBase);
 
+  // Apply overlays (non-invasive command patches)
+  const overlaysAppliedCount = applyOverlaysPostInstall(mode, targetBase);
+
   saveManifest(manifest);
 
   const parts = [`${totalStats.files} files`];
   if (totalStats.dirs > 0) parts.push(`${totalStats.dirs} dirs`);
   if (totalStats.skipped > 0) parts.push(`${totalStats.skipped} preserved`);
   if (disabledRestored > 0) parts.push(`${disabledRestored} disabled restored`);
+  if (overlaysAppliedCount > 0) parts.push(`${overlaysAppliedCount} overlays applied`);
   console.error(`  Result: ${parts.join(', ')}`);
   console.error('');
   console.error('Done. Restart Claude Code or IDE to pick up changes.');

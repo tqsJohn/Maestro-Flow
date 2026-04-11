@@ -73,8 +73,8 @@ export class AgentWsHandler implements WsHandler {
         if (!content) {
           throw new Error('content is required');
         }
-        if (delivery !== 'interrupt_resume' && delivery !== 'after_complete' && delivery !== 'streaming') {
-          throw new Error('delivery must be interrupt_resume, after_complete, or streaming');
+        if (delivery !== 'inject' && delivery !== 'after_complete') {
+          throw new Error('delivery must be inject or after_complete');
         }
 
         this.delegateMessage({

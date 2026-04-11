@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import {
   DelegateBrokerClient,
   type DelegateBrokerApi,
@@ -181,18 +184,57 @@ export class DelegateChannelRelay {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
+  get id(): string {
+    return this.sessionId;
+  }
+
+  private get sessionFilePath(): string {
+    const maestroHome = process.env.MAESTRO_HOME ?? join(homedir(), '.maestro');
+    return join(maestroHome, 'data', 'async', `relay-session-${process.pid}.id`);
+  }
+
+  private writeSessionFile(): void {
+    try {
+      mkdirSync(dirname(this.sessionFilePath), { recursive: true });
+      writeFileSync(this.sessionFilePath, JSON.stringify({
+        sessionId: this.sessionId,
+        pid: process.pid,
+        startedAt: this.now(),
+      }), 'utf-8');
+    } catch {
+      // Best-effort — file write failure shouldn't block relay
+    }
+  }
+
+  private cleanupSessionFile(): void {
+    try {
+      unlinkSync(this.sessionFilePath);
+    } catch { /* file may not exist */ }
+  }
+
   async start(): Promise<void> {
     if (this.running) {
       return;
     }
 
     this.running = true;
+
+    // Purge expired events/jobs/sessions before registering, so stale history
+    // from previous sessions doesn't replay into the new channel.
+    this.broker.purgeExpiredEvents({ now: this.now() });
+
     this.broker.registerSession({
       sessionId: this.sessionId,
       channelId: this.channelId,
       metadata: { source: 'maestro-mcp-relay' },
       now: this.now(),
     });
+
+    this.writeSessionFile();
+
+    // Drain all pre-existing events so only events published after startup
+    // are emitted to the channel. Prevents historical replay on new sessions.
+    this.drainExistingEvents();
 
     await this.pollOnce();
 
@@ -205,6 +247,7 @@ export class DelegateChannelRelay {
   }
 
   stop(): void {
+    this.cleanupSessionFile();
     this.running = false;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -261,9 +304,36 @@ export class DelegateChannelRelay {
     }
   }
 
+  private drainExistingEvents(): void {
+    for (;;) {
+      const events = this.broker.pollEvents({
+        sessionId: this.sessionId,
+        limit: this.pollLimit,
+        now: this.now(),
+      });
+
+      if (events.length === 0) {
+        break;
+      }
+
+      this.broker.ack({
+        sessionId: this.sessionId,
+        eventIds: events.map((e) => e.eventId),
+        now: this.now(),
+      });
+    }
+  }
+
   private async handleEvent(event: DelegateJobEvent): Promise<boolean> {
     if (!SUPPORTED_EVENT_TYPES.has(event.type)) {
       return true;
+    }
+
+    // Session isolation: only emit events from jobs originated by this relay session.
+    // Jobs without sessionId in metadata are still emitted (backward compatibility).
+    const originSession = event.metadata?.sessionId;
+    if (typeof originSession === 'string' && originSession !== this.sessionId) {
+      return true;  // Belongs to another session — ack but don't push
     }
 
     if (!this.shouldEmit(event)) {

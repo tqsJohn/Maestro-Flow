@@ -425,7 +425,7 @@ describe('CliAgentRunner', () => {
     assert.equal(updatedMessages[0].dispatchReason, 'completed');
   });
 
-  it('dispatches interrupt_resume follow-ups even if the task finishes before cancellation lands', async () => {
+  it('dispatches inject follow-ups even if the task finishes before cancellation lands', async () => {
     const updatedMessages: Array<Record<string, unknown>> = [];
     const spawnedFollowups: Array<{ execId: string; prompt: string }> = [];
     const adapter = {
@@ -503,7 +503,7 @@ describe('CliAgentRunner', () => {
         return [{
           messageId: 'msg-race',
           createdAt: '2026-04-08T10:10:00.500Z',
-          delivery: 'interrupt_resume',
+          delivery: 'inject',
           message: 'Resume despite race',
           status: 'queued',
         }];
@@ -513,7 +513,7 @@ describe('CliAgentRunner', () => {
         return {
           messageId: 'msg-race',
           createdAt: '2026-04-08T10:10:00.500Z',
-          delivery: 'interrupt_resume',
+          delivery: 'inject',
           message: 'Resume despite race',
           status: String(input.status),
           dispatchedAt: '2026-04-08T10:10:02.000Z',
@@ -568,7 +568,7 @@ describe('CliAgentRunner', () => {
     assert.equal(updatedMessages[0].dispatchReason, 'cancelled');
   });
 
-  it('injects streaming messages via adapter.sendMessage when available', async () => {
+  it('injects messages via sendMessage for interactive adapters', async () => {
     const updatedMessages: Array<Record<string, unknown>> = [];
     const sentMessages: Array<{ processId: string; content: string }> = [];
     let entryCallback: ((entry: Record<string, unknown>) => void) | null = null;
@@ -599,11 +599,11 @@ describe('CliAgentRunner', () => {
     };
 
     let pollerTicks = 0;
-    const streamingMessages = [
+    const injectMessages = [
       {
         messageId: 'msg-stream-1',
         createdAt: '2026-04-09T10:00:01.000Z',
-        delivery: 'streaming' as const,
+        delivery: 'inject' as const,
         message: 'Injected follow-up',
         status: 'queued' as const,
       },
@@ -646,9 +646,9 @@ describe('CliAgentRunner', () => {
       },
       listMessages() {
         pollerTicks++;
-        // Return streaming message on first poll, then empty (already injected)
+        // Return inject message on first poll, then empty (already injected)
         if (pollerTicks === 1) {
-          return streamingMessages;
+          return injectMessages;
         }
         return [];
       },
@@ -718,12 +718,13 @@ describe('CliAgentRunner', () => {
     const injectedUpdate = updatedMessages.find((m) => m.status === 'injected');
     assert.ok(injectedUpdate, 'Expected an update with status injected');
     assert.equal(injectedUpdate.messageId, 'msg-stream-1');
-    assert.equal(injectedUpdate.dispatchReason, 'streaming-injected');
+    assert.equal(injectedUpdate.dispatchReason, 'inject-streaming');
   });
 
-  it('drops streaming messages when adapter lacks sendMessage', async () => {
-    const updatedMessages: Array<Record<string, unknown>> = [];
+  it('falls back to cancel+resume for non-interactive adapters', async () => {
+    let stopCalled = false;
     let entryCallback: ((entry: Record<string, unknown>) => void) | null = null;
+    const spawnedFollowups: Array<{ execId: string; prompt: string }> = [];
 
     const adapter = {
       async spawn() {
@@ -736,13 +737,13 @@ describe('CliAgentRunner', () => {
         };
       },
       async stop() {
-        return;
+        stopCalled = true;
       },
       onEntry(_processId: string, cb: (entry: Record<string, unknown>) => void) {
         entryCallback = cb;
         return () => undefined;
       },
-      // No sendMessage or supportsInteractive
+      // No sendMessage or supportsInteractive — non-interactive adapter
     };
 
     let pollerTicks = 0;
@@ -771,7 +772,16 @@ describe('CliAgentRunner', () => {
         return 0;
       },
       getJob() {
-        return null;
+        return {
+          jobId: 'exec-no-send',
+          status: 'running',
+          createdAt: '2026-04-09T11:00:00.000Z',
+          updatedAt: '2026-04-09T11:00:00.000Z',
+          lastEventId: 1,
+          lastEventType: 'cancel_requested',
+          latestSnapshot: null,
+          metadata: { cancelRequestedAt: '2026-04-09T11:00:01.500Z' },
+        };
       },
       listJobEvents() {
         return [];
@@ -784,20 +794,28 @@ describe('CliAgentRunner', () => {
       },
       listMessages() {
         pollerTicks++;
-        if (pollerTicks === 1) {
-          return [{
-            messageId: 'msg-drop-1',
-            createdAt: '2026-04-09T11:00:01.000Z',
-            delivery: 'streaming',
-            message: 'Cannot inject this',
-            status: 'queued',
-          }];
-        }
-        return [];
+        // Always return the inject message — it stays queued for follow-up dispatch
+        return [{
+          messageId: 'msg-fallback-1',
+          createdAt: '2026-04-09T11:00:01.000Z',
+          delivery: 'inject',
+          message: 'Fallback to cancel+resume',
+          status: 'queued',
+        }];
       },
       updateMessage(input: Record<string, unknown>) {
-        updatedMessages.push(input);
-        return null;
+        return {
+          messageId: String(input.messageId),
+          createdAt: '2026-04-09T11:00:01.000Z',
+          delivery: 'inject',
+          message: 'Fallback to cancel+resume',
+          status: String(input.status),
+          dispatchedAt: '2026-04-09T11:00:02.000Z',
+          dispatchReason: String(input.dispatchReason ?? ''),
+        };
+      },
+      checkTimeouts() {
+        return [];
       },
     };
 
@@ -821,6 +839,10 @@ describe('CliAgentRunner', () => {
           return;
         },
       }),
+      spawnDetachedDelegate: (_options, execId, prompt) => {
+        spawnedFollowups.push({ execId, prompt });
+        return true;
+      },
       renderEntry: () => undefined,
       now: () => '2026-04-09T11:00:02.000Z',
     });
@@ -833,10 +855,13 @@ describe('CliAgentRunner', () => {
       workDir: 'D:/maestro2',
     });
 
-    // Wait for poller
+    // Wait for poller to fire and trigger cancellation
     await new Promise((r) => setTimeout(r, 900));
 
-    // Stop the process
+    // Adapter.stop should have been called (cancellation)
+    assert.equal(stopCalled, true, 'Expected adapter.stop to be called for cancel+resume fallback');
+
+    // Stop the process (simulating adapter finishing after cancel)
     entryCallback?.({
       id: 'entry-no-send-stop',
       processId: 'proc-no-send',
@@ -846,22 +871,21 @@ describe('CliAgentRunner', () => {
     });
 
     const exitCode = await runPromise;
-    assert.equal(exitCode, 0);
+    assert.equal(exitCode, 130); // cancelled
 
-    // Verify message was dropped with correct reason
-    assert.ok(updatedMessages.length >= 1);
-    const droppedUpdate = updatedMessages.find((m) => m.status === 'dropped');
-    assert.ok(droppedUpdate, 'Expected an update with status dropped');
-    assert.equal(droppedUpdate.messageId, 'msg-drop-1');
-    assert.equal(droppedUpdate.dispatchReason, 'adapter-no-interactive');
+    // Verify the queued inject message was dispatched as a follow-up after cancellation
+    assert.deepEqual(spawnedFollowups, [{
+      execId: 'exec-no-send',
+      prompt: 'Fallback to cancel+resume',
+    }]);
   });
 
-  it('does not dispatch streaming messages as queue-and-relaunch follow-ups', async () => {
+  it('dispatches queued inject messages as follow-ups on completion', async () => {
     const spawnedFollowups: Array<{ execId: string; prompt: string }> = [];
     const adapter = {
       async spawn() {
         return {
-          id: 'proc-no-relaunch',
+          id: 'proc-inject-followup',
           type: 'codex',
           status: 'running',
           config: { type: 'codex', prompt: 'final prompt', workDir: 'D:/maestro2' },
@@ -874,7 +898,7 @@ describe('CliAgentRunner', () => {
       onEntry(processId: string, cb: (entry: Record<string, unknown>) => void) {
         queueMicrotask(() => {
           cb({
-            id: 'entry-no-relaunch-1',
+            id: 'entry-inject-followup-1',
             processId,
             timestamp: '2026-04-09T12:00:01.000Z',
             type: 'status_change',
@@ -921,17 +945,28 @@ describe('CliAgentRunner', () => {
         throw new Error('not implemented');
       },
       listMessages() {
-        // Only streaming messages queued — should NOT be dispatched as follow-up
+        // Queued inject message — SHOULD be dispatched as follow-up on completion
         return [{
-          messageId: 'msg-stream-only',
+          messageId: 'msg-inject-followup',
           createdAt: '2026-04-09T12:00:00.500Z',
-          delivery: 'streaming',
-          message: 'Streaming only message',
+          delivery: 'inject',
+          message: 'Inject follow-up message',
           status: 'queued',
         }];
       },
-      updateMessage() {
-        return null;
+      updateMessage(input: Record<string, unknown>) {
+        return {
+          messageId: String(input.messageId),
+          createdAt: '2026-04-09T12:00:00.500Z',
+          delivery: 'inject',
+          message: 'Inject follow-up message',
+          status: String(input.status),
+          dispatchedAt: '2026-04-09T12:00:02.000Z',
+          dispatchReason: String(input.dispatchReason ?? ''),
+        };
+      },
+      checkTimeouts() {
+        return [];
       },
     };
 
@@ -964,15 +999,18 @@ describe('CliAgentRunner', () => {
     });
 
     const exitCode = await runner.run({
-      execId: 'exec-no-relaunch',
-      prompt: 'No relaunch test',
+      execId: 'exec-inject-followup',
+      prompt: 'Inject followup test',
       tool: 'codex',
       mode: 'analysis',
       workDir: 'D:/maestro2',
     });
 
     assert.equal(exitCode, 0);
-    // Streaming messages must NOT trigger a detached follow-up spawn
-    assert.deepEqual(spawnedFollowups, []);
+    // Inject messages SHOULD trigger a detached follow-up spawn on completion
+    assert.deepEqual(spawnedFollowups, [{
+      execId: 'exec-inject-followup',
+      prompt: 'Inject follow-up message',
+    }]);
   });
 });

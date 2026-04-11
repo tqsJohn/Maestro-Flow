@@ -131,17 +131,17 @@ describe('E2E: async delegate follow-up channel', () => {
     expect(process?.status).toBe('running');
   });
 
-  it('queues interrupt_resume follow-ups through WS and drives the synthetic process into stopping state', async () => {
-    historyStore.saveMeta('job-e2e-interrupt', {
-      execId: 'job-e2e-interrupt',
+  it('queues inject follow-ups through WS for CLI poller pickup', async () => {
+    historyStore.saveMeta('job-e2e-inject', {
+      execId: 'job-e2e-inject',
       tool: 'codex',
       mode: 'analysis',
-      prompt: 'Interruptible async delegate',
+      prompt: 'Inject-capable async delegate',
       workDir: 'D:/maestro2',
       startedAt: '2026-04-08T10:05:00.000Z',
     });
     broker.publishEvent({
-      jobId: 'job-e2e-interrupt',
+      jobId: 'job-e2e-inject',
       type: 'queued',
       status: 'running',
       payload: { summary: 'Delegate started' },
@@ -149,7 +149,7 @@ describe('E2E: async delegate follow-up channel', () => {
         tool: 'codex',
         mode: 'analysis',
         workDir: 'D:/maestro2',
-        prompt: 'Interruptible async delegate',
+        prompt: 'Inject-capable async delegate',
       },
       now: '2026-04-08T10:05:00.000Z',
     });
@@ -159,32 +159,29 @@ describe('E2E: async delegate follow-up channel', () => {
 
     await handler.handle('delegate:message', {
       action: 'delegate:message',
-      processId: 'cli-history-job-e2e-interrupt',
-      content: 'Stop and resume with the updated requirement',
-      delivery: 'interrupt_resume',
+      processId: 'cli-history-job-e2e-inject',
+      content: 'Inject this follow-up message',
+      delivery: 'inject',
     }, new MockWebSocket() as any, vi.fn() as any);
 
     await (monitor as any).poll();
 
-    const job = broker.getJob('job-e2e-interrupt');
-    expect(job?.metadata).toBeTruthy();
-    expect(typeof (job?.metadata as Record<string, unknown>).cancelRequestedAt).toBe('string');
-
-    const messagesRes = await app.request('/api/cli-history/job-e2e-interrupt/messages');
+    // inject delivery queues the message for CLI poller pickup — no cancel at dashboard level
+    const messagesRes = await app.request('/api/cli-history/job-e2e-inject/messages');
     expect(messagesRes.status).toBe(200);
     const messages = await messagesRes.json() as Array<Record<string, unknown>>;
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      delivery: 'interrupt_resume',
-      message: 'Stop and resume with the updated requirement',
+      delivery: 'inject',
+      message: 'Inject this follow-up message',
       status: 'queued',
     });
 
-    const process = agentManager.listProcesses().find((item) => item.id === 'cli-history-job-e2e-interrupt');
-    expect(process?.status).toBe('stopping');
+    // Process stays running — cancel/inject decision is made by CLI runner poller
+    const process = agentManager.listProcesses().find((item) => item.id === 'cli-history-job-e2e-inject');
+    expect(process?.status).toBe('running');
 
-    const entries = agentManager.getEntries('cli-history-job-e2e-interrupt');
-    expect(entries.some((entry) => entry.type === 'status_change' && entry.status === 'stopping')).toBe(true);
-    expect(entries.some((entry) => entry.type === 'user_message' && entry.content === 'Stop and resume with the updated requirement')).toBe(true);
+    const entries = agentManager.getEntries('cli-history-job-e2e-inject');
+    expect(entries.some((entry) => entry.type === 'user_message' && entry.content === 'Inject this follow-up message')).toBe(true);
   });
 });

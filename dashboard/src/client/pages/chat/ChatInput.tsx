@@ -26,7 +26,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/quality-debug', desc: 'Parallel hypothesis debugging', color: 'var(--color-accent-blue)', bg: 'var(--color-tint-exploring)' },
 ];
 
-type DelegateMessageDelivery = 'interrupt_resume' | 'after_complete' | 'streaming';
+type DelegateMessageDelivery = 'inject' | 'after_complete';
 
 interface ChatInputProps {
   processId?: string | null;
@@ -40,7 +40,7 @@ const INTERACTIVE_EXECUTOR_FALLBACK = new Set<AgentType>(['claude-code']);
 export function ChatInput({ processId: externalProcessId, executor }: ChatInputProps = {}) {
   const [text, setText] = useState('');
   const [agentType, setAgentType] = useState<AgentType>('claude-code');
-  const [delegateDelivery, setDelegateDelivery] = useState<DelegateMessageDelivery>('after_complete');
+  const [delegateDelivery, setDelegateDelivery] = useState<DelegateMessageDelivery>('inject');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -305,9 +305,8 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
                   className="border-none bg-transparent cursor-pointer outline-none appearance-none text-[11px] font-medium"
                   style={{ color: 'inherit' }}
                 >
+                  <option value="inject">Inject</option>
                   <option value="after_complete">After Complete</option>
-                  <option value="interrupt_resume">Interrupt Resume</option>
-                  <option value="streaming">Streaming</option>
                 </select>
               </div>
             )}
@@ -365,7 +364,7 @@ export function ChatInput({ processId: externalProcessId, executor }: ChatInputP
             {AGENT_LABELS[showAgentSelector ? agentType : currentModel]}
             {' \u00b7 '}
             {isAsyncDelegateSession
-              ? (delegateDelivery === 'after_complete' ? 'after complete' : delegateDelivery === 'streaming' ? 'streaming' : 'interrupt resume')
+              ? (delegateDelivery === 'after_complete' ? 'after complete' : 'inject')
               : 'opus-4.6'}
           </span>
         </div>

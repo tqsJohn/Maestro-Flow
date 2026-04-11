@@ -135,7 +135,7 @@ export interface WsClientDelegateMessage {
   processId?: string;
   execId?: string;
   content: string;
-  delivery: 'interrupt_resume' | 'after_complete' | 'streaming';
+  delivery: 'inject' | 'after_complete';
 }
 
 export interface WsClientApproveMessage {

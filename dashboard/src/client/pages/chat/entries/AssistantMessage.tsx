@@ -12,6 +12,7 @@ export const AVATAR_CONFIG: Record<AgentType, { label: string; color: string; cl
   codex:         { label: 'Cx', color: 'var(--color-accent-green)', className: 'codex' },
   'codex-server': { label: 'Cs', color: 'var(--color-accent-green)', className: 'codex' },
   gemini:        { label: 'G', color: 'var(--color-accent-blue)', className: 'gemini' },
+  'gemini-a2a':  { label: 'Ga', color: 'var(--color-accent-blue)', className: 'gemini' },
   qwen:          { label: 'Q', color: 'var(--color-accent-orange)', className: 'qwen' },
   opencode:      { label: 'O', color: 'var(--color-text-tertiary)', className: 'opencode' },
   'agent-sdk':   { label: 'S', color: 'var(--color-accent-purple)', className: 'claude' },

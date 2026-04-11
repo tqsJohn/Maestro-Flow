@@ -107,47 +107,48 @@ function createMockDependencies(options: {
   };
 }
 
-describe('delegate-control streaming delivery', () => {
-  it('queues streaming message without requesting cancellation for running process', () => {
+describe('delegate-control inject delivery', () => {
+  it('queues inject message without requesting cancellation for running process', () => {
     const deps = createMockDependencies({ jobStatus: 'running' });
 
     const input: DelegateMessageInput = {
       execId: 'test-exec',
-      message: 'Streaming follow-up',
-      delivery: 'streaming',
+      message: 'Inject follow-up',
+      delivery: 'inject',
       requestedBy: 'user-1',
     };
 
     const result = handleDelegateMessage(input, deps);
 
     assert.equal(result.accepted, true);
-    assert.equal(result.delivery, 'streaming');
+    assert.equal(result.delivery, 'inject');
     assert.equal(result.immediateDispatch, false);
-    // No cancel should have been requested
+    // Inject just queues — poller decides routing based on adapter capabilities
     assert.equal(deps.cancelCalls.length, 0);
-    // No detached launch should have occurred
     assert.equal(deps.launchCalls.length, 0);
   });
 
-  it('requests cancellation for interrupt_resume delivery (existing behavior preserved)', () => {
+  it('treats legacy streaming/interrupt_resume as inject', () => {
     const deps = createMockDependencies({ jobStatus: 'running' });
 
+    // Legacy 'streaming' value should be accepted and treated as inject
     const input: DelegateMessageInput = {
       execId: 'test-exec',
-      message: 'Interrupt follow-up',
-      delivery: 'interrupt_resume',
+      message: 'Legacy streaming follow-up',
+      delivery: 'streaming' as DelegateMessageDelivery,
       requestedBy: 'user-1',
     };
 
     const result = handleDelegateMessage(input, deps);
 
     assert.equal(result.accepted, true);
-    assert.equal(result.delivery, 'interrupt_resume');
-    // Cancel should have been requested for interrupt_resume
-    assert.equal(deps.cancelCalls.length, 1);
+    assert.equal(result.immediateDispatch, false);
+    // No cancel — inject just queues for poller
+    assert.equal(deps.cancelCalls.length, 0);
+    assert.equal(deps.launchCalls.length, 0);
   });
 
-  it('immediately dispatches streaming message when process is in terminal state', () => {
+  it('immediately dispatches inject message when process is in terminal state', () => {
     const deps = createMockDependencies({
       jobStatus: 'completed',
       meta: createMockMeta({ completedAt: '2026-04-09T10:00:05.000Z', exitCode: 0 }),
@@ -160,8 +161,8 @@ describe('delegate-control streaming delivery', () => {
 
     const input: DelegateMessageInput = {
       execId: 'test-exec',
-      message: 'Post-completion streaming',
-      delivery: 'streaming',
+      message: 'Post-completion inject',
+      delivery: 'inject',
     };
 
     const result = handleDelegateMessage(input, deps);

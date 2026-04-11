@@ -106,7 +106,7 @@ export interface RequestCancelInput {
   now?: string;
 }
 
-export type DelegateMessageDelivery = 'interrupt_resume' | 'after_complete' | 'streaming';
+export type DelegateMessageDelivery = 'inject' | 'after_complete';
 export type DelegateMessageStatus = 'queued' | 'dispatched' | 'dropped' | 'injected';
 
 export interface DelegateQueuedMessage {
@@ -141,6 +141,18 @@ export interface CheckTimeoutsInput {
   now?: string;
 }
 
+export interface PurgeExpiredEventsInput {
+  /** Max age in milliseconds. Events for terminal jobs older than this are removed. Defaults to 2 hours. */
+  maxAgeMs?: number;
+  now?: string;
+}
+
+export interface PurgeExpiredEventsResult {
+  purgedEventCount: number;
+  purgedJobCount: number;
+  purgedSessionCount: number;
+}
+
 export interface DelegateBrokerApi {
   registerSession(input: RegisterSessionInput): DelegateSessionRecord;
   heartbeat(input: HeartbeatInput): DelegateSessionRecord;
@@ -154,6 +166,7 @@ export interface DelegateBrokerApi {
   listMessages(jobId: string): DelegateQueuedMessage[];
   updateMessage(input: UpdateMessageInput): DelegateQueuedMessage | null;
   checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[];
+  purgeExpiredEvents(input?: PurgeExpiredEventsInput): PurgeExpiredEventsResult;
 }
 
 interface StoredJobEvent extends DelegateJobEvent {
@@ -178,6 +191,7 @@ const DEFAULT_BROKER_STATE_PATH = join(paths.data, 'async', 'delegate-broker.jso
 const DEFAULT_BROKER_DB_PATH = join(paths.data, 'async', 'delegate-broker.sqlite');
 const TERMINAL_STATUSES = new Set<DelegateJobStatus>(['completed', 'failed', 'cancelled']);
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_PURGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function createEmptyState(): DelegateBrokerState {
   return {
@@ -269,8 +283,16 @@ function buildCancelPayload(input: RequestCancelInput): JsonObject {
   };
 }
 
-function isDelegateMessageDelivery(value: JsonValue | undefined): value is DelegateMessageDelivery {
-  return value === 'interrupt_resume' || value === 'after_complete' || value === 'streaming';
+/** Accept current + legacy delivery values for backward-compat deserialization */
+function isLegacyDelivery(value: JsonValue | undefined): boolean {
+  return value === 'inject' || value === 'after_complete'
+    || value === 'streaming' || value === 'interrupt_resume';
+}
+
+/** Normalize legacy delivery values to current type */
+function normalizeDelivery(value: string): DelegateMessageDelivery {
+  if (value === 'streaming' || value === 'interrupt_resume') return 'inject';
+  return value as DelegateMessageDelivery;
 }
 
 function isDelegateMessageStatus(value: JsonValue | undefined): value is DelegateMessageStatus {
@@ -288,7 +310,7 @@ function readQueuedMessages(metadata: JsonObject | undefined): DelegateQueuedMes
     .map((value) => {
       const messageId = typeof value.messageId === 'string' ? value.messageId : '';
       const createdAt = typeof value.createdAt === 'string' ? value.createdAt : '';
-      const delivery = isDelegateMessageDelivery(value.delivery) ? value.delivery : null;
+      const delivery = isLegacyDelivery(value.delivery) ? normalizeDelivery(value.delivery as string) : null;
       const message = typeof value.message === 'string' ? value.message : '';
       const status = isDelegateMessageStatus(value.status) ? value.status : null;
 
@@ -735,6 +757,45 @@ export class FileDelegateBroker implements DelegateBrokerApi {
       }
 
       return timedOut;
+    });
+  }
+
+  purgeExpiredEvents(input?: PurgeExpiredEventsInput): PurgeExpiredEventsResult {
+    const maxAgeMs = input?.maxAgeMs ?? DEFAULT_PURGE_MAX_AGE_MS;
+    const now = input?.now ?? new Date().toISOString();
+    const nowMs = new Date(now).getTime();
+    const cutoff = nowMs - maxAgeMs;
+
+    return this.updateState((state) => {
+      let purgedEventCount = 0;
+      let purgedJobCount = 0;
+      let purgedSessionCount = 0;
+
+      // Purge events and jobs for terminal jobs older than cutoff
+      for (const [jobId, job] of Object.entries(state.jobs)) {
+        if (!isTerminalStatus(job.status)) {
+          continue;
+        }
+        if (new Date(job.updatedAt).getTime() > cutoff) {
+          continue;
+        }
+        const events = state.eventsByJob[jobId];
+        purgedEventCount += events?.length ?? 0;
+        delete state.eventsByJob[jobId];
+        delete state.jobs[jobId];
+        purgedJobCount += 1;
+      }
+
+      // Purge stale sessions not seen since cutoff
+      for (const [sessionId, session] of Object.entries(state.sessions)) {
+        if (new Date(session.lastSeenAt).getTime() > cutoff) {
+          continue;
+        }
+        delete state.sessions[sessionId];
+        purgedSessionCount += 1;
+      }
+
+      return { purgedEventCount, purgedJobCount, purgedSessionCount };
     });
   }
 
@@ -1225,6 +1286,50 @@ export class SqliteDelegateBroker implements DelegateBrokerApi {
       }
 
       return timedOut;
+    });
+  }
+
+  purgeExpiredEvents(input?: PurgeExpiredEventsInput): PurgeExpiredEventsResult {
+    const maxAgeMs = input?.maxAgeMs ?? DEFAULT_PURGE_MAX_AGE_MS;
+    const now = input?.now ?? new Date().toISOString();
+    const nowMs = new Date(now).getTime();
+    const cutoffIso = new Date(nowMs - maxAgeMs).toISOString();
+
+    return this.transaction(() => {
+      // Find terminal jobs older than cutoff
+      const expiredJobs = this.db.prepare(`
+        SELECT job_id FROM delegate_jobs
+        WHERE status IN ('completed', 'failed', 'cancelled')
+          AND updated_at <= ?
+      `).all(cutoffIso) as unknown as Array<{ job_id: string }>;
+
+      let purgedEventCount = 0;
+      for (const { job_id } of expiredJobs) {
+        const countRow = this.db.prepare(
+          'SELECT COUNT(*) AS cnt FROM delegate_events WHERE job_id = ?',
+        ).get(job_id) as { cnt: number } | undefined;
+        purgedEventCount += Number(countRow?.cnt ?? 0);
+
+        this.db.prepare(`
+          DELETE FROM delegate_event_acks
+          WHERE event_id IN (SELECT event_id FROM delegate_events WHERE job_id = ?)
+        `).run(job_id);
+        this.db.prepare('DELETE FROM delegate_events WHERE job_id = ?').run(job_id);
+        this.db.prepare('DELETE FROM delegate_jobs WHERE job_id = ?').run(job_id);
+      }
+
+      // Purge stale sessions
+      const sessionCountRow = this.db.prepare(
+        'SELECT COUNT(*) AS cnt FROM delegate_sessions WHERE last_seen_at <= ?',
+      ).get(cutoffIso) as { cnt: number } | undefined;
+      const purgedSessionCount = Number(sessionCountRow?.cnt ?? 0);
+      this.db.prepare('DELETE FROM delegate_sessions WHERE last_seen_at <= ?').run(cutoffIso);
+
+      return {
+        purgedEventCount,
+        purgedJobCount: expiredJobs.length,
+        purgedSessionCount,
+      };
     });
   }
 

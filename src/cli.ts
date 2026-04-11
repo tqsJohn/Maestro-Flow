@@ -14,6 +14,7 @@ import { registerCoordinateCommand } from './commands/coordinate.js';
 import { registerLauncherCommand } from './commands/launcher.js';
 import { registerDelegateCommand } from './commands/delegate.js';
 import { registerMsgCommand } from './commands/msg.js';
+import { registerOverlayCommand } from './commands/overlay.js';
 
 const program = new Command();
 
@@ -37,5 +38,6 @@ registerCoordinateCommand(program);
 registerLauncherCommand(program);
 registerDelegateCommand(program);
 registerMsgCommand(program);
+registerOverlayCommand(program);
 
 program.parse();

@@ -17,6 +17,10 @@ export function getMcpServer(): Server | null {
   return _server;
 }
 
+export function getDelegateRelay(): DelegateChannelRelay | null {
+  return _delegateRelay;
+}
+
 export async function startMcpServer(): Promise<void> {
   const config = loadConfig();
   const registry = new ToolRegistry();
@@ -29,6 +33,11 @@ export async function startMcpServer(): Promise<void> {
         tools: {},
         experimental: { 'claude/channel': {} },
       },
+      instructions:
+        'Delegate task notifications arrive as <channel source="maestro" exec_id="..." event_type="..." status="...">. ' +
+        'These are one-way status updates from async delegate workers. ' +
+        'When a delegate completes (status=completed) or fails (status=failed), report the result. ' +
+        'Use the delegate_status tool with the exec_id to get full output details.',
     }
   );
 

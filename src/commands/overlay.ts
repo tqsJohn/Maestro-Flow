@@ -1,0 +1,285 @@
+// ---------------------------------------------------------------------------
+// `maestro overlay` — manage command overlays.
+//
+// Subcommands:
+//   list             — show overlays on disk and their applied state
+//   apply            — reapply all overlays to known installations (idempotent)
+//   add <file>       — copy overlay JSON to ~/.maestro/overlays/ and apply
+//   import <file>    — alias of `add`; validates + copies + applies
+//   export <name>    — copy an installed overlay to a portable path
+//   remove <name>    — strip markers from targets and delete overlay file
+// ---------------------------------------------------------------------------
+
+import type { Command } from 'commander';
+import {
+  existsSync,
+  unlinkSync,
+  readdirSync,
+} from 'node:fs';
+import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { paths } from '../config/paths.js';
+import { getAllManifests } from '../core/manifest.js';
+import {
+  applyOverlays,
+  ensureOverlayDir,
+  loadOverlayManifest,
+  removeOverlayFromTargets,
+  deleteOverlayManifest,
+  exportOverlayFile,
+  importOverlayFile,
+  type ApplyReport,
+} from '../core/overlay/applier.js';
+import { loadAllOverlays, loadOverlay, OverlayLoadError } from '../core/overlay/loader.js';
+
+// ---------------------------------------------------------------------------
+// Scope discovery
+// ---------------------------------------------------------------------------
+
+interface Scope {
+  scope: 'global' | 'project';
+  targetBase: string;
+}
+
+/** Known install scopes from install manifests. Fallback to homedir global. */
+function discoverScopes(): Scope[] {
+  const manifests = getAllManifests();
+  const scopes: Scope[] = [];
+  const seen = new Set<string>();
+  for (const m of manifests) {
+    const targetBase = m.scope === 'global' ? homedir() : m.targetPath;
+    const key = `${m.scope}:${targetBase}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    scopes.push({ scope: m.scope, targetBase });
+  }
+  // Fallback: if no manifests but global commands dir exists, treat as global.
+  if (scopes.length === 0) {
+    const globalCmds = join(homedir(), '.claude', 'commands');
+    if (existsSync(globalCmds)) {
+      scopes.push({ scope: 'global', targetBase: homedir() });
+    }
+  }
+  return scopes;
+}
+
+function overlayDir(): string {
+  return join(paths.home, 'overlays');
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: list
+// ---------------------------------------------------------------------------
+
+function runList(): void {
+  const dir = overlayDir();
+  if (!existsSync(dir)) {
+    console.error(`No overlays directory at ${dir}`);
+    return;
+  }
+
+  const { overlays, errors } = loadAllOverlays(dir);
+  if (overlays.length === 0 && errors.length === 0) {
+    console.error('No overlays installed.');
+    return;
+  }
+
+  // Collect applied state from all scope manifests
+  const scopes = discoverScopes();
+  const appliedByScope = new Map<string, Set<string>>();
+  for (const s of scopes) {
+    const m = loadOverlayManifest(s.scope, s.targetBase);
+    const names = new Set<string>();
+    if (m) for (const ao of m.appliedOverlays) names.add(ao.overlayName);
+    appliedByScope.set(`${s.scope}:${s.targetBase}`, names);
+  }
+
+  console.error('');
+  console.error(`  Overlays in ${dir}:`);
+  console.error('');
+  for (const o of overlays) {
+    const enabled = o.meta.enabled === false ? 'disabled' : 'enabled';
+    const prio = o.meta.priority ?? 50;
+    const appliedInScopes: string[] = [];
+    for (const [key, names] of appliedByScope) {
+      if (names.has(o.meta.name)) appliedInScopes.push(key.split(':')[0]);
+    }
+    const status =
+      appliedInScopes.length > 0 ? `applied[${appliedInScopes.join(',')}]` : 'pending';
+    console.error(`  - ${o.meta.name}  [${enabled}]  priority=${prio}  ${status}`);
+    console.error(`      targets: ${o.meta.targets.join(', ')}`);
+    if (o.meta.description) console.error(`      ${o.meta.description}`);
+  }
+
+  if (errors.length > 0) {
+    console.error('');
+    console.error('  Load errors:');
+    for (const e of errors) {
+      console.error(`  ! ${e.path}`);
+      for (const msg of e.errors) console.error(`      ${msg}`);
+    }
+  }
+  console.error('');
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: apply
+// ---------------------------------------------------------------------------
+
+function runApply(): void {
+  const dir = overlayDir();
+  ensureOverlayDir(dir);
+
+  const scopes = discoverScopes();
+  if (scopes.length === 0) {
+    console.error('No install scopes found. Run `maestro install` first.');
+    return;
+  }
+
+  const reports: ApplyReport[] = [];
+  for (const s of scopes) {
+    console.error(`[${s.scope}] ${s.targetBase}`);
+    const report = applyOverlays({
+      scope: s.scope,
+      targetBase: s.targetBase,
+      overlayDir: dir,
+    });
+    reports.push(report);
+    console.error(
+      `  loaded=${report.overlaysLoaded} applied=${report.overlaysApplied} ` +
+        `changed=${report.filesChanged} unchanged=${report.filesUnchanged}`,
+    );
+    if (report.skipped.length > 0) {
+      for (const s of report.skipped) {
+        console.error(`    skipped: ${s.overlay} → ${s.target} (${s.reason})`);
+      }
+    }
+  }
+  console.error('');
+  console.error('Done.');
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: add
+// ---------------------------------------------------------------------------
+
+function runAdd(file: string): void {
+  const dir = overlayDir();
+  try {
+    const result = importOverlayFile(file, dir);
+    if (result.overwritten) {
+      console.error(`Overwriting existing overlay: ${result.dest}`);
+    }
+    console.error(`Installed overlay: ${result.dest}`);
+  } catch (err) {
+    if (err instanceof OverlayLoadError) {
+      console.error(`Invalid overlay: ${err.filePath}`);
+      for (const msg of err.errors) console.error(`  - ${msg}`);
+    } else {
+      console.error(err instanceof Error ? err.message : String(err));
+    }
+    process.exit(1);
+  }
+  runApply();
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: export
+// ---------------------------------------------------------------------------
+
+function runExport(name: string, opts: { out?: string }): void {
+  const dir = overlayDir();
+  const outPath = opts.out ?? resolve(process.cwd(), `${name}.json`);
+  try {
+    const result = exportOverlayFile(dir, name, outPath);
+    console.error(`Exported overlay '${result.overlayName}' to ${result.dest}`);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: remove
+// ---------------------------------------------------------------------------
+
+function runRemove(name: string): void {
+  const dir = overlayDir();
+
+  // Strip markers from all scopes
+  const scopes = discoverScopes();
+  let filesChanged = 0;
+  for (const s of scopes) {
+    const res = removeOverlayFromTargets(name, s.scope, s.targetBase);
+    filesChanged += res.filesChanged;
+  }
+  console.error(`Stripped markers from ${filesChanged} file(s).`);
+
+  // Delete overlay file(s) matching the name
+  if (existsSync(dir)) {
+    let deleted = 0;
+    for (const entry of readdirSync(dir)) {
+      if (!entry.endsWith('.json')) continue;
+      const fp = join(dir, entry);
+      try {
+        const overlay = loadOverlay(fp);
+        if (overlay.meta.name === name) {
+          unlinkSync(fp);
+          deleted++;
+        }
+      } catch {
+        // Skip unparseable files
+      }
+    }
+    if (deleted > 0) console.error(`Deleted ${deleted} overlay file(s).`);
+  }
+
+  // Prune manifests that no longer have any applied overlays
+  for (const s of scopes) {
+    const m = loadOverlayManifest(s.scope, s.targetBase);
+    if (m && m.appliedOverlays.length === 0) {
+      deleteOverlayManifest(s.scope, s.targetBase);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+export function registerOverlayCommand(program: Command): void {
+  const overlay = program
+    .command('overlay')
+    .description('Manage command overlays — non-invasive patches for .claude/commands');
+
+  overlay
+    .command('list')
+    .description('Show overlays on disk and their applied state')
+    .action(() => runList());
+
+  overlay
+    .command('apply')
+    .description('Reapply all overlays to known installations (idempotent)')
+    .action(() => runApply());
+
+  overlay
+    .command('add <file>')
+    .description('Install an overlay JSON file and apply it')
+    .action((file: string) => runAdd(file));
+
+  overlay
+    .command('import <file>')
+    .description('Import an overlay JSON file (alias of `add`)')
+    .action((file: string) => runAdd(file));
+
+  overlay
+    .command('export <name>')
+    .description('Export an installed overlay to a portable JSON path')
+    .option('-o, --out <path>', 'Output file or directory (default: ./<name>.json)')
+    .action((name: string, opts: { out?: string }) => runExport(name, opts));
+
+  overlay
+    .command('remove <name>')
+    .description('Strip an overlay from targets and delete its file')
+    .action((name: string) => runRemove(name));
+}

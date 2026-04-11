@@ -8,6 +8,7 @@ import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 
+import type { AgentType } from '../shared/agent-types.js';
 import { loadConfig } from './config.js';
 import { DashboardEventBus } from './state/event-bus.js';
 import { StateManager } from './state/state-manager.js';
@@ -20,11 +21,7 @@ import { CommanderWsHandler } from './ws/handlers/commander-handler.js';
 import { CoordinateWsHandler } from './ws/handlers/coordinate-handler.js';
 import { RequirementWsHandler } from './ws/handlers/requirement-handler.js';
 import { AgentManager } from './agents/agent-manager.js';
-import { ClaudeCodeAdapter } from './agents/claude-code-adapter.js';
-import { StreamJsonAdapter } from './agents/stream-json-adapter.js';
-import { CodexCliAdapter } from './agents/codex-cli-adapter.js';
-import { CodexAppServerAdapter } from './agents/codex-app-server-adapter.js';
-import { OpenCodeAdapter } from './agents/opencode-adapter.js';
+import { createAdapterForType } from './agents/adapter-factory.js';
 import { AgentSdkAdapter } from './agents/agent-sdk-adapter.js';
 import { DelegateBrokerMonitor } from './agents/delegate-broker-monitor.js';
 import { ExecutionScheduler } from './execution/execution-scheduler.js';
@@ -73,12 +70,12 @@ async function main(): Promise<void> {
   // Agent Manager — orchestrates CLI agent processes
   // ---------------------------------------------------------------------------
   const agentManager = new AgentManager(eventBus);
-  agentManager.registerAdapter(new ClaudeCodeAdapter());
-  agentManager.registerAdapter(new StreamJsonAdapter('npx -y @google/gemini-cli', 'gemini'));
-  agentManager.registerAdapter(new StreamJsonAdapter('qwen', 'qwen'));
-  agentManager.registerAdapter(new CodexCliAdapter());
-  agentManager.registerAdapter(new CodexAppServerAdapter());
-  agentManager.registerAdapter(new OpenCodeAdapter());
+  const SUBPROCESS_AGENT_TYPES: AgentType[] = [
+    'claude-code', 'gemini', 'gemini-a2a', 'qwen', 'codex', 'codex-server', 'opencode',
+  ];
+  for (const type of SUBPROCESS_AGENT_TYPES) {
+    agentManager.registerAdapter(await createAdapterForType(type));
+  }
   agentManager.registerAdapter(new AgentSdkAdapter(workflowRoot));
   const delegateBrokerMonitor = new DelegateBrokerMonitor({ agentManager, eventBus });
   delegateBrokerMonitor.start();

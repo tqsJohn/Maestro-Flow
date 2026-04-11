@@ -76,6 +76,7 @@ const DEFAULT_AGENTS: Record<AgentType, AgentSettingsEntry> = {
   codex: { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
   'codex-server': { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
   gemini: { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
+  'gemini-a2a': { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
   qwen: { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
   opencode: { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },
   'agent-sdk': { model: '', approvalMode: 'suggest', baseUrl: '', apiKey: '', settingsFile: '', envFile: '' },

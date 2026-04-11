@@ -9,6 +9,8 @@ import type {
   HeartbeatInput,
   PollEventsInput,
   PublishJobEventInput,
+  PurgeExpiredEventsInput,
+  PurgeExpiredEventsResult,
   QueueMessageInput,
   RequestCancelInput,
   RegisterSessionInput,
@@ -74,5 +76,9 @@ export class DelegateBrokerClient implements DelegateBrokerApi {
 
   checkTimeouts(input?: CheckTimeoutsInput): DelegateJobRecord[] {
     return this.broker.checkTimeouts(input);
+  }
+
+  purgeExpiredEvents(input?: PurgeExpiredEventsInput): PurgeExpiredEventsResult {
+    return this.broker.purgeExpiredEvents(input);
   }
 }

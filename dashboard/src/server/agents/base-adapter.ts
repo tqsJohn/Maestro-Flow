@@ -26,6 +26,8 @@ export interface AgentAdapter {
   onEntry(processId: string, cb: (entry: NormalizedEntry) => void): () => void;
   onApproval(processId: string, cb: (request: ApprovalRequest) => void): () => void;
   respondApproval(decision: ApprovalDecision): Promise<void>;
+  supportsInteractive(): boolean;
+  endInput(processId: string): void;
   getProcess(processId: string): AgentProcess | undefined;
   listProcesses(): AgentProcess[];
 }
@@ -116,6 +118,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   listProcesses(): AgentProcess[] {
     return Array.from(this.processes.values());
+  }
+
+  supportsInteractive(): boolean {
+    return false;
+  }
+
+  endInput(_processId: string): void {
+    // No-op default — override in interactive adapters that need stdin close
   }
 
   // --- Protected helpers for subclasses -----------------------------------

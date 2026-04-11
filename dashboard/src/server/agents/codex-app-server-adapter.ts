@@ -89,6 +89,10 @@ const DEFAULT_APP_CONFIG: Required<CodexAppServerConfig> = {
 export class CodexAppServerAdapter extends BaseAgentAdapter {
   readonly agentType = 'codex-server' as const;
 
+  override supportsInteractive(): boolean {
+    return true;
+  }
+
   private readonly sessions = new Map<string, AppServerSession>();
   private readonly appConfig: Required<CodexAppServerConfig>;
 

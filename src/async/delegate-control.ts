@@ -202,17 +202,11 @@ export function handleDelegateMessage(
       });
       throw new Error(`Failed to relaunch delegate for terminal execution: ${execId}`);
     }
-  } else if (input.delivery === 'streaming') {
-    // Streaming delivery: queue the message for poller pickup without cancelling
-    // the running process. The cancellationPoller in cli-agent-runner will
-    // inject the message via adapter.sendMessage().
-    statusAfterQueue = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
-  } else if (input.delivery === 'interrupt_resume') {
-    delegateBroker.requestCancel({
-      jobId: execId,
-      requestedBy: input.requestedBy,
-      reason: 'interrupt_resume follow-up queued',
-    });
+  } else if (input.delivery === 'inject') {
+    // Inject delivery: queue the message for poller pickup. The poller in
+    // cli-agent-runner auto-routes based on adapter capabilities:
+    //   - interactive adapter → sendMessage (no interruption)
+    //   - non-interactive adapter → requestCancel + resume
     statusAfterQueue = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
   }
 

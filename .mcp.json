@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "maestro": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "maestro-mcp"],
+      "command": "node",
+      "args": ["bin/maestro-mcp.js"],
       "env": {
-        "MAESTRO_ENABLED_TOOLS": "write_file,edit_file,read_file,read_many_files,team_msg,core_memory,spec_load,spec_init,context_status"
+        "MAESTRO_ENABLED_TOOLS": "write_file,edit_file,read_file,read_many_files,team_msg,core_memory,spec_load,spec_init,context_status,delegate,delegate_status,delegate_message,delegate_cancel"
       }
     },
     "claude_dms3-chrome-devtools": {

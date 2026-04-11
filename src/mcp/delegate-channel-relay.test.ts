@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -38,7 +38,11 @@ describe('DelegateChannelRelay', () => {
       pollIntervalMs: 20,
       statusThrottleMs: 1_000,
       snapshotThrottleMs: 1_000,
+      now: () => '2026-04-07T01:00:05.000Z',
     });
+
+    // Start relay first — events published before start are drained (not emitted)
+    await relay.start();
 
     broker.publishEvent({
       jobId: 'job-1',
@@ -80,7 +84,6 @@ describe('DelegateChannelRelay', () => {
       now: '2026-04-07T01:00:04.000Z',
     });
 
-    await relay.start();
     await delay(120);
     relay.stop();
 
@@ -113,7 +116,10 @@ describe('DelegateChannelRelay', () => {
       broker,
       sessionId: 'relay-exec-id-test',
       pollIntervalMs: 20,
+      now: () => '2026-04-07T02:00:01.000Z',
     });
+
+    await relay.start();
 
     broker.publishEvent({
       jobId: 'job-42',
@@ -123,7 +129,6 @@ describe('DelegateChannelRelay', () => {
       now: '2026-04-07T02:00:00.000Z',
     });
 
-    await relay.start();
     await delay(80);
     relay.stop();
 
@@ -132,6 +137,54 @@ describe('DelegateChannelRelay', () => {
     assert.equal(notifications[0].params.meta.exec_id, 'job-42');
     assert.equal(notifications[0].params.meta.event_type, 'completed');
     assert.equal(notifications[0].params.meta.status, 'completed');
+  });
+
+  it('drains pre-existing events on startup without emitting them', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    // Publish events BEFORE relay starts — simulates history from a prior session
+    broker.publishEvent({
+      jobId: 'old-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'finished in previous session' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'drain-test',
+      pollIntervalMs: 20,
+      now: () => '2026-04-07T01:00:00.000Z',
+    });
+
+    await relay.start();
+
+    // Publish a new event AFTER start — this should be emitted
+    broker.publishEvent({
+      jobId: 'new-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'new work' },
+      now: '2026-04-07T01:00:01.000Z',
+    });
+
+    await delay(80);
+    relay.stop();
+
+    // Only the post-startup event should have been emitted
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].params.meta.job_id, 'new-job');
+
+    // All events (old + new) should be acked
+    const remaining = broker.pollEvents({ sessionId: 'drain-test' });
+    assert.deepEqual(remaining, []);
   });
 
   it('stops polling after 3 consecutive failures', async () => {
@@ -155,6 +208,7 @@ describe('DelegateChannelRelay', () => {
       listMessages() { return []; },
       updateMessage() { return null; },
       checkTimeouts() { return []; },
+      purgeExpiredEvents() { return { purgedEventCount: 0, purgedJobCount: 0, purgedSessionCount: 0 }; },
     };
 
     const relay = new DelegateChannelRelay({
@@ -170,6 +224,112 @@ describe('DelegateChannelRelay', () => {
 
     // heartbeat 1 = initial success, then 3+ failures before circuit breaker trips
     assert.ok(heartbeatCount >= 4, `Expected at least 4 heartbeat calls, got ${heartbeatCount}`);
-    assert.equal(pollCount, 1, 'Only the initial successful poll should have proceeded');
+    // pollCount: 1 from drain + 1 from initial pollOnce = 2, then failures prevent further polls
+    assert.equal(pollCount, 2, 'Only the drain and initial poll should have proceeded');
+  });
+
+  it('filters events by origin sessionId in metadata', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'relay-session-A',
+      pollIntervalMs: 20,
+      now: () => '2026-04-09T01:00:01.000Z',
+    });
+
+    await relay.start();
+
+    // Event from this session's job
+    broker.publishEvent({
+      jobId: 'my-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'done' },
+      jobMetadata: { sessionId: 'relay-session-A' },
+      now: '2026-04-09T01:00:00.000Z',
+    });
+
+    // Event from another session's job
+    broker.publishEvent({
+      jobId: 'other-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'also done' },
+      jobMetadata: { sessionId: 'relay-session-B' },
+      now: '2026-04-09T01:00:00.000Z',
+    });
+
+    await delay(80);
+    relay.stop();
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].params.meta.job_id, 'my-job');
+  });
+
+  it('emits events without sessionId in metadata for backward compatibility', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'relay-session-A',
+      pollIntervalMs: 20,
+      now: () => '2026-04-09T02:00:01.000Z',
+    });
+
+    await relay.start();
+
+    // Legacy job without sessionId in metadata
+    broker.publishEvent({
+      jobId: 'legacy-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'legacy done' },
+      now: '2026-04-09T02:00:00.000Z',
+    });
+
+    await delay(80);
+    relay.stop();
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].params.meta.job_id, 'legacy-job');
+  });
+
+  it('writes relay session file on start and removes on stop', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+
+    const relay = new DelegateChannelRelay({
+      server: { async notification() {} },
+      broker,
+      sessionId: 'file-lifecycle-test',
+      pollIntervalMs: 60_000,
+      now: () => '2026-04-09T03:00:00.000Z',
+    });
+
+    await relay.start();
+
+    const sessionDir = join(process.env.MAESTRO_HOME!, 'data', 'async');
+    const sessionFile = join(sessionDir, `relay-session-${process.pid}.id`);
+    assert.ok(existsSync(sessionFile), 'Session file should exist after start');
+
+    const data = JSON.parse(readFileSync(sessionFile, 'utf-8'));
+    assert.equal(data.sessionId, 'file-lifecycle-test');
+    assert.equal(data.pid, process.pid);
+
+    relay.stop();
+
+    assert.equal(existsSync(sessionFile), false, 'Session file should be removed after stop');
   });
 });

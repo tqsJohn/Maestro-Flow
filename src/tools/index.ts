@@ -288,7 +288,7 @@ export function registerBuiltinTools(
 
   registry.register({
     name: 'delegate_message',
-    description: 'Queue or dispatch a follow-up message for an async delegate using interrupt_resume or after_complete delivery.',
+    description: 'Queue or dispatch a follow-up message for an async delegate using inject or after_complete delivery.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -296,8 +296,8 @@ export function registerBuiltinTools(
         message: { type: 'string', description: 'Follow-up user message to queue' },
         delivery: {
           type: 'string',
-          enum: ['interrupt_resume', 'after_complete'],
-          description: 'interrupt_resume cancels current execution then resumes; after_complete waits for successful completion.',
+          enum: ['inject', 'after_complete'],
+          description: 'inject auto-routes: uses streaming stdin injection for interactive adapters (claude), falls back to cancel+resume for others (gemini, codex); after_complete waits for successful completion.',
         },
       },
       required: ['execId', 'message', 'delivery'],
@@ -312,8 +312,8 @@ export function registerBuiltinTools(
       if (!message) {
         return jsonResult({ error: 'message is required' }, true);
       }
-      if (delivery !== 'interrupt_resume' && delivery !== 'after_complete') {
-        return jsonResult({ error: 'delivery must be interrupt_resume or after_complete' }, true);
+      if (delivery !== 'inject' && delivery !== 'after_complete') {
+        return jsonResult({ error: 'delivery must be inject or after_complete' }, true);
       }
 
       const meta = historyStore.loadMeta(execId);
@@ -330,7 +330,7 @@ export function registerBuiltinTools(
         result = handleDelegateMessage({
           execId,
           message,
-          delivery: delivery as 'interrupt_resume' | 'after_complete',
+          delivery: delivery as 'inject' | 'after_complete',
           requestedBy: 'mcp:delegate_message',
         }, {
           historyStore,

@@ -3,14 +3,15 @@
 // ---------------------------------------------------------------------------
 
 import { spawn, type SpawnOptions } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { Command, Option } from 'commander';
 import { CliAgentRunner } from '../agents/cli-agent-runner.js';
 import { CliHistoryStore, type EntryLike } from '../agents/cli-history-store.js';
 import type { ExecutionMeta } from '../agents/cli-history-store.js';
 import { generateCliExecId } from '../agents/cli-agent-runner.js';
 import { loadCliToolsConfig, selectTool } from '../config/cli-tools-config.js';
+import { paths } from '../config/paths.js';
 import { DelegateBrokerClient, type JsonObject, type DelegateJobEvent, type DelegateJobRecord } from '../async/index.js';
 
 function statusLabel(meta: ExecutionMeta): string {
@@ -247,6 +248,47 @@ export function launchDetachedDelegateWorker(
   }
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveRelaySessionId(): string | undefined {
+  const asyncDir = join(paths.data, 'async');
+  try {
+    const files = readdirSync(asyncDir)
+      .filter((f) => f.startsWith('relay-session-') && f.endsWith('.id'));
+
+    if (files.length === 0) return undefined;
+
+    let newest: { sessionId: string; startedAt: string } | undefined;
+
+    for (const file of files) {
+      const filePath = join(asyncDir, file);
+      try {
+        const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+        if (data.pid && !isProcessAlive(data.pid)) {
+          try { unlinkSync(filePath); } catch {}
+          continue;
+        }
+        if (!newest || data.startedAt > newest.startedAt) {
+          newest = data;
+        }
+      } catch {
+        // Skip corrupted files
+      }
+    }
+
+    return newest?.sessionId;
+  } catch {
+    return undefined;
+  }
+}
+
 export function registerDelegateCommand(program: Command): void {
   const delegate = program
     .command('delegate [prompt]')
@@ -313,7 +355,7 @@ export function registerDelegateCommand(program: Command): void {
         execId,
         resume,
         includeDirs,
-        sessionId: opts.session,
+        sessionId: opts.session ?? resolveRelaySessionId(),
         backend,
       };
 

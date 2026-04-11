@@ -320,4 +320,86 @@ describe('Delegate broker', () => {
 
     broker.close();
   });
+
+  it('purgeExpiredEvents removes terminal jobs and stale sessions from file broker', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.registerSession({ sessionId: 'old-session', now: '2026-04-07T00:00:00.000Z' });
+    client.registerSession({ sessionId: 'recent-session', now: '2026-04-07T04:00:00.000Z' });
+
+    // Old completed job
+    client.publishEvent({
+      jobId: 'old-done',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'done long ago' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    // Recent running job — should NOT be purged
+    client.publishEvent({
+      jobId: 'still-running',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'active' },
+      now: '2026-04-07T03:59:00.000Z',
+    });
+
+    // Recent completed job — should NOT be purged (within TTL)
+    client.publishEvent({
+      jobId: 'just-done',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'just finished' },
+      now: '2026-04-07T03:30:00.000Z',
+    });
+
+    const result = client.purgeExpiredEvents({
+      maxAgeMs: 2 * 60 * 60 * 1000, // 2 hours
+      now: '2026-04-07T04:00:00.000Z',
+    });
+
+    assert.equal(result.purgedJobCount, 1);
+    assert.equal(result.purgedEventCount, 1);
+    assert.equal(result.purgedSessionCount, 1); // old-session is stale
+
+    assert.equal(client.getJob('old-done'), null);
+    assert.ok(client.getJob('still-running'));
+    assert.ok(client.getJob('just-done'));
+  });
+
+  it('purgeExpiredEvents removes terminal jobs and stale sessions from sqlite broker', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+    client.registerSession({ sessionId: 'stale-sqlite', now: '2026-04-07T00:00:00.000Z' });
+    client.registerSession({ sessionId: 'active-sqlite', now: '2026-04-07T04:00:00.000Z' });
+
+    client.publishEvent({
+      jobId: 'sqlite-old-done',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'old' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    client.publishEvent({
+      jobId: 'sqlite-recent',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'active' },
+      now: '2026-04-07T03:59:00.000Z',
+    });
+
+    const result = client.purgeExpiredEvents({
+      maxAgeMs: 2 * 60 * 60 * 1000,
+      now: '2026-04-07T04:00:00.000Z',
+    });
+
+    assert.equal(result.purgedJobCount, 1);
+    assert.equal(result.purgedSessionCount, 1);
+    assert.equal(client.getJob('sqlite-old-done'), null);
+    assert.ok(client.getJob('sqlite-recent'));
+    assert.equal(client.listJobEvents('sqlite-old-done').length, 0);
+
+    broker.close();
+  });
 });

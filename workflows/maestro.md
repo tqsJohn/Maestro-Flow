@@ -122,6 +122,8 @@ function detectTaskType(text) {
 
     // Priority 11-17: Quality pipeline
     ['review',         /\breview.*code|code.*review|代码.*审查|审查.*代码|review.*quality/i],
+    ['retrospective',  /retrospect|retro|复盘|post.?mortem|lessons.*learn|after.?action|事后.*回顾/i],
+    ['learn',          /^learn\b|capture.*insight|capture.*learning|insight.*log|eureka|学习.*记录|记录.*洞察/i],
     ['test_gen',       /test.*gen|generat.*test|add.*test|补充.*测试|写测试/i],
     ['test',           /\btest|uat|user.*accept|测试|用户.*验收/i],
     ['debug',          /debug|diagnos|troubleshoot|fix.*bug|调试|排查/i],
@@ -353,6 +355,8 @@ const chainMap = {
   'integration_test':   [{ cmd: 'quality-integration-test', args: '{phase}' }],
   'refactor':           [{ cmd: 'quality-refactor', args: '"{description}"' }],
   'review':             [{ cmd: 'quality-review', args: '{phase}' }],
+  'retrospective':      [{ cmd: 'quality-retrospective', args: '{phase}' }],
+  'learn':              [{ cmd: 'manage-learn', args: '"{description}"' }],
   'sync':               [{ cmd: 'quality-sync', args: '{phase}' }],
   'phase_transition':   [{ cmd: 'maestro-phase-transition' }],
   'phase_add':          [{ cmd: 'maestro-phase-add', args: '"{description}"' }],
@@ -486,7 +490,7 @@ function resolvePhase(intent_analysis, project_state) {
 
   // 4. Chain doesn't need phase (init, status, memory, etc.)
   const noPhaseCommands = ['manage-status', 'manage-issue', 'manage-issue-analyze', 'manage-issue-plan', 'manage-issue-execute', 'maestro-init', 'maestro-spec-generate',
-    'maestro-roadmap', 'spec-setup', 'spec-map', 'manage-memory', 'manage-memory-capture',
+    'maestro-roadmap', 'spec-setup', 'spec-map', 'manage-memory', 'manage-memory-capture', 'manage-learn',
     'manage-codebase-rebuild', 'manage-codebase-refresh', 'maestro-milestone-audit',
     'maestro-milestone-complete', 'maestro-phase-transition', 'maestro-phase-add'];
   if (chain.every(s => noPhaseCommands.includes(s.cmd))) return null;
@@ -595,6 +599,7 @@ const AUTO_FLAG_MAP = {
   'maestro-plan':          '--auto',
   'maestro-spec-generate': '-y',
   'quality-test':           '--auto-fix',
+  'quality-retrospective': '--auto-yes',
 };
 
 function assembleArgs(step, context) {
@@ -725,6 +730,8 @@ Display completion report:
 | `"ui design landing page"` | ui_design | ui-design-driven | ui-design → plan → execute → verify |
 | `"design prototypes for dashboard"` | ui_design | ui_design | maestro-ui-design |
 | `"refactor auth module"` | refactor | refactor | quality-refactor |
+| `"retrospective phase 2"` / `"复盘 phase 2"` | retrospective | retrospective | quality-retrospective 2 |
+| `"capture insight: JWT must rotate"` | learn | learn | manage-learn "JWT must rotate" |
 | `"integration test payment"` | integration_test | integration-test | quality-integration-test |
 | `"list critical issues"` | issue | issue | manage-issue "list critical issues" |
 | `"discover issues"` | issue | issue | manage-issue "discover" |

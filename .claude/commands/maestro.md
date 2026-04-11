@@ -64,7 +64,9 @@ When `-y` is active, maestro propagates auto flags to downstream commands. Only 
 | quality-test | `--auto-fix` | Auto-trigger gap-fix loop on failures |
 | quality-test-gen | *(none)* | No auto flag — generates tests normally |
 | quality-debug | *(none)* | No auto flag — runs diagnosis normally |
+| quality-retrospective | `--auto-yes` | Accept all routing recommendations (spec/note/issue) without prompting |
 | maestro-phase-transition | *(none)* | No auto flag — validates and transitions |
+| manage-learn | *(none)* | No auto flag — pure file operation, no prompts |
 
 Commands not listed (manage-*, spec-*, milestone-*) have no auto flags and execute as-is.
 

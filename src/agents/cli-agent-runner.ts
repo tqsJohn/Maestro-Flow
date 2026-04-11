@@ -21,7 +21,7 @@ import { DelegateBrokerClient, type DelegateBrokerApi, type JsonObject } from '.
 // dashboard/src/shared/agent-types.ts. These mirror the canonical types.
 // ---------------------------------------------------------------------------
 
-type AgentType = 'claude-code' | 'codex' | 'gemini' | 'qwen' | 'opencode';
+type AgentType = 'claude-code' | 'codex' | 'codex-server' | 'gemini' | 'gemini-a2a' | 'qwen' | 'opencode';
 
 type AgentProcessStatus =
   | 'spawning'
@@ -38,6 +38,7 @@ interface AgentConfig {
   env?: Record<string, string>;
   model?: string;
   approvalMode?: 'suggest' | 'auto';
+  interactive?: boolean;
 }
 
 interface AgentProcess {
@@ -75,6 +76,7 @@ interface AdapterLike {
   onEntry(processId: string, cb: (entry: NormalizedEntry) => void): () => void;
   sendMessage?(processId: string, content: string): Promise<void>;
   supportsInteractive?(): boolean;
+  endInput?(processId: string): void;
 }
 
 interface DashboardBridgeLike {
@@ -118,8 +120,10 @@ export interface CliRunOptions {
 
 const TOOL_TO_AGENT_TYPE: Record<string, AgentType> = {
   gemini: 'gemini',
+  'gemini-a2a': 'gemini-a2a',
   qwen: 'qwen',
   codex: 'codex',
+  'codex-server': 'codex-server',
   claude: 'claude-code',
   opencode: 'opencode',
 };
@@ -130,8 +134,10 @@ const TOOL_TO_AGENT_TYPE: Record<string, AgentType> = {
 
 const AGENT_TYPE_TO_TERMINAL_CMD: Record<string, string> = {
   'gemini': 'gemini',
+  'gemini-a2a': 'gemini',
   'qwen': 'qwen',
   'codex': 'codex',
+  'codex-server': 'codex',
   'claude-code': 'claude',
   'opencode': 'opencode',
 };
@@ -142,8 +148,10 @@ const AGENT_TYPE_TO_TERMINAL_CMD: Record<string, string> = {
 
 const TOOL_PREFIX: Record<string, string> = {
   gemini: 'gem',
+  'gemini-a2a': 'gma',
   qwen: 'qwn',
   codex: 'cdx',
+  'codex-server': 'cxs',
   claude: 'cld',
   opencode: 'opc',
 };
@@ -196,11 +204,17 @@ async function assemblePrompt(
 // ---------------------------------------------------------------------------
 
 async function loadAdapterModule(adapterFile: string): Promise<Record<string, unknown>> {
-  const dashboardAgents = resolve(
-    import.meta.dirname ?? __dirname,
-    '..', '..', 'dashboard', 'dist-server', 'server', 'agents',
+  const baseDir = import.meta.dirname ?? __dirname;
+  // Prefer tsc-compiled output; fall back to legacy vite bundle path
+  const tscAgents = resolve(
+    baseDir, '..', '..', 'dashboard', 'dist-server', 'dashboard', 'src', 'server', 'agents',
   );
-  const fullPath = resolve(dashboardAgents, adapterFile);
+  const legacyAgents = resolve(
+    baseDir, '..', '..', 'dashboard', 'dist-server', 'server', 'agents',
+  );
+  const tscPath = resolve(tscAgents, adapterFile);
+  const legacyPath = resolve(legacyAgents, adapterFile);
+  const fullPath = existsSync(tscPath) ? tscPath : legacyPath;
   // Convert to file:// URL for Windows compatibility with dynamic import()
   const fileUrl = pathToFileURL(fullPath).href;
   return await import(fileUrl) as Record<string, unknown>;
@@ -218,35 +232,9 @@ async function createAdapter(agentType: AgentType, backend?: 'direct' | 'termina
     return new TerminalAdapter(termBackend, cmd) as unknown as AdapterLike;
   }
 
-  switch (agentType) {
-    case 'gemini': {
-      const mod = await loadAdapterModule('stream-json-adapter.js');
-      const Cls = mod.StreamJsonAdapter as new (exe: string, type: string) => AdapterLike;
-      return new Cls('npx -y @google/gemini-cli', 'gemini');
-    }
-    case 'qwen': {
-      const mod = await loadAdapterModule('stream-json-adapter.js');
-      const Cls = mod.StreamJsonAdapter as new (exe: string, type: string) => AdapterLike;
-      return new Cls('qwen', 'qwen');
-    }
-    case 'codex': {
-      const mod = await loadAdapterModule('codex-cli-adapter.js');
-      const Cls = mod.CodexCliAdapter as new () => AdapterLike;
-      return new Cls();
-    }
-    case 'opencode': {
-      const mod = await loadAdapterModule('opencode-adapter.js');
-      const Cls = mod.OpenCodeAdapter as new () => AdapterLike;
-      return new Cls();
-    }
-    case 'claude-code': {
-      const mod = await loadAdapterModule('claude-code-adapter.js');
-      const Cls = mod.ClaudeCodeAdapter as new () => AdapterLike;
-      return new Cls();
-    }
-    default:
-      throw new Error(`Unsupported agent type: ${agentType}`);
-  }
+  const mod = await loadAdapterModule('adapter-factory.js');
+  const factory = mod.createAdapterForType as (type: string) => Promise<AdapterLike>;
+  return await factory(agentType);
 }
 
 // ---------------------------------------------------------------------------
@@ -572,6 +560,7 @@ export class CliAgentRunner {
       workDir: options.workDir,
       model: options.model,
       approvalMode: options.mode === 'write' ? 'auto' : 'suggest',
+      interactive: adapter.supportsInteractive?.() === true,
     };
 
     const agentProcess = await adapter.spawn(config);
@@ -721,7 +710,7 @@ export class CliAgentRunner {
         queuedMessage = broker.listMessages(execId).find((message) => (
           message.status === 'queued'
           && (
-            (message.delivery === 'interrupt_resume'
+            (message.delivery === 'inject'
               && (finalStatus === 'cancelled' || finalStatus === 'completed' || finalStatus === 'failed'))
             || (message.delivery === 'after_complete' && finalStatus === 'completed')
           )
@@ -786,22 +775,23 @@ export class CliAgentRunner {
           // Best-effort polling only.
         }
 
-        // Poll for streaming messages and inject via adapter.sendMessage()
+        // Poll for inject messages and auto-route based on adapter capabilities
         try {
-          const streamingMessages = broker.listMessages(execId)
-            .filter((msg) => msg.status === 'queued' && msg.delivery === 'streaming' && !inFlightMessageIds.has(msg.messageId))
+          const injectMessages = broker.listMessages(execId)
+            .filter((msg) => msg.status === 'queued' && msg.delivery === 'inject' && !inFlightMessageIds.has(msg.messageId))
             .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-          for (const msg of streamingMessages) {
+          for (const msg of injectMessages) {
             const polledNow = now();
             if (adapter.sendMessage && (adapter.supportsInteractive?.() !== false)) {
+              // Interactive adapter: inject via stdin without interruption
               inFlightMessageIds.add(msg.messageId);
               void adapter.sendMessage(agentProcess.id, msg.message).then(() => {
                 broker.updateMessage({
                   jobId: execId,
                   messageId: msg.messageId,
                   status: 'injected',
-                  dispatchReason: 'streaming-injected',
+                  dispatchReason: 'inject-streaming',
                   now: polledNow,
                 });
               }).catch(() => {
@@ -816,17 +806,15 @@ export class CliAgentRunner {
                 inFlightMessageIds.delete(msg.messageId);
               });
             } else {
-              broker.updateMessage({
-                jobId: execId,
-                messageId: msg.messageId,
-                status: 'dropped',
-                dispatchReason: 'adapter-no-interactive',
-                now: polledNow,
-              });
+              // Non-interactive adapter: fall back to cancel + resume
+              if (!cancellationInitiated) {
+                void requestCancellation();
+              }
+              break; // Messages stay queued for dispatchQueuedFollowup after restart
             }
           }
         } catch {
-          // Best-effort streaming message polling.
+          // Best-effort inject message polling.
         }
       }, 750);
     }
@@ -846,6 +834,18 @@ export class CliAgentRunner {
           publishEvent('snapshot', 'running', summarizeEntry(entry), {
             entryType: entry.type,
           });
+        }
+
+        // Interactive mode: when Claude emits token_usage (end of turn) and no
+        // more inject messages are queued, close stdin to let the process exit.
+        if (config.interactive && entry.type === 'token_usage' && broker) {
+          try {
+            const pending = broker.listMessages(execId)
+              .filter((m) => m.status === 'queued' && m.delivery === 'inject');
+            if (pending.length === 0 && !cancellationRequested) {
+              adapter.endInput?.(agentProcess.id);
+            }
+          } catch { /* best-effort */ }
         }
 
         // Resolve when the agent process stops
