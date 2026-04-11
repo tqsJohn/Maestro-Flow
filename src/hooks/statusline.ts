@@ -24,6 +24,8 @@ import {
   ANSI_CYAN,
   getFaceLevel,
 } from './constants.js';
+import { resolveSelf } from '../tools/team-members.js';
+import { readRecentActivity, type ActivityEvent } from '../tools/team-activity.js';
 
 interface StatuslineInput {
   model?: { display_name?: string };
@@ -116,6 +118,160 @@ function readPhase(dir: string): string {
   return '';
 }
 
+// ---------------------------------------------------------------------------
+// Teammate activity segment (team-lite Wave 3B)
+//
+// Shows a compact summary of recent teammate activity in the statusline:
+//   "\u{1F465} alice (P3/001) | bob (spec-auth) +2"
+//
+// Contract:
+//   - Must be cheap (statusline runs on every refresh).
+//   - Result is cached per-session for 10s in os.tmpdir().
+//   - Must never throw — any error maps to empty string.
+//   - Emits nothing if team mode is off or no teammate activity in 30m.
+// ---------------------------------------------------------------------------
+
+/** TTL for the per-session team segment cache. */
+const TEAM_CACHE_TTL_MS = 10_000;
+
+/** Recent-activity lookback window for the team segment. */
+const TEAM_WINDOW_MIN = 30;
+
+/** Max teammates rendered inline before collapsing to " +N". */
+const TEAM_MAX_INLINE = 3;
+
+interface TeamCacheFile {
+  ts: number;
+  segment: string;
+}
+
+function teamCachePath(session: string): string {
+  return join(tmpdir(), `maestro-team-statusline-${session}.json`);
+}
+
+function writeTeamCache(path: string, segment: string): string {
+  try {
+    const data: TeamCacheFile = { ts: Date.now(), segment };
+    writeFileSync(path, JSON.stringify(data));
+  } catch {
+    // Best-effort: cache write failure must not break statusline.
+  }
+  return segment;
+}
+
+/**
+ * Collapse a task id to its short tail.
+ *
+ *   "TASK-001"          -> "001"
+ *   "WFS-auth-refactor" -> "refactor"
+ *   "plain"             -> "plain"
+ */
+function shortTaskId(taskId: string): string {
+  const idx = taskId.lastIndexOf('-');
+  if (idx < 0) return taskId;
+  return taskId.slice(idx + 1) || taskId;
+}
+
+/**
+ * Format a single teammate's inline label from their most recent event.
+ *
+ * Rules (in priority order):
+ *   - phase_id + task_id -> "name (P{phase}/{short_task})"
+ *   - phase_id only      -> "name (P{phase})"
+ *   - target only        -> "name ({target})"
+ *   - otherwise          -> "name"
+ */
+function formatTeammate(name: string, evt: ActivityEvent): string {
+  if (typeof evt.phase_id === 'number' && typeof evt.task_id === 'string' && evt.task_id) {
+    return `${name} (P${evt.phase_id}/${shortTaskId(evt.task_id)})`;
+  }
+  if (typeof evt.phase_id === 'number') {
+    return `${name} (P${evt.phase_id})`;
+  }
+  if (typeof evt.target === 'string' && evt.target) {
+    return `${name} (${evt.target})`;
+  }
+  return name;
+}
+
+/**
+ * Build the teammate activity segment. Returns empty string if:
+ *   - Team mode not enabled (no self record)
+ *   - No recent teammate activity in the last 30 minutes (excluding self)
+ *   - Any error (never throws)
+ *
+ * Result is cached per-session for 10 seconds via a JSON file in os.tmpdir().
+ */
+export function buildTeamSegment(session: string): string {
+  try {
+    // ---- Cache check ----
+    const cachePath = teamCachePath(session);
+    if (existsSync(cachePath)) {
+      try {
+        const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as Partial<TeamCacheFile>;
+        if (
+          cached &&
+          typeof cached.ts === 'number' &&
+          typeof cached.segment === 'string' &&
+          Date.now() - cached.ts < TEAM_CACHE_TTL_MS
+        ) {
+          return cached.segment;
+        }
+      } catch {
+        // Corrupt cache file — fall through and recompute.
+      }
+    }
+
+    // ---- Team mode gate ----
+    const self = resolveSelf();
+    if (!self) return writeTeamCache(cachePath, '');
+
+    // ---- Read recent activity ----
+    const events = readRecentActivity(TEAM_WINDOW_MIN);
+    if (events.length === 0) return writeTeamCache(cachePath, '');
+
+    // Group by "user@host", keep the most recent event per teammate.
+    // Exclude self (match on both user and host to avoid cross-host uid collision).
+    const latest = new Map<string, ActivityEvent>();
+    for (const evt of events) {
+      if (!evt || typeof evt.user !== 'string' || typeof evt.host !== 'string') continue;
+      if (evt.user === self.uid && evt.host === self.host) continue;
+      const key = `${evt.user}@${evt.host}`;
+      const prev = latest.get(key);
+      if (!prev) {
+        latest.set(key, evt);
+        continue;
+      }
+      const prevT = Date.parse(prev.ts);
+      const curT = Date.parse(evt.ts);
+      if (!Number.isNaN(curT) && (Number.isNaN(prevT) || curT >= prevT)) {
+        latest.set(key, evt);
+      }
+    }
+    if (latest.size === 0) return writeTeamCache(cachePath, '');
+
+    // Sort teammates newest-first so the 3 most active show up inline.
+    const ordered = Array.from(latest.values()).sort((a, b) => {
+      const ta = Date.parse(a.ts);
+      const tb = Date.parse(b.ts);
+      const sa = Number.isNaN(ta) ? 0 : ta;
+      const sb = Number.isNaN(tb) ? 0 : tb;
+      return sb - sa;
+    });
+
+    const inline = ordered.slice(0, TEAM_MAX_INLINE).map((evt) => formatTeammate(evt.user, evt));
+    let body = inline.join(' | ');
+    const extra = ordered.length - inline.length;
+    if (extra > 0) body += ` +${extra}`;
+
+    const segment = `\u{1F465} ${body}`;
+    return writeTeamCache(cachePath, segment);
+  } catch {
+    // Hot path — never let statusline crash.
+    return '';
+  }
+}
+
 /** Main statusline handler — processes input and returns formatted string */
 export function formatStatusline(data: StatuslineInput): string {
   const model = data.model?.display_name || 'Claude';
@@ -137,10 +293,14 @@ export function formatStatusline(data: StatuslineInput): string {
   // Phase from .workflow/
   const phase = readPhase(dir);
 
+  // Teammate activity (team-lite Wave 3B)
+  const team = session ? buildTeamSegment(session) : '';
+
   // Assemble segments
   const parts: string[] = [`${ANSI_DIM}${model}${ANSI_RESET}`];
   if (phase) parts.push(`${ANSI_CYAN}${phase}${ANSI_RESET}`);
   if (task)  parts.push(`${ANSI_BOLD}${task}${ANSI_RESET}`);
+  if (team)  parts.push(`${ANSI_DIM}${team}${ANSI_RESET}`);
   parts.push(`${ANSI_DIM}${basename(dir)}${ANSI_RESET}`);
 
   return parts.join(' | ') + ctx;

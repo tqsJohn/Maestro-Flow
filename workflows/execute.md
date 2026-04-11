@@ -136,6 +136,13 @@ For each wave in execution_queue (sequential):
 
     # --- Per-task execution ---
 
+    # Note: parallel tasks will overwrite; last-write-wins is acceptable for an advisory field
+    0. Mark task active in state.json
+       Read .workflow/state.json
+       state.json.current_task_id = task_id
+       state.json.last_updated = now()
+       Write .workflow/state.json
+
     1. Load task definition
        Read .task/${task_id}.json (lazy loading)
 
@@ -164,6 +171,12 @@ For each wave in execution_queue (sequential):
 
     3. Collect result
        result = { task_id, status, summary_path, commit_hash }
+
+    4. Clear current_task_id in state.json
+       Read .workflow/state.json
+       state.json.current_task_id = null
+       state.json.last_updated = now()
+       Write .workflow/state.json
 
     # --- End per-task ---
 
@@ -375,6 +388,7 @@ If NOT SCRATCH_MODE:
   Read .workflow/state.json
   If all_completed:
     state.json.status = "verifying"
+  state.json.current_task_id = null  # safety clear: no task is active once the wave loop exits
   state.json.last_updated = now()
   Write .workflow/state.json
 ```

@@ -51,6 +51,7 @@ export function registerHooksCommand(program: Command): void {
       const statuslineCmd = `node "${join(binDir, 'maestro-statusline.js')}"`;
       const monitorCmd = `node "${join(binDir, 'maestro-context-monitor.js')}"`;
       const delegateMonitorCmd = `node "${join(binDir, 'maestro-delegate-monitor.js')}"`;
+      const teamMonitorCmd = `node "${join(binDir, 'maestro-team-monitor.js')}"`;
 
       // --- Statusline ---
       settings.statusLine = {
@@ -80,6 +81,10 @@ export function registerHooksCommand(program: Command): void {
         hooks: [{ type: 'command', command: delegateMonitorCmd }],
       });
 
+      settings.hooks.PostToolUse.push({
+        hooks: [{ type: 'command', command: teamMonitorCmd }],
+      });
+
       // Ensure parent directory exists
       const settingsDir = join(settingsPath, '..');
       paths.ensure(settingsDir);
@@ -89,6 +94,7 @@ export function registerHooksCommand(program: Command): void {
       console.log(`  Statusline:        ${statuslineCmd}`);
       console.log(`  Context monitor:   ${monitorCmd}`);
       console.log(`  Delegate monitor:  ${delegateMonitorCmd}`);
+      console.log(`  Team monitor:      ${teamMonitorCmd}`);
       console.log(`  Settings file:     ${settingsPath}`);
     });
 
@@ -154,11 +160,15 @@ export function registerHooksCommand(program: Command): void {
         const hasDelegateMonitor = s.hooks?.PostToolUse?.some(
           (g) => g.hooks.some((h) => h.command.includes('maestro-delegate-monitor'))
         ) || false;
+        const hasTeamMonitor = s.hooks?.PostToolUse?.some(
+          (g) => g.hooks.some((h) => h.command.includes('maestro-team-monitor'))
+        ) || false;
 
         console.log(`${label} (${p}):`);
         console.log(`  Statusline:        ${hasStatusline ? 'installed' : 'not installed'}`);
         console.log(`  Context monitor:   ${hasMonitor ? 'installed' : 'not installed'}`);
         console.log(`  Delegate monitor:  ${hasDelegateMonitor ? 'installed' : 'not installed'}`);
+        console.log(`  Team monitor:      ${hasTeamMonitor ? 'installed' : 'not installed'}`);
       }
     });
 }

@@ -16,6 +16,7 @@ import { registerLauncherCommand } from './commands/launcher.js';
 import { registerDelegateCommand } from './commands/delegate.js';
 import { registerMsgCommand } from './commands/msg.js';
 import { registerOverlayCommand } from './commands/overlay.js';
+import { registerTeamCommand } from './commands/team.js';
 
 const program = new Command();
 
@@ -41,5 +42,6 @@ registerLauncherCommand(program);
 registerDelegateCommand(program);
 registerMsgCommand(program);
 registerOverlayCommand(program);
+registerTeamCommand(program);
 
 program.parse();

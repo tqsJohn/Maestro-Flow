@@ -44,6 +44,16 @@ Context files resolved from `.workflow/phases/{NN}-{slug}/` (or `--dir` path):
 </context>
 
 <execution>
+### Pre-flight: team conflict check
+
+Before starting the plan pipeline, run:
+```
+Bash("maestro team preflight --phase <phase-number>")
+```
+If exit code is 1, the command prints warnings about teammates active on the same phase. Present the warnings to the user and ask whether to proceed. If the user confirms or says "force", continue. If they decline, abort with a clear message.
+
+If exit code is 0, or `maestro team preflight` is unavailable (e.g., team mode not enabled), continue normally.
+
 Follow '~/.maestro/workflows/plan.md' completely.
 
 **Report format on completion:**

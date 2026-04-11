@@ -1,0 +1,254 @@
+/**
+ * Human-team member registry (team-lite collaboration, Wave 2).
+ *
+ * Owns `.workflow/collab/members/{uid}.json` — per-file member records.
+ *
+ * Strict namespace separation: this module belongs to the HUMAN collaboration
+ * domain (`.workflow/collab/`). It must NEVER touch `.workflow/.team/` which
+ * is the agent pipeline message bus owned by `src/tools/team-msg.ts`.
+ *
+ * Per-file layout is deliberate: each member writes their own JSON file so
+ * two concurrent `maestro team join` on different machines never collide on
+ * git merge (vs. a single `members.json` which cannot `merge=union`).
+ */
+
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
+import { hostname } from 'node:os';
+import { execSync } from 'node:child_process';
+
+import { getProjectRoot } from '../utils/path-validator.js';
+
+export interface MemberRecord {
+  uid: string;
+  name: string;
+  email: string;
+  host: string;
+  role: 'admin' | 'member';
+  joinedAt: string; // ISO 8601
+}
+
+// ---------------------------------------------------------------------------
+// Path helpers
+// ---------------------------------------------------------------------------
+
+/** Absolute path to the human-collab members directory. */
+export function getMembersDir(): string {
+  return join(getProjectRoot(), '.workflow', 'collab', 'members');
+}
+
+function getMemberFilePath(uid: string): string {
+  return join(getMembersDir(), `${uid}.json`);
+}
+
+// ---------------------------------------------------------------------------
+// Identity helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve local git identity via `git config user.name` / `user.email`.
+ * Returns null if either is missing or git is unavailable.
+ */
+export function readGitIdentity(): { name: string; email: string } | null {
+  const name = tryGitConfig('user.name');
+  const email = tryGitConfig('user.email');
+  if (!name || !email) return null;
+  return { name, email };
+}
+
+function tryGitConfig(key: string): string | null {
+  try {
+    const out = execSync(`git config ${key}`, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive a uid from an email address.
+ *
+ * Rule: take the local-part (before '@'), lowercase it.
+ *   "Alice@Example.COM" -> "alice"
+ *
+ * Collision handling is NOT done here — callers must check `getMembersDir`
+ * and append `-2`, `-3`, ... as needed (see `joinTeam`).
+ */
+export function deriveUid(email: string): string {
+  const at = email.indexOf('@');
+  const local = at >= 0 ? email.slice(0, at) : email;
+  return local.trim().toLowerCase();
+}
+
+/** Return the machine hostname. Exported so tests can stub if needed. */
+export function getHost(): string {
+  return hostname();
+}
+
+// ---------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------
+
+/**
+ * List all known members. Returns an empty array if the directory does not
+ * exist yet. Files that fail to parse as `MemberRecord` JSON are skipped
+ * silently — corrupt files should not break `whoami` / `status`.
+ */
+export function listMembers(): MemberRecord[] {
+  const dir = getMembersDir();
+  if (!existsSync(dir)) return [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+
+  const out: MemberRecord[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith('.json')) continue;
+    const rec = readMemberFile(join(dir, entry));
+    if (rec) out.push(rec);
+  }
+  return out;
+}
+
+/** Read a single member by uid, or null if the file does not exist. */
+export function getMemberByUid(uid: string): MemberRecord | null {
+  const path = getMemberFilePath(uid);
+  if (!existsSync(path)) return null;
+  return readMemberFile(path);
+}
+
+/**
+ * Return the member record matching the current git identity.
+ *
+ * Matching uses `email` (case-insensitive), NOT just `uid`, so two users who
+ * happened to get the same local-part on different domains still resolve to
+ * their own record.
+ *
+ * Returns null if git identity is unavailable or no record matches.
+ */
+export function resolveSelf(): MemberRecord | null {
+  const ident = readGitIdentity();
+  if (!ident) return null;
+  const target = ident.email.toLowerCase();
+  for (const m of listMembers()) {
+    if (m.email.toLowerCase() === target) return m;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
+/**
+ * Join the team. Idempotent.
+ *
+ * Flow:
+ *   1. Read git identity (throws if name/email missing — cannot join without it).
+ *   2. If a record with the same email already exists, return it unchanged
+ *      (preserves `joinedAt` and any prior `role`).
+ *   3. Derive uid from email local-part. If another member with a different
+ *      email already owns that uid, append `-2`, `-3`, ... until free.
+ *   4. Assign role: explicit `opts.role` wins; otherwise the very first member
+ *      to join becomes `admin`, everyone after is `member`.
+ *   5. Write `.workflow/collab/members/{uid}.json` atomically via `writeFileSync`.
+ */
+export function joinTeam(opts?: { role?: 'admin' | 'member' }): MemberRecord {
+  const ident = readGitIdentity();
+  if (!ident) {
+    throw new Error(
+      'Git identity not configured. Run `git config user.name "Your Name"` and ' +
+        '`git config user.email "you@example.com"` before joining.',
+    );
+  }
+
+  // Idempotency: same email already registered -> return existing record.
+  const existing = resolveSelf();
+  if (existing) return existing;
+
+  const dir = getMembersDir();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  const base = deriveUid(ident.email);
+  const uid = allocateUid(base, ident.email);
+
+  // Role: explicit wins. Otherwise first-joiner is admin.
+  const role: 'admin' | 'member' =
+    opts?.role ?? (listMembers().length === 0 ? 'admin' : 'member');
+
+  const record: MemberRecord = {
+    uid,
+    name: ident.name,
+    email: ident.email,
+    host: getHost(),
+    role,
+    joinedAt: new Date().toISOString(),
+  };
+
+  writeFileSync(getMemberFilePath(uid), JSON.stringify(record, null, 2), 'utf-8');
+  return record;
+}
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+function readMemberFile(path: string): MemberRecord | null {
+  try {
+    const raw = readFileSync(path, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<MemberRecord>;
+    if (
+      typeof parsed.uid === 'string' &&
+      typeof parsed.name === 'string' &&
+      typeof parsed.email === 'string' &&
+      typeof parsed.host === 'string' &&
+      (parsed.role === 'admin' || parsed.role === 'member') &&
+      typeof parsed.joinedAt === 'string'
+    ) {
+      return parsed as MemberRecord;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Allocate a free uid derived from `base`.
+ *
+ * - If `{base}.json` does not exist, use it.
+ * - If `{base}.json` exists AND belongs to the same email, reuse it
+ *   (this path is normally caught earlier by `resolveSelf`, but we keep
+ *   the safety net in case files got out of sync).
+ * - Otherwise try `{base}-2`, `{base}-3`, ... until a free slot is found.
+ */
+function allocateUid(base: string, email: string): string {
+  const ownEmail = email.toLowerCase();
+  const firstPath = getMemberFilePath(base);
+  if (!existsSync(firstPath)) return base;
+
+  const existing = readMemberFile(firstPath);
+  if (existing && existing.email.toLowerCase() === ownEmail) return base;
+
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base}-${n}`;
+    const candidatePath = getMemberFilePath(candidate);
+    if (!existsSync(candidatePath)) return candidate;
+    const rec = readMemberFile(candidatePath);
+    if (rec && rec.email.toLowerCase() === ownEmail) return candidate;
+  }
+  throw new Error(`Could not allocate uid for email ${email} after 1000 attempts`);
+}
