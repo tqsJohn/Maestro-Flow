@@ -193,6 +193,44 @@ Maestro-Flow doesn't pick one AI — it uses them together:
 
 ---
 
+## Hook System
+
+Maestro-Flow includes a context-aware hook system that integrates with Claude Code's hook protocol. Hooks run as subprocesses, communicating via stdin/stdout JSON.
+
+### 7 Hooks, 3 Levels
+
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `context-monitor` | PostToolUse | Monitors context usage, injects warnings when running low |
+| `spec-injector` | PreToolUse:Agent | Auto-injects project specs into subagent prompts by agent type |
+| `delegate-monitor` | PostToolUse | Tracks async delegate task completion |
+| `team-monitor` | PostToolUse | Team collaboration message awareness |
+| `telemetry` | PostToolUse | Execution telemetry collection |
+| `session-context` | Notification | Injects workflow state + spec overview at session start |
+| `workflow-guard` | PreToolUse:Bash/Write/Edit | Protects critical files and enforces workflow constraints |
+
+Install hooks at the level you need:
+
+```bash
+maestro hooks install --level minimal    # context-monitor + spec-injector
+maestro hooks install --level standard   # + delegate/team/telemetry + session-context
+maestro hooks install --level full       # + workflow-guard
+```
+
+### Spec Injection
+
+The `spec-injector` hook automatically routes project specs (`.workflow/specs/`) to subagents based on their type — execution agents get coding conventions, planning agents get architecture constraints, test agents get test conventions. Uses `updatedInput` to rewrite the agent prompt, with a 4-tier context budget (full → reduced → minimal → skip) that adapts injection volume based on remaining context.
+
+```
+Agent("code-developer") → auto-injects execution specs
+Agent("workflow-planner") → auto-injects planning specs
+Agent("tdd-developer") → auto-injects execution + test specs
+```
+
+See **[Hooks Guide](guide/hooks-guide.md)** for full documentation.
+
+---
+
 ## 36 Commands, 21 Agents
 
 ### Commands (Slash Commands for Claude Code)
@@ -334,6 +372,7 @@ maestro/
 ## Documentation
 
 - **[Command Usage Guide](guide/command-usage-guide.md)** — All 36 commands with workflow diagrams, pipeline chaining, Issue closed-loop, and quick channels
+- **[Hooks Guide](guide/hooks-guide.md)** — Hook system architecture, 7 hooks, spec injection, context budget, configuration
 - **[Team Lite — User Guide](guide/team-lite-guide.md)** — Daily workflow for 2-8 person teams: join, sync, activity awareness, conflict preflight
 - **[Team Lite — Design](guide/team-lite-design.md)** — Architecture, data model, and namespace boundary between human-collab and agent-pipeline domains
 
