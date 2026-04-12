@@ -310,6 +310,8 @@ maestro/
 ## 文档
 
 - **[命令使用指南](guide/command-usage-guide.md)** — 全部 36 个命令，含工作流图表、管线衔接、Issue 闭环、快速通道
+- **[Team Lite — 使用指南](guide/team-lite-guide.md)** — 2-8 人小团队日常协作：加入、同步、队友活跃、冲突预飞检
+- **[Team Lite — 设计文档](guide/team-lite-design.md)** — 架构、数据模型、人类协作域与 agent 流水线域的命名空间边界
 
 ---
 

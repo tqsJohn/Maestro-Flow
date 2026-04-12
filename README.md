@@ -334,6 +334,8 @@ maestro/
 ## Documentation
 
 - **[Command Usage Guide](guide/command-usage-guide.md)** — All 36 commands with workflow diagrams, pipeline chaining, Issue closed-loop, and quick channels
+- **[Team Lite — User Guide](guide/team-lite-guide.md)** — Daily workflow for 2-8 person teams: join, sync, activity awareness, conflict preflight
+- **[Team Lite — Design](guide/team-lite-design.md)** — Architecture, data model, and namespace boundary between human-collab and agent-pipeline domains
 
 ---
 
