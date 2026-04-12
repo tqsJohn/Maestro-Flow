@@ -1,18 +1,21 @@
 // ---------------------------------------------------------------------------
-// `maestro install` — interactive install wizard for maestro assets
+// `maestro install` — install maestro assets with step-based selection
 //
-// Global (~/.maestro/):  templates/, workflows/
-// Project (target dir):  .claude/ (commands, agents, skills, CLAUDE.md),
-//                        .codex/ (skills)
+// Default:  interactive menu to select which steps to install
+// Subcommands for direct access:
+//   maestro install components   → install file components only
+//   maestro install hooks        → install hooks to Claude Code settings
+//   maestro install mcp          → register MCP server
+//   maestro install wizard       → full TUI wizard (legacy)
 //
-// Tracks installed files in manifests for clean reinstall and uninstall.
+// Each step has independent confirmation before executing.
 // ---------------------------------------------------------------------------
 
 import type { Command } from 'commander';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { runInstallWizard } from './install-ui/index.js';
+import { runInstallWizard, runInstallFlow } from './install-ui/index.js';
 import { paths } from '../config/paths.js';
 import {
   createManifest,
@@ -33,8 +36,138 @@ import {
   restoreDisabledState,
   applyOverlaysPostInstall,
   copyRecursive,
+  MCP_TOOLS,
   type CopyStats,
 } from './install-backend.js';
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function resolveMode(opts: { global?: boolean; path?: string }): { mode: 'global' | 'project'; projectPath: string } {
+  if (opts.path) {
+    const projectPath = resolve(opts.path);
+    if (!existsSync(projectPath)) {
+      console.error(`Error: Target directory does not exist: ${projectPath}`);
+      process.exit(1);
+    }
+    return { mode: 'project', projectPath };
+  }
+  return { mode: 'global', projectPath: '' };
+}
+
+function getVersion(pkgRoot: string): string {
+  const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
+  return (pkg.version as string) ?? '0.1.0';
+}
+
+// ---------------------------------------------------------------------------
+// Subcommands — each launches Ink TUI starting at the relevant config step
+// ---------------------------------------------------------------------------
+
+function registerComponentsSubcommand(install: Command): void {
+  install
+    .command('components')
+    .description('Install file components (interactive component selection)')
+    .option('--global', 'Install to global location')
+    .option('--path <dir>', 'Install to project directory')
+    .action(async (opts: { global?: boolean; path?: string }) => {
+      const pkgRoot = getPackageRoot();
+      const version = getVersion(pkgRoot);
+      const { mode } = resolveMode(opts);
+      await runInstallFlow(pkgRoot, version, {
+        initialStep: 'components_config',
+        initialMode: mode,
+        initialStepIds: ['components'],
+      });
+    });
+}
+
+function registerHooksSubcommand(install: Command): void {
+  install
+    .command('hooks')
+    .description('Install maestro hooks (interactive level selection)')
+    .option('--global', 'Global scope (default)')
+    .option('--project', 'Project scope')
+    .action(async (opts: { global?: boolean; project?: boolean }) => {
+      const pkgRoot = getPackageRoot();
+      const version = getVersion(pkgRoot);
+      const mode = opts.project ? 'project' : 'global';
+      await runInstallFlow(pkgRoot, version, {
+        initialStep: 'hooks_config',
+        initialMode: mode,
+        initialStepIds: ['hooks'],
+      });
+    });
+}
+
+function registerMcpSubcommand(install: Command): void {
+  install
+    .command('mcp')
+    .description('Register maestro MCP server (interactive tool selection)')
+    .option('--global', 'Register in global config (default)')
+    .option('--path <dir>', 'Register in project config')
+    .action(async (opts: { global?: boolean; path?: string }) => {
+      const pkgRoot = getPackageRoot();
+      const version = getVersion(pkgRoot);
+      const { mode } = resolveMode(opts);
+      await runInstallFlow(pkgRoot, version, {
+        initialStep: 'mcp_config',
+        initialMode: mode,
+        initialStepIds: ['mcp'],
+      });
+    });
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Command registration
+// ---------------------------------------------------------------------------
+
+export function registerInstallCommand(program: Command): void {
+  const install = program
+    .command('install')
+    .description('Install maestro assets (interactive step selection)')
+    .option('--force', 'Non-interactive batch install of all components')
+    .option('--global', 'Install global assets only (with --force)')
+    .option('--path <dir>', 'Install to project directory (with --force)')
+    .option('--hooks <level>', 'Hook level for --force mode: none, minimal, standard, full')
+    .action(async (opts: { force?: boolean; global?: boolean; path?: string; hooks?: string }) => {
+      const pkgRoot = getPackageRoot();
+
+      // Validate package root
+      const hasTemplates = existsSync(join(pkgRoot, 'templates'));
+      const hasWorkflows = existsSync(join(pkgRoot, 'workflows'));
+      if (!hasTemplates && !hasWorkflows) {
+        console.error(`Error: Package root missing source directories: ${pkgRoot}`);
+        process.exit(1);
+      }
+
+      const version = getVersion(pkgRoot);
+
+      if (opts.force) {
+        forceInstall(pkgRoot, version, opts);
+      } else {
+        await runInstallFlow(pkgRoot, version);
+      }
+    });
+
+  // Direct subcommands for scripting / CI
+  registerComponentsSubcommand(install);
+  registerHooksSubcommand(install);
+  registerMcpSubcommand(install);
+
+  // Legacy TUI wizard
+  install
+    .command('wizard')
+    .description('Launch full interactive TUI wizard (legacy)')
+    .action(async () => {
+      const pkgRoot = getPackageRoot();
+      const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
+      await runInstallWizard(pkgRoot, (pkg.version as string) ?? '0.1.0');
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Non-interactive (force) install — preserves original batch behavior
@@ -121,38 +254,4 @@ function forceInstall(
   console.error(`  Result: ${parts.join(', ')}`);
   console.error('');
   console.error('Done. Restart Claude Code or IDE to pick up changes.');
-}
-
-// ---------------------------------------------------------------------------
-// Command registration
-// ---------------------------------------------------------------------------
-
-export function registerInstallCommand(program: Command): void {
-  program
-    .command('install')
-    .description('Install maestro assets (interactive wizard or --force for batch mode)')
-    .option('--global', 'Install global assets only (~/.maestro/)')
-    .option('--path <dir>', 'Install project assets to target directory')
-    .option('--force', 'Skip interactive prompts, install all available components')
-    .option('--hooks <level>', 'Install Claude Code hooks: none, minimal, standard, full (default: none)')
-    .action(async (opts: { global?: boolean; path?: string; force?: boolean; hooks?: string }) => {
-      const pkgRoot = getPackageRoot();
-
-      // Validate package root
-      const hasTemplates = existsSync(join(pkgRoot, 'templates'));
-      const hasWorkflows = existsSync(join(pkgRoot, 'workflows'));
-      if (!hasTemplates && !hasWorkflows) {
-        console.error(`Error: Package root missing source directories: ${pkgRoot}`);
-        process.exit(1);
-      }
-
-      const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
-      const version = (pkg.version as string) ?? '0.1.0';
-
-      if (opts.force) {
-        forceInstall(pkgRoot, version, opts);
-      } else {
-        await runInstallWizard(pkgRoot, version);
-      }
-    });
 }

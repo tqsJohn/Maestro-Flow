@@ -402,4 +402,592 @@ describe('Delegate broker', () => {
 
     broker.close();
   });
+
+  // --- New L1 unit tests for delegate-broker gap coverage ---
+
+  it('pollEvents with afterEventId and limit combination', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.registerSession({ sessionId: 'session-poll', now: '2026-04-07T00:00:00.000Z' });
+
+    const ev1 = client.publishEvent({
+      jobId: 'job-poll', type: 'queued', status: 'queued',
+      payload: { summary: 'first' }, now: '2026-04-07T00:00:01.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-poll', type: 'status_update', status: 'running',
+      payload: { summary: 'second' }, now: '2026-04-07T00:00:02.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-poll', type: 'snapshot', status: 'running',
+      payload: { summary: 'third' }, now: '2026-04-07T00:00:03.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-poll', type: 'completed', status: 'completed',
+      payload: { summary: 'fourth' }, now: '2026-04-07T00:00:04.000Z',
+    });
+
+    // afterEventId=ev1 skips first event; limit=2 only returns next 2
+    const polled = client.pollEvents({
+      sessionId: 'session-poll',
+      afterEventId: ev1.eventId,
+      limit: 2,
+    });
+    assert.equal(polled.length, 2);
+    assert.equal(polled[0].payload.summary, 'second');
+    assert.equal(polled[1].payload.summary, 'third');
+  });
+
+  it('pollEvents for unknown session throws error', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    assert.throws(
+      () => client.pollEvents({ sessionId: 'nonexistent-session' }),
+      /Unknown delegate session/,
+    );
+  });
+
+  it('ack for unknown session throws error', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    assert.throws(
+      () => client.ack({ sessionId: 'nonexistent-session', eventIds: [1] }),
+      /Unknown delegate session/,
+    );
+  });
+
+  it('heartbeat for unknown session throws error', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    assert.throws(
+      () => client.heartbeat({ sessionId: 'nonexistent-session' }),
+      /Unknown delegate session/,
+    );
+  });
+
+  it('getJob returns null for nonexistent job', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    const job = client.getJob('no-such-job');
+    assert.equal(job, null);
+  });
+
+  it('listJobEvents for nonexistent job returns empty array', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    const events = client.listJobEvents('no-such-job');
+    assert.deepEqual(events, []);
+  });
+
+  it('publishEvent infers status from event type when not explicit', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-infer-queued', type: 'queued',
+      payload: { summary: 'q' }, now: '2026-04-07T00:00:00.000Z',
+    });
+    assert.equal(client.getJob('job-infer-queued')?.status, 'queued');
+
+    client.publishEvent({
+      jobId: 'job-infer-input', type: 'input_required',
+      payload: { summary: 'i' }, now: '2026-04-07T00:00:01.000Z',
+    });
+    assert.equal(client.getJob('job-infer-input')?.status, 'input_required');
+
+    client.publishEvent({
+      jobId: 'job-infer-completed', type: 'completed',
+      payload: { summary: 'c' }, now: '2026-04-07T00:00:02.000Z',
+    });
+    assert.equal(client.getJob('job-infer-completed')?.status, 'completed');
+
+    client.publishEvent({
+      jobId: 'job-infer-failed', type: 'failed',
+      payload: { summary: 'f' }, now: '2026-04-07T00:00:03.000Z',
+    });
+    assert.equal(client.getJob('job-infer-failed')?.status, 'failed');
+
+    client.publishEvent({
+      jobId: 'job-infer-cancelled', type: 'cancelled',
+      payload: { summary: 'x' }, now: '2026-04-07T00:00:04.000Z',
+    });
+    assert.equal(client.getJob('job-infer-cancelled')?.status, 'cancelled');
+  });
+
+  it('publishEvent merges jobMetadata across multiple events', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-meta-merge', type: 'queued', status: 'queued',
+      payload: { summary: 'start' },
+      jobMetadata: { tool: 'codex', mode: 'analysis' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-meta-merge', type: 'status_update', status: 'running',
+      payload: { summary: 'running' },
+      jobMetadata: { workDir: '/tmp/test', extra: 'field' },
+      now: '2026-04-07T00:00:01.000Z',
+    });
+
+    const job = client.getJob('job-meta-merge');
+    assert.ok(job);
+    assert.equal(job.metadata?.tool, 'codex');
+    assert.equal(job.metadata?.mode, 'analysis');
+    assert.equal(job.metadata?.workDir, '/tmp/test');
+    assert.equal(job.metadata?.extra, 'field');
+  });
+
+  it('queueMessage for nonexistent job throws error', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    assert.throws(
+      () => client.queueMessage({
+        jobId: 'no-such-job',
+        message: 'hello',
+        delivery: 'inject',
+      }),
+      /Unknown delegate job/,
+    );
+  });
+
+  it('updateMessage for nonexistent messageId returns null', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-updmsg', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const result = client.updateMessage({
+      jobId: 'job-updmsg',
+      messageId: 'nonexistent-msg-id',
+      status: 'dispatched',
+    });
+    assert.equal(result, null);
+  });
+
+  it('multiple messages with different delivery types on same job', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-multi-msg', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const msg1 = client.queueMessage({
+      jobId: 'job-multi-msg', message: 'inject msg', delivery: 'inject',
+      now: '2026-04-07T00:00:01.000Z',
+    });
+    const msg2 = client.queueMessage({
+      jobId: 'job-multi-msg', message: 'after msg', delivery: 'after_complete',
+      now: '2026-04-07T00:00:02.000Z',
+    });
+
+    assert.equal(msg1.delivery, 'inject');
+    assert.equal(msg2.delivery, 'after_complete');
+
+    const messages = client.listMessages('job-multi-msg');
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].delivery, 'inject');
+    assert.equal(messages[1].delivery, 'after_complete');
+  });
+
+  it('purgeExpiredEvents with default maxAge behavior', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    // Create a job completed 3 hours ago
+    client.publishEvent({
+      jobId: 'job-old-purge', type: 'completed', status: 'completed',
+      payload: { summary: 'done' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    // Default maxAge is 2 hours — this job should be purged
+    const result = client.purgeExpiredEvents({
+      now: '2026-04-07T03:00:00.000Z',
+    });
+    assert.ok(result.purgedJobCount >= 1);
+    assert.equal(client.getJob('job-old-purge'), null);
+  });
+
+  it('requestCancel on already-terminal job returns existing job unchanged', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-terminal-cancel', type: 'completed', status: 'completed',
+      payload: { summary: 'done' },
+      jobMetadata: { tool: 'codex' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const result = client.requestCancel({
+      jobId: 'job-terminal-cancel',
+      requestedBy: 'user',
+      reason: 'too late',
+      now: '2026-04-07T00:01:00.000Z',
+    });
+
+    // Should return existing job without adding cancel metadata
+    assert.equal(result.status, 'completed');
+    assert.equal(result.lastEventType, 'completed');
+    // No cancel event should have been added
+    const events = client.listJobEvents('job-terminal-cancel');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'completed');
+  });
+
+  it('legacy delivery value normalization (streaming and interrupt_resume -> inject)', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-legacy-delivery', type: 'status_update', status: 'running',
+      payload: { summary: 'running' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    // Queue with 'inject' delivery — after deserialization, legacy values normalize to inject
+    const msg = client.queueMessage({
+      jobId: 'job-legacy-delivery',
+      message: 'follow up',
+      delivery: 'inject',
+      now: '2026-04-07T00:00:01.000Z',
+    });
+    assert.equal(msg.delivery, 'inject');
+
+    // listMessages should normalize on read
+    const messages = client.listMessages('job-legacy-delivery');
+    assert.equal(messages[0].delivery, 'inject');
+  });
+
+  it('sqlite broker: queueMessage, updateMessage, listMessages', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+
+    client.publishEvent({
+      jobId: 'sqlite-msg-job', type: 'status_update', status: 'running',
+      payload: { summary: 'running' },
+      now: '2026-04-08T00:00:00.000Z',
+    });
+
+    const queued = client.queueMessage({
+      jobId: 'sqlite-msg-job',
+      message: 'sqlite follow-up',
+      delivery: 'inject',
+      requestedBy: 'sqlite-tester',
+      now: '2026-04-08T00:00:01.000Z',
+    });
+    assert.equal(queued.status, 'queued');
+    assert.equal(queued.delivery, 'inject');
+
+    const messages = client.listMessages('sqlite-msg-job');
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].message, 'sqlite follow-up');
+
+    const updated = client.updateMessage({
+      jobId: 'sqlite-msg-job',
+      messageId: queued.messageId,
+      status: 'dispatched',
+      dispatchReason: 'test-dispatch',
+      now: '2026-04-08T00:00:02.000Z',
+    });
+    assert.ok(updated);
+    assert.equal(updated?.status, 'dispatched');
+    assert.equal(updated?.dispatchReason, 'test-dispatch');
+
+    broker.close();
+  });
+
+  it('sqlite broker: purgeExpiredEvents removes old terminal jobs', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+
+    client.publishEvent({
+      jobId: 'sqlite-purge-old', type: 'completed', status: 'completed',
+      payload: { summary: 'old done' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+    client.publishEvent({
+      jobId: 'sqlite-purge-recent', type: 'status_update', status: 'running',
+      payload: { summary: 'recent' },
+      now: '2026-04-07T03:55:00.000Z',
+    });
+
+    const result = client.purgeExpiredEvents({
+      maxAgeMs: 2 * 60 * 60 * 1000,
+      now: '2026-04-07T04:00:00.000Z',
+    });
+
+    assert.ok(result.purgedJobCount >= 1);
+    assert.equal(client.getJob('sqlite-purge-old'), null);
+    assert.ok(client.getJob('sqlite-purge-recent'));
+
+    broker.close();
+  });
+
+  // --- GC round 1: branch coverage ---
+
+  it('inferStatus uses default branch for unknown type without explicit status', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    // First event with unknown type and no explicit status -> currentStatus undefined -> 'running'
+    client.publishEvent({
+      jobId: 'job-infer-default', type: 'status_update',
+      payload: { summary: 'no explicit status' }, now: '2026-04-07T00:00:00.000Z',
+    });
+    assert.equal(client.getJob('job-infer-default')?.status, 'running');
+
+    // Second event with unknown type, no explicit status -> currentStatus='running' -> 'running'
+    client.publishEvent({
+      jobId: 'job-infer-default', type: 'snapshot',
+      payload: { summary: 'still no explicit status' }, now: '2026-04-07T00:00:01.000Z',
+    });
+    assert.equal(client.getJob('job-infer-default')?.status, 'running');
+  });
+
+  it('publishEvent extracts snapshot from payload.snapshot when no explicit snapshot', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-payload-snap', type: 'snapshot', status: 'running',
+      payload: { summary: 'has nested snapshot', snapshot: { phase: 'extract', progress: 50 } },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const job = client.getJob('job-payload-snap');
+    assert.ok(job);
+    assert.deepEqual(job.latestSnapshot, { phase: 'extract', progress: 50 });
+  });
+
+  it('pollEvents filters by jobId when provided', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.registerSession({ sessionId: 'session-filter', now: '2026-04-07T00:00:00.000Z' });
+
+    client.publishEvent({
+      jobId: 'job-a', type: 'queued', status: 'queued',
+      payload: { summary: 'job a' }, now: '2026-04-07T00:00:01.000Z',
+    });
+    client.publishEvent({
+      jobId: 'job-b', type: 'queued', status: 'queued',
+      payload: { summary: 'job b' }, now: '2026-04-07T00:00:02.000Z',
+    });
+
+    // Without jobId filter: get all events
+    const all = client.pollEvents({ sessionId: 'session-filter' });
+    assert.equal(all.length, 2);
+
+    // With jobId filter: get only job-b events
+    const filtered = client.pollEvents({ sessionId: 'session-filter', jobId: 'job-b' });
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].jobId, 'job-b');
+  });
+
+  it('requestCancel on already-cancel-requested job returns existing job unchanged', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-double-cancel', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    // First cancel request
+    const first = client.requestCancel({
+      jobId: 'job-double-cancel', requestedBy: 'user-1', reason: 'first cancel',
+      now: '2026-04-07T00:01:00.000Z',
+    });
+    assert.equal(first.lastEventType, 'cancel_requested');
+
+    // Second cancel request — should return existing job without adding another event
+    const second = client.requestCancel({
+      jobId: 'job-double-cancel', requestedBy: 'user-2', reason: 'second cancel',
+      now: '2026-04-07T00:02:00.000Z',
+    });
+    assert.equal(second.lastEventType, 'cancel_requested');
+    assert.equal(second.metadata?.cancelRequestedBy, 'user-1'); // original requester preserved
+
+    const events = client.listJobEvents('job-double-cancel');
+    assert.equal(events.filter((e) => e.type === 'cancel_requested').length, 1);
+  });
+
+  it('updateMessage with injected status records message_injected event', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-inject-msg', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const queued = client.queueMessage({
+      jobId: 'job-inject-msg', message: 'inject me', delivery: 'inject',
+      now: '2026-04-07T00:00:01.000Z',
+    });
+
+    const injected = client.updateMessage({
+      jobId: 'job-inject-msg', messageId: queued.messageId,
+      status: 'injected', now: '2026-04-07T00:00:02.000Z',
+    });
+    assert.ok(injected);
+    assert.equal(injected?.status, 'injected');
+
+    const events = client.listJobEvents('job-inject-msg');
+    assert.equal(events.at(-1)?.type, 'message_injected');
+  });
+
+  it('updateMessage with dropped status records message_dropped event', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    client.publishEvent({
+      jobId: 'job-drop-msg', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const queued = client.queueMessage({
+      jobId: 'job-drop-msg', message: 'drop me', delivery: 'after_complete',
+      now: '2026-04-07T00:00:01.000Z',
+    });
+
+    const dropped = client.updateMessage({
+      jobId: 'job-drop-msg', messageId: queued.messageId,
+      status: 'dropped', dispatchReason: 'job cancelled',
+      now: '2026-04-07T00:00:02.000Z',
+    });
+    assert.ok(dropped);
+    assert.equal(dropped?.status, 'dropped');
+    assert.equal(dropped?.dispatchReason, 'job cancelled');
+
+    const events = client.listJobEvents('job-drop-msg');
+    assert.equal(events.at(-1)?.type, 'message_dropped');
+  });
+
+  it('updateMessage for nonexistent job returns null', () => {
+    const client = new DelegateBrokerClient({ statePath });
+    const result = client.updateMessage({
+      jobId: 'no-such-job', messageId: 'no-msg', status: 'dispatched',
+    });
+    assert.equal(result, null);
+  });
+
+  it('publishEvent with explicit status overrides type inference', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    // Type is 'snapshot' (default branch) but explicit status='input_required'
+    client.publishEvent({
+      jobId: 'job-override-status', type: 'snapshot', status: 'input_required',
+      payload: { summary: 'override' }, now: '2026-04-07T00:00:00.000Z',
+    });
+    assert.equal(client.getJob('job-override-status')?.status, 'input_required');
+  });
+
+  it('requestCancel on nonexistent job creates new job record', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    const result = client.requestCancel({
+      jobId: 'job-cancel-new', now: '2026-04-07T00:00:00.000Z',
+    });
+
+    assert.equal(result.status, 'queued');
+    assert.equal(result.lastEventType, 'cancel_requested');
+    assert.ok(result.metadata?.cancelRequestedAt);
+  });
+
+  it('sqlite broker: pollEvents filters by jobId', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+    client.registerSession({ sessionId: 'sqlite-filter', now: '2026-04-08T00:00:00.000Z' });
+
+    client.publishEvent({
+      jobId: 'sq-job-a', type: 'queued', status: 'queued',
+      payload: { summary: 'a' }, now: '2026-04-08T00:00:01.000Z',
+    });
+    client.publishEvent({
+      jobId: 'sq-job-b', type: 'queued', status: 'queued',
+      payload: { summary: 'b' }, now: '2026-04-08T00:00:02.000Z',
+    });
+
+    const filtered = client.pollEvents({ sessionId: 'sqlite-filter', jobId: 'sq-job-b' });
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].jobId, 'sq-job-b');
+
+    broker.close();
+  });
+
+  it('sqlite broker: requestCancel on already-cancel-requested job is idempotent', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+
+    client.publishEvent({
+      jobId: 'sq-double-cancel', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-08T00:00:00.000Z',
+    });
+
+    client.requestCancel({
+      jobId: 'sq-double-cancel', requestedBy: 'user-1', reason: 'first',
+      now: '2026-04-08T00:01:00.000Z',
+    });
+
+    const second = client.requestCancel({
+      jobId: 'sq-double-cancel', requestedBy: 'user-2', reason: 'second',
+      now: '2026-04-08T00:02:00.000Z',
+    });
+
+    assert.equal(second.metadata?.cancelRequestedBy, 'user-1');
+    const events = client.listJobEvents('sq-double-cancel');
+    assert.equal(events.filter((e) => e.type === 'cancel_requested').length, 1);
+
+    broker.close();
+  });
+
+  it('sqlite broker: updateMessage with injected and dropped statuses', () => {
+    const broker = new SqliteDelegateBroker({ dbPath });
+    const client = new DelegateBrokerClient({ broker });
+
+    client.publishEvent({
+      jobId: 'sq-msg-status', type: 'status_update', status: 'running',
+      payload: { summary: 'running' }, now: '2026-04-08T00:00:00.000Z',
+    });
+
+    const msg1 = client.queueMessage({
+      jobId: 'sq-msg-status', message: 'inject me', delivery: 'inject',
+      now: '2026-04-08T00:00:01.000Z',
+    });
+    const msg2 = client.queueMessage({
+      jobId: 'sq-msg-status', message: 'drop me', delivery: 'after_complete',
+      now: '2026-04-08T00:00:02.000Z',
+    });
+
+    const injected = client.updateMessage({
+      jobId: 'sq-msg-status', messageId: msg1.messageId,
+      status: 'injected', now: '2026-04-08T00:00:03.000Z',
+    });
+    assert.equal(injected?.status, 'injected');
+
+    const dropped = client.updateMessage({
+      jobId: 'sq-msg-status', messageId: msg2.messageId,
+      status: 'dropped', dispatchReason: 'no longer needed',
+      now: '2026-04-08T00:00:04.000Z',
+    });
+    assert.equal(dropped?.status, 'dropped');
+
+    const events = client.listJobEvents('sq-msg-status');
+    const types = events.map((e) => e.type);
+    assert.ok(types.includes('message_injected'));
+    assert.ok(types.includes('message_dropped'));
+
+    broker.close();
+  });
+
+  it('publishEvent with payload.snapshot as non-object is ignored', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    client.publishEvent({
+      jobId: 'job-bad-snap', type: 'snapshot', status: 'running',
+      payload: { summary: 'bad snapshot', snapshot: 'not-an-object' },
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const job = client.getJob('job-bad-snap');
+    assert.ok(job);
+    // latestSnapshot should be null since payload.snapshot is not a JsonObject
+    assert.equal(job.latestSnapshot, null);
+  });
+
+  it('buildCancelPayload without reason or requestedBy', () => {
+    const client = new DelegateBrokerClient({ statePath });
+
+    const result = client.requestCancel({
+      jobId: 'job-cancel-minimal',
+      now: '2026-04-07T00:00:00.000Z',
+    });
+
+    const events = client.listJobEvents('job-cancel-minimal');
+    const cancelEvent = events.find((e) => e.type === 'cancel_requested');
+    assert.ok(cancelEvent);
+    assert.equal(cancelEvent?.payload.summary, 'Cancellation requested');
+    // No requestedBy or reason in payload
+    assert.equal(cancelEvent?.payload.requestedBy, undefined);
+    assert.equal(cancelEvent?.payload.reason, undefined);
+  });
 });

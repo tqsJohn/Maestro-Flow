@@ -293,12 +293,36 @@ export function addMcpServer(
   }
 }
 
+export function removeMcpServer(
+  scope: 'global' | 'project',
+  projectPath: string,
+): boolean {
+  try {
+    const fp = scope === 'project'
+      ? join(projectPath, '.mcp.json')
+      : join(homedir(), '.claude.json');
+
+    if (!existsSync(fp)) return false;
+
+    const data = JSON.parse(readFileSync(fp, 'utf-8')) as Record<string, unknown>;
+    const servers = data.mcpServers as Record<string, unknown> | undefined;
+    if (!servers || !('maestro-tools' in servers)) return false;
+
+    delete servers['maestro-tools'];
+    writeFileSync(fp, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Scanning
 // ---------------------------------------------------------------------------
 
 export function getPackageRoot(): string {
-  return resolve(__dirname, '..', '..');
+  // Compiled JS at dist/src/commands/ → 3 levels up to project root
+  return resolve(__dirname, '..', '..', '..');
 }
 
 export function countFiles(dir: string): number {

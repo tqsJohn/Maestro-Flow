@@ -1,31 +1,64 @@
 // ---------------------------------------------------------------------------
 // `maestro uninstall` — remove installed maestro assets using manifests
+//
+// Interactive Ink TUI by default. Supports --all -y for non-interactive.
+// Cleans up files, MCP config, and hooks.
 // ---------------------------------------------------------------------------
 
 import type { Command } from 'commander';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
+import { existsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { confirm } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import {
   getAllManifests,
-  findManifest,
   cleanManifestFiles,
   deleteManifest,
   type Manifest,
 } from '../core/manifest.js';
 import { deleteOverlayManifest } from '../core/overlay/applier.js';
-import { paths } from '../config/paths.js';
+import { removeMcpServer } from './install-backend.js';
+import {
+  removeMaestroHooks,
+  loadClaudeSettings,
+  getClaudeSettingsPath,
+} from './hooks.js';
+import { runUninstallFlow } from './uninstall-ui/index.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (used by --all -y non-interactive path)
 // ---------------------------------------------------------------------------
 
-function uninstallManifest(manifest: Manifest): void {
+function formatManifest(m: Manifest): string {
+  const date = m.installedAt.split('T')[0];
+  return `[${m.scope}] ${m.targetPath} (${m.entries.length} entries, ${date})`;
+}
+
+function uninstallManifest(manifest: Manifest): { removed: number; skipped: number; mcp: boolean; hooks: boolean } {
   const { removed, skipped } = cleanManifestFiles(manifest);
-  deleteManifest(manifest);
-  // Drop overlay manifest (but preserve user's ~/.maestro/overlays/ content)
+
   const targetBase = manifest.scope === 'global' ? homedir() : manifest.targetPath;
   deleteOverlayManifest(manifest.scope, targetBase);
-  console.error(`  Removed ${removed} files${skipped > 0 ? `, ${skipped} preserved` : ''}`);
+
+  const mcp = removeMcpServer(manifest.scope, manifest.targetPath);
+
+  let hooks = false;
+  const settingsPath = manifest.scope === 'global'
+    ? getClaudeSettingsPath()
+    : join(manifest.targetPath, '.claude', 'settings.json');
+
+  if (existsSync(settingsPath)) {
+    const settings = loadClaudeSettings(settingsPath);
+    const hadHooks = !!settings.hooks;
+    if (settings.statusLine?.command?.includes('maestro')) delete settings.statusLine;
+    removeMaestroHooks(settings);
+    if (hadHooks && !settings.hooks) hooks = true;
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  }
+
+  deleteManifest(manifest);
+  return { removed, skipped, mcp, hooks };
 }
 
 // ---------------------------------------------------------------------------
@@ -35,11 +68,10 @@ function uninstallManifest(manifest: Manifest): void {
 export function registerUninstallCommand(program: Command): void {
   program
     .command('uninstall')
-    .description('Remove installed maestro assets')
-    .option('--global', 'Uninstall global assets only (~/.maestro/)')
-    .option('--path <dir>', 'Uninstall project assets from target directory')
+    .description('Remove installed maestro assets (interactive)')
     .option('--all', 'Uninstall all recorded installations')
-    .action((opts: { global?: boolean; path?: string; all?: boolean }) => {
+    .option('-y, --yes', 'Skip confirmation prompts')
+    .action(async (opts: { all?: boolean; yes?: boolean }) => {
       const manifests = getAllManifests();
 
       if (manifests.length === 0) {
@@ -47,48 +79,38 @@ export function registerUninstallCommand(program: Command): void {
         return;
       }
 
-      // --all: remove everything
+      // --all -y: non-interactive batch uninstall
       if (opts.all) {
-        console.error(`Uninstalling ${manifests.length} installation(s)...`);
+        console.error(`Found ${manifests.length} installation(s):`);
+        for (const m of manifests) console.error(`  ${formatManifest(m)}`);
+
+        if (!opts.yes) {
+          try {
+            const ok = await confirm({
+              message: `Uninstall all ${manifests.length} installation(s)?`,
+              default: false,
+            });
+            if (!ok) { console.error('Cancelled.'); return; }
+          } catch (err) {
+            if (err instanceof ExitPromptError) { console.error('Cancelled.'); return; }
+            throw err;
+          }
+        }
+
         for (const m of manifests) {
-          console.error(`\n[${m.scope}] ${m.targetPath}`);
-          uninstallManifest(m);
+          console.error(`\n${formatManifest(m)}`);
+          const r = uninstallManifest(m);
+          const parts = [`${r.removed} removed`];
+          if (r.skipped > 0) parts.push(`${r.skipped} preserved`);
+          if (r.mcp) parts.push('MCP cleaned');
+          if (r.hooks) parts.push('hooks cleaned');
+          console.error(`  ${parts.join(', ')}`);
         }
         console.error('\nDone.');
         return;
       }
 
-      // --global
-      if (opts.global) {
-        const m = findManifest('global', paths.home);
-        if (!m) {
-          console.error('No global installation found.');
-          return;
-        }
-        console.error(`[Global] ${paths.home}`);
-        uninstallManifest(m);
-        console.error('Done.');
-        return;
-      }
-
-      // --path or cwd
-      const targetDir = resolve(opts.path ?? process.cwd());
-      const m = findManifest('project', targetDir);
-      if (!m) {
-        console.error(`No project installation found for: ${targetDir}`);
-
-        // Show available installations
-        if (manifests.length > 0) {
-          console.error('\nKnown installations:');
-          for (const mm of manifests) {
-            console.error(`  [${mm.scope}] ${mm.targetPath} (${mm.installedAt})`);
-          }
-        }
-        return;
-      }
-
-      console.error(`[Project] ${targetDir}`);
-      uninstallManifest(m);
-      console.error('Done.');
+      // Interactive: launch Ink TUI
+      await runUninstallFlow(manifests);
     });
 }

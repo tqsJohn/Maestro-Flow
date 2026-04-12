@@ -307,6 +307,185 @@ describe('DelegateChannelRelay', () => {
     assert.equal(notifications[0].params.meta.job_id, 'legacy-job');
   });
 
+  it('full relay cycle: publish, format, notify, and ack with real broker', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'full-cycle-test',
+      pollIntervalMs: 20,
+      statusThrottleMs: 0,
+      snapshotThrottleMs: 0,
+      now: () => '2026-04-12T01:00:05.000Z',
+    });
+
+    await relay.start();
+
+    // Publish queued -> running -> completed lifecycle
+    broker.publishEvent({
+      jobId: 'lifecycle-job',
+      type: 'queued',
+      status: 'queued',
+      payload: { summary: 'Starting work' },
+      now: '2026-04-12T01:00:00.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'lifecycle-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'Analyzing code' },
+      now: '2026-04-12T01:00:01.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'lifecycle-job',
+      type: 'completed',
+      status: 'completed',
+      payload: { summary: 'Analysis complete' },
+      now: '2026-04-12T01:00:02.000Z',
+    });
+
+    await delay(120);
+    relay.stop();
+
+    // Should get notifications for queued, status_update, and completed
+    assert.ok(notifications.length >= 2, `Expected at least 2 notifications, got ${notifications.length}`);
+
+    // All notifications should have correct meta structure
+    for (const n of notifications) {
+      assert.equal(n.method, 'notifications/claude/channel');
+      assert.equal(n.params.meta.job_id, 'lifecycle-job');
+      assert.equal(n.params.meta.exec_id, 'lifecycle-job');
+      assert.ok(n.params.content.length <= 240);
+    }
+
+    // Completed notification should reference delegate_output
+    const completedNotif = notifications.find((n) => n.params.meta.event_type === 'completed');
+    assert.ok(completedNotif);
+    assert.match(completedNotif!.params.content, /delegate_output/);
+
+    // All events should be acked
+    const remaining = broker.pollEvents({ sessionId: 'full-cycle-test' });
+    assert.deepEqual(remaining, []);
+  });
+
+  it('throttles status events within throttle window', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'throttle-status-test',
+      pollIntervalMs: 20,
+      statusThrottleMs: 60_000, // very long throttle
+      snapshotThrottleMs: 60_000,
+      now: () => '2026-04-12T02:00:05.000Z',
+    });
+
+    await relay.start();
+
+    // Publish multiple status_update events rapidly
+    broker.publishEvent({
+      jobId: 'throttle-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'step 1' },
+      now: '2026-04-12T02:00:00.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'throttle-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'step 2' },
+      now: '2026-04-12T02:00:01.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'throttle-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'step 3' },
+      now: '2026-04-12T02:00:02.000Z',
+    });
+
+    await delay(120);
+    relay.stop();
+
+    // With a 60s throttle window, only the first status_update should produce a notification
+    const statusNotifs = notifications.filter((n) => n.params.meta.event_type === 'status_update');
+    assert.equal(statusNotifs.length, 1, `Expected 1 status notification due to throttle, got ${statusNotifs.length}`);
+
+    // Events should still all be acked despite throttling
+    const remaining = broker.pollEvents({ sessionId: 'throttle-status-test' });
+    assert.deepEqual(remaining, []);
+  });
+
+  it('snapshot throttling works independently from status throttling', async () => {
+    const broker = new DelegateBrokerClient({ statePath });
+    const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+
+    const relay = new DelegateChannelRelay({
+      server: {
+        async notification(message) {
+          notifications.push(message);
+        },
+      },
+      broker,
+      sessionId: 'independent-throttle-test',
+      pollIntervalMs: 20,
+      statusThrottleMs: 60_000, // long status throttle
+      snapshotThrottleMs: 0,    // no snapshot throttle
+      now: () => '2026-04-12T03:00:05.000Z',
+    });
+
+    await relay.start();
+
+    // Publish one status_update then two snapshots
+    broker.publishEvent({
+      jobId: 'indie-job',
+      type: 'status_update',
+      status: 'running',
+      payload: { summary: 'processing' },
+      now: '2026-04-12T03:00:00.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'indie-job',
+      type: 'snapshot',
+      status: 'running',
+      snapshot: { phase: 'collect', progress: 30 },
+      payload: { summary: 'snapshot 1' },
+      now: '2026-04-12T03:00:01.000Z',
+    });
+    broker.publishEvent({
+      jobId: 'indie-job',
+      type: 'snapshot',
+      status: 'running',
+      snapshot: { phase: 'analyze', progress: 60 },
+      payload: { summary: 'snapshot 2' },
+      now: '2026-04-12T03:00:02.000Z',
+    });
+
+    await delay(120);
+    relay.stop();
+
+    // Status should produce 1 (first one passes)
+    const statusNotifs = notifications.filter((n) => n.params.meta.event_type === 'status_update');
+    assert.equal(statusNotifs.length, 1);
+
+    // Snapshots should produce 2 (no throttle, different signatures)
+    const snapshotNotifs = notifications.filter((n) => n.params.meta.event_type === 'snapshot');
+    assert.equal(snapshotNotifs.length, 2, `Expected 2 snapshot notifications, got ${snapshotNotifs.length}`);
+  });
+
   it('writes relay session file on start and removes on stop', async () => {
     const broker = new DelegateBrokerClient({ statePath });
 

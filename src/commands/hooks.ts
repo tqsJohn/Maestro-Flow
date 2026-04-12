@@ -30,7 +30,7 @@ interface HookGroup {
   hooks: Array<{ type: string; command: string }>;
 }
 
-interface ClaudeSettings {
+export interface ClaudeSettings {
   hooks?: {
     PreToolUse?: HookGroup[];
     PostToolUse?: HookGroup[];
@@ -96,12 +96,12 @@ function hookIncludedInLevel(hookLevel: HookLevel, targetLevel: HookLevel): bool
 // Settings helpers
 // ---------------------------------------------------------------------------
 
-function getClaudeSettingsPath(): string {
+export function getClaudeSettingsPath(): string {
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   return join(claudeDir, 'settings.json');
 }
 
-function loadClaudeSettings(settingsPath: string): ClaudeSettings {
+export function loadClaudeSettings(settingsPath: string): ClaudeSettings {
   if (!existsSync(settingsPath)) return {};
   return JSON.parse(readFileSync(settingsPath, 'utf8'));
 }
@@ -112,7 +112,7 @@ function getMaestroBinDir(): string {
 
 const HOOK_MARKER = 'maestro';
 
-function removeMaestroHooks(settings: ClaudeSettings): void {
+export function removeMaestroHooks(settings: ClaudeSettings): void {
   if (!settings.hooks) return;
   for (const eventKey of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification', 'Stop'] as const) {
     const groups = settings.hooks[eventKey] as HookGroup[] | undefined;

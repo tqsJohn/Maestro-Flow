@@ -11,7 +11,36 @@ export async function runInstallWizard(
     { exitOnCtrlC: true },
   );
 
-  // Cleanup handlers
+  process.on('SIGINT', () => process.exit(0));
+  process.on('SIGTERM', () => process.exit(0));
+
+  await waitUntilExit();
+}
+
+export interface InstallFlowOptions {
+  initialStep?: 'mode' | 'hub' | 'components_config' | 'hooks_config' | 'mcp_config' | 'confirm';
+  initialMode?: 'global' | 'project';
+  initialStepIds?: string[];
+}
+
+export async function runInstallFlow(
+  pkgRoot: string,
+  version: string,
+  options?: InstallFlowOptions,
+): Promise<void> {
+  const { render } = await import('ink');
+  const React = await import('react');
+  const { InstallFlow } = await import('./InstallFlow.js');
+
+  const { waitUntilExit } = render(
+    React.createElement(InstallFlow, {
+      pkgRoot,
+      version,
+      ...options,
+    }),
+    { exitOnCtrlC: true },
+  );
+
   process.on('SIGINT', () => process.exit(0));
   process.on('SIGTERM', () => process.exit(0));
 

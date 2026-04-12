@@ -1,0 +1,126 @@
+import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { HOOK_LEVEL_DESCRIPTIONS, type HookLevel } from '../hooks.js';
+
+// ---------------------------------------------------------------------------
+// InstallHub — menu hub with status for each install category
+//
+// Each item shows enabled/disabled + config summary.
+// Enter on an item navigates into its config; Enter on "Install" proceeds.
+// ---------------------------------------------------------------------------
+
+export interface HubItem {
+  id: string;
+  label: string;
+  enabled: boolean;
+  summary: string;
+}
+
+interface InstallHubProps {
+  items: HubItem[];
+  onToggle: (id: string) => void;
+  onEnter: (id: string) => void;
+  onInstall: () => void;
+  onBack: () => void;
+}
+
+export function InstallHub({ items, onToggle, onEnter, onInstall, onBack }: InstallHubProps) {
+  // items + 1 extra row for "Install"
+  const totalRows = items.length + 1;
+  const [index, setIndex] = useState(0);
+
+  useInput((input, key) => {
+    if (key.upArrow) {
+      setIndex((i) => (i <= 0 ? totalRows - 1 : i - 1));
+    } else if (key.downArrow) {
+      setIndex((i) => (i >= totalRows - 1 ? 0 : i + 1));
+    } else if (key.return) {
+      if (index < items.length) {
+        onEnter(items[index].id);
+      } else {
+        onInstall();
+      }
+    } else if (input === ' ' && index < items.length) {
+      onToggle(items[index].id);
+    } else if (key.escape) {
+      onBack();
+    } else {
+      const num = parseInt(input, 10);
+      if (!isNaN(num) && num >= 1 && num <= items.length) {
+        onToggle(items[num - 1].id);
+      }
+    }
+  });
+
+  return (
+    <Box flexDirection="column">
+      <Text bold color="cyan">Installation Menu</Text>
+      <Text dimColor>Select items to configure, then Install.</Text>
+
+      <Box flexDirection="column" marginTop={1}>
+        {items.map((item, i) => {
+          const hl = i === index;
+          return (
+            <Box key={item.id}>
+              <Text color={hl ? 'cyan' : 'gray'}>[{i + 1}]</Text>
+              <Text color={item.enabled ? 'green' : 'gray'}> {item.enabled ? '[x]' : '[ ]'} </Text>
+              <Text color={hl ? 'cyan' : undefined} bold={hl}>
+                {item.label.padEnd(14)}
+              </Text>
+              <Text dimColor>{item.summary}</Text>
+            </Box>
+          );
+        })}
+
+        {/* Install action row */}
+        <Box marginTop={1}>
+          <Text color={index === items.length ? 'greenBright' : 'gray'} bold={index === items.length}>
+            {index === items.length ? '>' : ' '} {'>>> Install >>>'}
+          </Text>
+        </Box>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text dimColor>
+          [Space/1-{items.length}] Toggle  [Enter] Configure / Install  [Esc] Back
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helper to build hub items from config state
+// ---------------------------------------------------------------------------
+
+export function buildHubItems(
+  enabled: { components: boolean; hooks: boolean; mcp: boolean },
+  summaries: { componentCount: number; fileCount: number; hookLevel: HookLevel; mcpToolCount: number; mcpEnabled: boolean },
+): HubItem[] {
+  return [
+    {
+      id: 'components',
+      label: 'Components',
+      enabled: enabled.components,
+      summary: enabled.components
+        ? `${summaries.componentCount} selected (${summaries.fileCount} files)`
+        : 'skipped',
+    },
+    {
+      id: 'hooks',
+      label: 'Hooks',
+      enabled: enabled.hooks,
+      summary: enabled.hooks
+        ? `${summaries.hookLevel} — ${HOOK_LEVEL_DESCRIPTIONS[summaries.hookLevel]}`
+        : 'skipped',
+    },
+    {
+      id: 'mcp',
+      label: 'MCP Server',
+      enabled: enabled.mcp,
+      summary: enabled.mcp && summaries.mcpEnabled
+        ? `${summaries.mcpToolCount} tools`
+        : 'skipped',
+    },
+  ];
+}
