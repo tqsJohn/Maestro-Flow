@@ -9,6 +9,7 @@ import type {
   ProjectSnapshot, HistoryEntry, CommandExecutor, PromptAssembler,
   ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter,
   CoordinateEvent, AssembleRequest, AgentType, ParsedResult,
+  LLMDecider, LLMDecisionRequest,
 } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
 import type { ParallelCommandExecutor, BranchResult } from './parallel-executor.js';
@@ -35,6 +36,7 @@ export class GraphWalker {
     private readonly emitter?: WalkerEventEmitter,
     private readonly sessionDir?: string,
     private readonly parallelExecutor?: ParallelCommandExecutor,
+    private readonly llmDecider?: LLMDecider | null,
   ) {}
 
   async start(graphId: string, intent: string, options: StartOptions): Promise<WalkerState> {
@@ -148,7 +150,7 @@ export class GraphWalker {
           await this.handleCommand(state, graph, nodeId, node, entry);
           break;
         case 'decision':
-          this.handleDecision(state, nodeId, node);
+          await this.handleDecision(state, nodeId, node);
           break;
         case 'gate':
           this.handleGate(state, node, entry);
@@ -264,35 +266,161 @@ export class GraphWalker {
     }
   }
 
-  private handleDecision(state: WalkerState, nodeId: string, node: DecisionNode): void {
+  private async handleDecision(state: WalkerState, nodeId: string, node: DecisionNode): Promise<void> {
     const strategy = node.strategy ?? 'expr';
 
     if (strategy === 'llm') {
-      // LLM strategy: fallback to first default edge
+      // Explicit LLM strategy: ask the decider first. If it fails or no
+      // decider is injected, fall through to the default edge (backward
+      // compat with the old stub).
+      const target = await this.askLLMDecider(state, nodeId, node);
+      if (target) {
+        state.current_node = target;
+        this.emit({ type: 'walker:decision', session_id: state.session_id, node_id: nodeId, resolved_value: 'llm', target });
+        return;
+      }
       const defaultEdge = node.edges.find(e => e.default);
       if (defaultEdge) {
         state.current_node = defaultEdge.target;
+        this.emit({ type: 'walker:decision', session_id: state.session_id, node_id: nodeId, resolved_value: 'llm-default', target: defaultEdge.target });
       } else {
         state.status = 'failed';
+        this.emit({ type: 'walker:error', session_id: state.session_id, error: `LLM decider failed and no default edge in ${nodeId}` });
       }
       return;
     }
 
     // expr strategy
     const resolvedValue = node.eval ? this.evaluator.resolve(node.eval, state.context) : undefined;
-    let matched = false;
     for (const edge of node.edges) {
       if (this.evaluator.match(edge, resolvedValue, state.context)) {
         state.current_node = edge.target;
-        matched = true;
         this.emit({ type: 'walker:decision', session_id: state.session_id, node_id: nodeId, resolved_value: resolvedValue, target: edge.target });
-        break;
+        return;
       }
     }
-    if (!matched) {
-      state.status = 'failed';
-      this.emit({ type: 'walker:error', session_id: state.session_id, error: `No matching edge in decision ${nodeId}` });
+
+    // No expr edge matched — try LLM fallback before giving up. Only runs
+    // when a decider is injected; when absent, behavior is unchanged
+    // (state.status = 'failed').
+    if (this.llmDecider) {
+      const target = await this.askLLMDecider(state, nodeId, node);
+      if (target) {
+        state.current_node = target;
+        this.emit({ type: 'walker:decision', session_id: state.session_id, node_id: nodeId, resolved_value: 'llm-fallback', target });
+        return;
+      }
     }
+
+    state.status = 'failed';
+    this.emit({ type: 'walker:error', session_id: state.session_id, error: `No matching edge in decision ${nodeId}` });
+  }
+
+  // Build an LLMDecisionRequest and ask the injected decider. Returns the
+  // chosen target id if the decider returned a valid one, else null.
+  private async askLLMDecider(
+    state: WalkerState,
+    nodeId: string,
+    node: DecisionNode,
+  ): Promise<string | null> {
+    if (!this.llmDecider) return null;
+
+    const validTargets = node.edges.map(e => e.target);
+    const prompt = this.buildDecisionPrompt(state, nodeId, node);
+    const req: LLMDecisionRequest = {
+      node_id: nodeId,
+      prompt,
+      valid_targets: validTargets,
+    };
+
+    try {
+      const result = await this.llmDecider.decide(req);
+      if (!result) return null;
+      // Defense in depth: the decider already validates, but the walker
+      // double-checks against the live edge list.
+      return validTargets.includes(result.target) ? result.target : null;
+    } catch (err) {
+      console.error(`[walker] LLM decider threw for ${nodeId}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  // Prompt assembly is a main-flow concern — the walker builds the decision
+  // prompt from the node spec + filtered walker context and hands a finished
+  // string to the decider. Keeps the decider a thin spawn+parse wrapper.
+  private buildDecisionPrompt(
+    state: WalkerState,
+    nodeId: string,
+    node: DecisionNode,
+  ): string {
+    const MAX_CONTEXT_CHARS = 4000;
+    const filteredContext = this.filterContextByKeys(state.context, node.context_keys);
+    let contextJson: string;
+    try { contextJson = JSON.stringify(filteredContext, null, 2); }
+    catch { contextJson = '{}'; }
+    if (contextJson.length > MAX_CONTEXT_CHARS) {
+      contextJson = contextJson.slice(0, MAX_CONTEXT_CHARS) + '\n... (truncated)';
+    }
+
+    const edgeLines = node.edges.map((e) => {
+      const bits: string[] = [`- target: ${e.target}`];
+      if (e.label) bits.push(`  label: ${e.label}`);
+      if (e.value !== undefined) bits.push(`  value: ${JSON.stringify(e.value)}`);
+      if (e.default) bits.push(`  default: true`);
+      if (e.description) bits.push(`  description: ${e.description}`);
+      return bits.join('\n');
+    }).join('\n');
+
+    const purpose = node.prompt
+      ? node.prompt
+      : 'Choose the most appropriate next node based on the walker context.';
+
+    const validTargets = node.edges.map(e => e.target).join(', ');
+
+    return [
+      'You are routing a workflow decision node. Pick exactly one target.',
+      '',
+      `Node id: ${nodeId}`,
+      `Purpose: ${purpose}`,
+      '',
+      'Available edges:',
+      edgeLines,
+      '',
+      'Walker context (JSON):',
+      contextJson,
+      '',
+      `Valid targets: ${validTargets}`,
+      '',
+      'Respond in exactly this format (two lines, no code fences):',
+      'DECISION: <one of the valid targets>',
+      'REASONING: <one-line reason>',
+    ].join('\n');
+  }
+
+  // Resolve each context_keys entry via the expression evaluator and return
+  // a flat record. When context_keys is omitted or empty, return the whole
+  // context as a trimmed shape (inputs + result + var only — skip heavy
+  // project snapshot to keep prompts small).
+  private filterContextByKeys(
+    ctx: WalkerContext,
+    keys?: string[],
+  ): Record<string, unknown> {
+    if (keys && keys.length > 0) {
+      const out: Record<string, unknown> = {};
+      for (const key of keys) {
+        try {
+          out[key] = this.evaluator.resolve(key, ctx);
+        } catch {
+          out[key] = null;
+        }
+      }
+      return out;
+    }
+    return {
+      inputs: ctx.inputs,
+      result: ctx.result,
+      var: ctx.var,
+    };
   }
 
   private handleGate(state: WalkerState, node: GateNode, entry: HistoryEntry): void {

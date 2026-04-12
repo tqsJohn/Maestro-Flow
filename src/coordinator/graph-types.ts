@@ -307,6 +307,32 @@ export interface StepAnalyzer {
 }
 
 // ---------------------------------------------------------------------------
+// 8b. LLM Decider — optional fallback for decision nodes when a static
+// expression cannot pick an edge (or when strategy === 'llm'). Mirrors the
+// StepAnalyzer contract: optional on walker, never throws, returns null on
+// any failure so the walker can fall through to the current behavior.
+//
+// The walker (main flow) owns prompt assembly. The decider is a thin
+// spawn+parse wrapper that receives a fully-assembled prompt and a list
+// of valid targets for response validation.
+// ---------------------------------------------------------------------------
+
+export interface LLMDecisionRequest {
+  node_id: string;
+  prompt: string;            // fully-assembled prompt text, ready to send
+  valid_targets: string[];   // closed set of acceptable DECISION values
+}
+
+export interface LLMDecisionResult {
+  target: string;
+  reasoning: string;
+}
+
+export interface LLMDecider {
+  decide(req: LLMDecisionRequest): Promise<LLMDecisionResult | null>;
+}
+
+// ---------------------------------------------------------------------------
 // 9. Event System
 // ---------------------------------------------------------------------------
 

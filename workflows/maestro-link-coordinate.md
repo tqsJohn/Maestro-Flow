@@ -92,11 +92,17 @@ After each call:
 - If `status === "failed"` → **Step 5**
 
 The walker handles internally:
-- Prompt assembly from `coordinate-step` template
+- Prompt assembly from `coordinate-step` template (command nodes) and inline `buildDecisionPrompt` (decision nodes) — **the walker owns all prompt construction**
 - CLI execution via `maestro cli --tool {tool} --mode {write|analysis}`
-- Decision/gate/eval node auto-resolution
+- Decision/gate/eval node auto-resolution:
+  - `strategy: 'expr'` — static expression, instant
+  - `strategy: 'llm'` — spawns the configured CLI tool via a thin `DefaultLLMDecider`, expects a `DECISION: <target>\nREASONING: <text>` response
+  - **Expr fallback**: when an `expr` decision has no matching edge and no `default` edge, the walker automatically asks the LLM decider before failing
 - max_visits loop prevention
 - State persistence to `.workflow/.maestro-coordinate/{session_id}/`
+- **Channel telemetry**: every walker event is published to a file/SQLite broker under `~/.maestro/data/async/`, keyed by `session_id`. External observers tail it via `maestro coordinate watch {sessionId} [--follow]` without affecting the stdout JSON protocol.
+
+> **Step-mode latency note**: in step mode, an LLM-driven decision fires a real CLI spawn inside the `next` process. This is synchronous and can take several seconds. The outer step loop should not impose tight per-step deadlines. Static `expr` decisions remain instant.
 
 ---
 
@@ -139,6 +145,8 @@ Display final summary:
 | `maestro coordinate next [sessionId]` | Execute next step | JSON (updated state) |
 | `maestro coordinate status [sessionId]` | Query session state | JSON (full state) |
 | `maestro coordinate run "intent" --chain X --tool Y` | Autonomous full run | JSON (final state) |
+| `maestro coordinate watch <sessionId> [--follow] [--since N] [--format json\|text]` | Stream walker events from broker (observer, read-only) | JSONL/text to stdout |
+| `maestro coordinate report --session <sid> --node <id> --status SUCCESS\|FAILURE [...]` | Agent-invoked result writer — the authoritative command-node result channel | Writes `.workflow/.maestro-coordinate/{sid}/reports/{node}.json`, exits 0 |
 
 ---
 
@@ -148,6 +156,8 @@ Display final summary:
 2. **Step mode by default** — `start` pauses after each command node, `next` advances one step
 3. **JSON protocol** — all subcommands output structured JSON to stdout, logs to stderr
 4. **Session persistence** — state at `.workflow/.maestro-coordinate/{session_id}/walker-state.json`
-5. **Decision auto-resolve** — walker evaluates `ctx.result.status` internally between steps
+5. **Decision auto-resolve** — walker evaluates `ctx.result.status` internally between steps; falls back to the injected LLM decider when `expr` has no matching edge and no default
 6. **Resume** — `next {sessionId}` continues any step_paused session
 7. **Autonomous fallback** — `run` walks entire graph without pausing (backward compat)
+8. **Observation is separate from driving** — `watch` is a read-only tail on the broker; it does not advance the walker. Use it alongside `next` or `run` for live progress without disturbing the driver loop.
+9. **Result channel** — command-node results are written by the agent via `maestro coordinate report` to a JSON file the walker reads preferentially over stdout parsing.

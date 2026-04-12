@@ -458,10 +458,12 @@ export function registerBuiltinTools(
       }
 
       const entries = readExecutionEntries(historyStore, execId).slice(-limit).map(summarizeHistoryEntry);
+      const tailStatus = deriveDelegateStatus(meta, delegateBroker.getJob(execId));
 
       return jsonResult({
         execId,
-        status: deriveDelegateStatus(meta, delegateBroker.getJob(execId)),
+        status: tailStatus,
+        sep1686_status: toSep1686Status(tailStatus),
         events: events.slice(-limit).map(summarizeBrokerEventStructured),
         historyTail: entries,
         queuedMessages: delegateBroker.listMessages(execId).map(summarizeQueuedMessage),

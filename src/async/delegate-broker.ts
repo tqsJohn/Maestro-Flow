@@ -27,6 +27,7 @@ export interface JsonObject {
 export type DelegateJobStatus =
   | 'queued'
   | 'running'
+  | 'input_required'
   | 'completed'
   | 'failed'
   | 'cancelled'

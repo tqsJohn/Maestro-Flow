@@ -37,6 +37,14 @@ $ARGUMENTS — user intent text, or flags.
 - `maestro coordinate next [sessionId]` — advance one step
 - `maestro coordinate status [sessionId]` — query state
 - `maestro coordinate run "intent"` — autonomous full run
+- `maestro coordinate watch <sessionId> [--follow]` — read-only event tail (separate from driver loop)
+- `maestro coordinate report` — agent-invoked command-node result writer (authoritative result channel)
+
+**Internal walker capabilities (invisible to driver loop):**
+- Prompt assembly owned by the walker (main flow) for both command and decision nodes
+- Decision nodes auto-resolve via `strategy: 'expr'` (fast path) with LLM decider fallback when expr has no match and no default edge, or explicit `strategy: 'llm'`
+- Walker events published to a file/SQLite broker for `watch` observers
+- LLM decision in step mode is synchronous — avoid tight per-step deadlines
 </context>
 
 <execution>

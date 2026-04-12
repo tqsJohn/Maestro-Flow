@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -19,6 +19,10 @@ import { DefaultOutputParser } from '../coordinator/output-parser.js';
 import { DefaultParallelExecutor } from '../coordinator/parallel-executor.js';
 import { ParallelCliRunner } from '../agents/parallel-cli-runner.js';
 import type { SpawnFn } from '../coordinator/cli-executor.js';
+import { DefaultLLMDecider } from '../coordinator/llm-decider.js';
+import { CoordinateBrokerAdapter } from '../coordinator/coordinate-broker-adapter.js';
+import { createDefaultDelegateBroker, type DelegateBrokerApi } from '../async/delegate-broker.js';
+import { randomBytes } from 'node:crypto';
 
 const execFileAsync = promisify(execFile);
 
@@ -107,7 +111,23 @@ function createSpawnFn(): SpawnFn {
   };
 }
 
-async function createWalker(workflowRoot: string, opts?: { parallel?: boolean; backend?: string }) {
+// Lazily construct a shared broker instance. Tests can inject their own via
+// __setCoordinateBrokerForTests to avoid hitting the real ~/.maestro/data path.
+let sharedBroker: DelegateBrokerApi | null = null;
+function getCoordinateBroker(): DelegateBrokerApi {
+  if (!sharedBroker) sharedBroker = createDefaultDelegateBroker();
+  return sharedBroker;
+}
+
+/** Test-only: inject a broker instance for `maestro coordinate watch`. */
+export function __setCoordinateBrokerForTests(broker: DelegateBrokerApi | null): void {
+  sharedBroker = broker;
+}
+
+async function createWalker(
+  workflowRoot: string,
+  opts?: { parallel?: boolean; backend?: string; broker?: DelegateBrokerApi },
+) {
   const { chainsRoot, templateDir, sessionDir } = resolvePaths(workflowRoot);
   const loader = new GraphLoader(chainsRoot);
   const evaluator = new DefaultExprEvaluator();
@@ -132,13 +152,24 @@ async function createWalker(workflowRoot: string, opts?: { parallel?: boolean; b
     ? new DefaultParallelExecutor(new ParallelCliRunner(spawnFn, terminalBackend))
     : undefined;
 
+  // Wire channel telemetry through the delegate broker so `maestro
+  // coordinate watch` (and future MCP tools) can stream events without
+  // polling walker-state.json.
+  const broker = opts?.broker ?? getCoordinateBroker();
+  const emitter = new CoordinateBrokerAdapter(broker);
+
+  // Optional LLM decider for dynamic decision-node routing. Uses the same
+  // SpawnFn as command execution so the same CLI tool configuration applies.
+  const llmDecider = new DefaultLLMDecider(spawnFn, { workDir: workflowRoot });
+
   const walker = new GraphWalker(
     loader, assembler, executor,
     null, parser, evaluator,
-    undefined, sessionDir,
+    emitter, sessionDir,
     parallelExecutor,
+    llmDecider,
   );
-  return { walker, router, loader };
+  return { walker, router, loader, broker };
 }
 
 function printState(state: { session_id: string; status: string; graph_id: string; current_node: string; history: Array<{ node_id: string; node_type: string; outcome?: string; summary?: string }> }) {
@@ -267,6 +298,131 @@ export function registerCoordinateCommand(program: Command): void {
         console.error(`[coordinate] Error: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
       }
+    });
+
+  // -------------------------------------------------------------------------
+  // maestro coordinate watch — stream walker events from the broker
+  //
+  // Reads events previously published by the CoordinateBrokerAdapter for a
+  // given session. With --follow, long-polls until the walker reaches a
+  // terminal status; without, dumps all existing events and exits.
+  //
+  // This is a thin view over the broker — no caching, no reassembly. Same
+  // transport as `delegate_tail` at the MCP layer.
+  // -------------------------------------------------------------------------
+  coord
+    .command('watch <sessionId>')
+    .description('Stream walker events for a session (optionally follow until terminal)')
+    .option('-f, --follow', 'Long-poll until walker reaches terminal state')
+    .option('--since <cursor>', 'Start after event id (default 0)', '0')
+    .option('--format <fmt>', 'Output format: json | text', 'json')
+    .option('--workflow-root <dir>', 'Workflow root (defaults to current directory)')
+    .option('--interval <ms>', 'Follow poll interval in ms (default 500)', '500')
+    .action(async (sessionId: string, opts: {
+      follow?: boolean;
+      since: string;
+      format: string;
+      workflowRoot?: string;
+      interval: string;
+    }) => {
+      if (opts.format !== 'json' && opts.format !== 'text') {
+        console.error(`[coordinate watch] --format must be json or text (got "${opts.format}")`);
+        process.exit(2);
+      }
+      const workflowRoot = resolve(opts.workflowRoot ?? process.cwd());
+
+      // Watch is a pure observer — no walker, no executor, no LLM decider.
+      // It only needs the broker (to tail events) and the sessionDir
+      // (to read walker-state.json when detecting terminal status in follow
+      // mode). This keeps startup cheap and the coupling minimal.
+      const { sessionDir } = resolvePaths(workflowRoot);
+      const broker = getCoordinateBroker();
+      const stateFilePath = join(sessionDir, sessionId, 'walker-state.json');
+
+      // Register a unique consumer session with the broker. Using a random
+      // suffix so multiple concurrent watchers don't share the same cursor.
+      const consumerId = `watch-${sessionId}-${randomBytes(2).toString('hex')}`;
+      try {
+        broker.registerSession({ sessionId: consumerId });
+      } catch (err) {
+        console.error(`[coordinate watch] Failed to register broker session: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      }
+
+      let cursor = Number.parseInt(opts.since, 10);
+      if (!Number.isFinite(cursor) || cursor < 0) cursor = 0;
+      const intervalMs = Math.max(50, Number.parseInt(opts.interval, 10) || 500);
+
+      const writeEvent = (ev: { eventId: number; type: string; createdAt: string; payload: unknown }) => {
+        if (opts.format === 'json') {
+          console.log(JSON.stringify({
+            eventId: ev.eventId,
+            type: ev.type,
+            createdAt: ev.createdAt,
+            payload: ev.payload,
+          }));
+        } else {
+          console.log(`[${ev.createdAt}] #${ev.eventId} ${ev.type}`);
+        }
+      };
+
+      // Terminal statuses for follow-mode exit. `step_paused` and
+      // `waiting_gate` are NOT terminal — watch must keep polling so
+      // subsequent `next` calls can append events.
+      const isTerminal = (status: string) =>
+        status === 'completed' || status === 'failed' || status === 'paused';
+
+      const readWalkerStatus = (): string | null => {
+        try {
+          const raw = readFileSync(stateFilePath, 'utf-8');
+          const parsed = JSON.parse(raw) as { status?: string };
+          return typeof parsed.status === 'string' ? parsed.status : null;
+        } catch {
+          return null;
+        }
+      };
+
+      // Drain all existing events once.
+      const drain = () => {
+        const events = broker.pollEvents({
+          sessionId: consumerId,
+          jobId: sessionId,
+          afterEventId: cursor,
+          limit: 200,
+        });
+        for (const ev of events) {
+          writeEvent(ev);
+          if (ev.eventId > cursor) cursor = ev.eventId;
+        }
+        return events.length;
+      };
+
+      try {
+        drain();
+
+        if (opts.follow) {
+          // Follow mode: poll until walker state is terminal AND no more
+          // events remain to drain. Include a hard guard (60 min) so a
+          // forgotten watcher can't spin forever.
+          const startedAt = Date.now();
+          const HARD_LIMIT_MS = 60 * 60 * 1000;
+          for (;;) {
+            await new Promise(r => setTimeout(r, intervalMs));
+            const drained = drain();
+            const status = readWalkerStatus();
+            const terminal = status !== null && isTerminal(status);
+            if (terminal && drained === 0) break;
+            if (Date.now() - startedAt > HARD_LIMIT_MS) {
+              console.error('[coordinate watch] Hard time limit reached (60 min), exiting follow loop');
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[coordinate watch] Error: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      }
+      process.exit(0);
     });
 
   // -------------------------------------------------------------------------
