@@ -15,7 +15,8 @@
     "resolveJsonModule": true,
     "paths": {
       "#maestro-dashboard/agents/*": ["./dashboard/dist-server/dashboard/src/server/agents/*"],
-      "#maestro-dashboard/shared/*": ["./dashboard/dist-server/dashboard/src/shared/*"]
+      "#maestro-dashboard/shared/*": ["./dashboard/dist-server/dashboard/src/shared/*"],
+      "#maestro-dashboard/wiki/*": ["./dashboard/dist-server/dashboard/src/server/wiki/*"]
     }
   },
   "include": ["src/**/*", "shared/**/*"],

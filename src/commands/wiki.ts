@@ -1,24 +1,46 @@
 /**
- * Wiki Command — CLI wrapper for the dashboard `/api/wiki` endpoint.
+ * Wiki Command — CLI for querying and mutating the wiki.
  *
  * Subcommands: list, get, search, health, graph, orphans, hubs,
  * backlinks, forward, create, update, delete
  *
- * Requires the dashboard server to be running (`maestro view` will start it).
+ * By default operates offline by directly reading `.workflow/` files.
+ * Use `--live` to route through the dashboard HTTP API instead.
  * Base URL defaults to http://127.0.0.1:3001 and can be overridden with
  * `--base <url>` or `MAESTRO_DASHBOARD_URL`.
  */
 
 import type { Command } from 'commander';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { WikiIndexer } from '#maestro-dashboard/wiki/wiki-indexer.js';
+import { WikiWriter, WikiWriteError } from '#maestro-dashboard/wiki/writer.js';
+import { computeHealth, detectOrphans, detectHubs } from '#maestro-dashboard/wiki/graph-analysis.js';
+import type { WikiFilters, WikiNodeType } from '#maestro-dashboard/wiki/wiki-types.js';
 
 const DEFAULT_BASE = process.env.MAESTRO_DASHBOARD_URL ?? 'http://127.0.0.1:3001';
+
+// ── Lazy offline clients ───────────────────────────────────────────────
+
+let _indexer: WikiIndexer | null = null;
+let _writer: WikiWriter | null = null;
+
+function getOfflineClients(): { indexer: WikiIndexer; writer: WikiWriter } {
+  if (!_indexer) {
+    const workflowRoot = resolve('.workflow');
+    _indexer = new WikiIndexer({ workflowRoot });
+    _writer = new WikiWriter(workflowRoot, _indexer);
+  }
+  return { indexer: _indexer!, writer: _writer! };
+}
 
 export function registerWikiCommand(program: Command): void {
   const wiki = program
     .command('wiki')
-    .description('Query and mutate the dashboard wiki endpoint (/api/wiki)')
-    .option('--base <url>', 'Dashboard base URL', DEFAULT_BASE);
+    .description('Query and mutate the wiki (offline by default, --live for HTTP)')
+    .option('--base <url>', 'Dashboard base URL', DEFAULT_BASE)
+    .option('--live', 'Use HTTP API via dashboard instead of offline mode');
 
   // ── list ──────────────────────────────────────────────────────────────
   wiki
@@ -33,28 +55,63 @@ export function registerWikiCommand(program: Command): void {
     .option('--group', 'Return results grouped by type')
     .option('--json', 'Output as JSON')
     .action(async (opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const qs = new URLSearchParams();
-      if (opts.type) qs.set('type', opts.type);
-      if (opts.tag) qs.set('tag', opts.tag);
-      if (opts.phase) qs.set('phase', opts.phase);
-      if (opts.status) qs.set('status', opts.status);
-      if (opts.query) qs.set('q', opts.query);
-      if (opts.group) qs.set('group', 'true');
-      const data = await apiGet(base, `/api/wiki?${qs.toString()}`);
-      if (opts.json) {
-        console.log(JSON.stringify(data, null, 2));
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const qs = new URLSearchParams();
+        if (opts.type) qs.set('type', opts.type);
+        if (opts.tag) qs.set('tag', opts.tag);
+        if (opts.phase) qs.set('phase', opts.phase);
+        if (opts.status) qs.set('status', opts.status);
+        if (opts.query) qs.set('q', opts.query);
+        if (opts.group) qs.set('group', 'true');
+        const data = await apiGet(base, `/api/wiki?${qs.toString()}`);
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        if (opts.group) {
+          const groups = (data.groups ?? {}) as Record<string, Array<{ id: string; title: string }>>;
+          for (const [type, items] of Object.entries(groups)) {
+            if (items.length === 0) continue;
+            console.log(`\n[${type}] (${items.length})`);
+            for (const e of items) console.log(`  ${e.id}  ${e.title}`);
+          }
+        } else {
+          const entries = (data.entries ?? []) as Array<{ id: string; type: string; title: string }>;
+          console.log(`Found ${entries.length} entries`);
+          for (const e of entries) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
+        }
         return;
       }
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const filters: WikiFilters = {};
+      if (opts.type) filters.type = opts.type as WikiNodeType;
+      if (opts.tag) filters.tag = opts.tag;
+      if (opts.phase) filters.phase = Number(opts.phase);
+      if (opts.status) filters.status = opts.status;
+      if (opts.query) filters.q = opts.query;
+
       if (opts.group) {
-        const groups = (data.groups ?? {}) as Record<string, Array<{ id: string; title: string }>>;
+        const groups = await indexer.groups(Object.keys(filters).length ? filters : undefined);
+        if (opts.json) {
+          console.log(JSON.stringify({ groups }, null, 2));
+          return;
+        }
         for (const [type, items] of Object.entries(groups)) {
           if (items.length === 0) continue;
           console.log(`\n[${type}] (${items.length})`);
           for (const e of items) console.log(`  ${e.id}  ${e.title}`);
         }
       } else {
-        const entries = (data.entries ?? []) as Array<{ id: string; type: string; title: string }>;
+        const entries = await indexer.query(filters);
+        if (opts.json) {
+          console.log(JSON.stringify({ entries }, null, 2));
+          return;
+        }
         console.log(`Found ${entries.length} entries`);
         for (const e of entries) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
       }
@@ -66,16 +123,43 @@ export function registerWikiCommand(program: Command): void {
     .description('Fetch a single wiki entry by id')
     .option('--json', 'Output as JSON')
     .action(async (id, opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}`);
-      if (opts.json) {
-        console.log(JSON.stringify(data, null, 2));
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}`);
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        const entry = data.entry;
+        if (!entry) {
+          console.error('Entry not found');
+          process.exit(1);
+        }
+        console.log(`${entry.id}  [${entry.type}]`);
+        console.log(`Title: ${entry.title}`);
+        if (entry.summary) console.log(`Summary: ${entry.summary}`);
+        if (entry.tags?.length) console.log(`Tags: ${entry.tags.join(', ')}`);
+        if (entry.source?.path) console.log(`Path: ${entry.source.path}`);
+        if (entry.body) {
+          console.log('\n---');
+          console.log(entry.body);
+        }
         return;
       }
-      const entry = data.entry;
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const index = await indexer.get();
+      const entry = index.byId[id];
       if (!entry) {
         console.error('Entry not found');
         process.exit(1);
+      }
+      if (opts.json) {
+        console.log(JSON.stringify({ entry }, null, 2));
+        return;
       }
       console.log(`${entry.id}  [${entry.type}]`);
       console.log(`Title: ${entry.title}`);
@@ -94,14 +178,29 @@ export function registerWikiCommand(program: Command): void {
     .description('BM25 search (alias for `list -q`)')
     .option('--json', 'Output as JSON')
     .action(async (queryParts, opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
+      const live = cmd.parent!.opts().live as boolean | undefined;
       const q = queryParts.join(' ');
-      const data = await apiGet(base, `/api/wiki?q=${encodeURIComponent(q)}`);
-      if (opts.json) {
-        console.log(JSON.stringify(data, null, 2));
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, `/api/wiki?q=${encodeURIComponent(q)}`);
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        const entries = (data.entries ?? []) as Array<{ id: string; type: string; title: string }>;
+        console.log(`Query: "${q}"  (${entries.length} results)`);
+        for (const e of entries) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
         return;
       }
-      const entries = (data.entries ?? []) as Array<{ id: string; type: string; title: string }>;
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const entries = await indexer.search(q);
+      if (opts.json) {
+        console.log(JSON.stringify({ entries }, null, 2));
+        return;
+      }
       console.log(`Query: "${q}"  (${entries.length} results)`);
       for (const e of entries) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
     });
@@ -112,19 +211,45 @@ export function registerWikiCommand(program: Command): void {
     .description('Show wiki graph health score')
     .option('--json', 'Output as JSON')
     .action(async (opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, '/api/wiki/health');
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, '/api/wiki/health');
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        console.log(`Health Score: ${data.score}/100`);
+        if (data.totals) {
+          console.log(`  Entries:       ${data.totals.entries ?? 0}`);
+          console.log(`  Broken links:  ${data.totals.brokenLinks ?? 0}`);
+          console.log(`  Orphans:       ${data.totals.orphans ?? 0}`);
+          console.log(`  Missing titles: ${data.totals.missingTitles ?? 0}`);
+        }
+        if (data.hubs?.length) {
+          console.log('\nTop hubs:');
+          for (const h of data.hubs.slice(0, 5)) {
+            console.log(`  ${h.id}  (in-degree: ${h.inDegree})`);
+          }
+        }
+        return;
+      }
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const index = await indexer.get();
+      const graph = await indexer.getGraph();
+      const data = computeHealth(index, graph);
       if (opts.json) {
         console.log(JSON.stringify(data, null, 2));
         return;
       }
       console.log(`Health Score: ${data.score}/100`);
-      if (data.totals) {
-        console.log(`  Entries:       ${data.totals.entries ?? 0}`);
-        console.log(`  Broken links:  ${data.totals.brokenLinks ?? 0}`);
-        console.log(`  Orphans:       ${data.totals.orphans ?? 0}`);
-        console.log(`  Missing titles: ${data.totals.missingTitles ?? 0}`);
-      }
+      console.log(`  Entries:       ${data.totals.entries}`);
+      console.log(`  Broken links:  ${data.totals.brokenLinks}`);
+      console.log(`  Orphans:       ${data.totals.orphans}`);
+      console.log(`  Missing titles: ${data.totals.missingTitles}`);
       if (data.hubs?.length) {
         console.log('\nTop hubs:');
         for (const h of data.hubs.slice(0, 5)) {
@@ -138,9 +263,19 @@ export function registerWikiCommand(program: Command): void {
     .command('graph')
     .description('Dump full graph (forwardLinks, backlinks, brokenLinks)')
     .action(async (_opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, '/api/wiki/graph');
-      console.log(JSON.stringify(data, null, 2));
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, '/api/wiki/graph');
+        console.log(JSON.stringify(data, null, 2));
+        return;
+      }
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const graph = await indexer.getGraph();
+      console.log(JSON.stringify(graph, null, 2));
     });
 
   // ── orphans ───────────────────────────────────────────────────────────
@@ -149,13 +284,31 @@ export function registerWikiCommand(program: Command): void {
     .description('List orphan entries (no in or out links)')
     .option('--json', 'Output as JSON')
     .action(async (opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, '/api/wiki/orphans');
-      if (opts.json) {
-        console.log(JSON.stringify(data, null, 2));
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, '/api/wiki/orphans');
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        const orphans = (data.orphans ?? []) as Array<{ id: string; type: string; title: string }>;
+        console.log(`Orphans: ${orphans.length}`);
+        for (const e of orphans) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
         return;
       }
-      const orphans = (data.orphans ?? []) as Array<{ id: string; type: string; title: string }>;
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const index = await indexer.get();
+      const graph = await indexer.getGraph();
+      const orphanIds = detectOrphans(graph, index.entries);
+      const orphans = orphanIds.map((id) => index.byId[id]).filter(Boolean);
+      if (opts.json) {
+        console.log(JSON.stringify({ orphans }, null, 2));
+        return;
+      }
       console.log(`Orphans: ${orphans.length}`);
       for (const e of orphans) console.log(`  [${e.type}] ${e.id}  ${e.title}`);
     });
@@ -167,13 +320,29 @@ export function registerWikiCommand(program: Command): void {
     .option('--limit <n>', 'Max entries', '10')
     .option('--json', 'Output as JSON')
     .action(async (opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, `/api/wiki/hubs?limit=${encodeURIComponent(opts.limit)}`);
-      if (opts.json) {
-        console.log(JSON.stringify(data, null, 2));
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, `/api/wiki/hubs?limit=${encodeURIComponent(opts.limit)}`);
+        if (opts.json) {
+          console.log(JSON.stringify(data, null, 2));
+          return;
+        }
+        const hubs = (data.hubs ?? []) as Array<{ id: string; inDegree: number }>;
+        console.log(`Top ${hubs.length} hubs`);
+        for (const h of hubs) console.log(`  ${h.id}  (in: ${h.inDegree})`);
         return;
       }
-      const hubs = (data.hubs ?? []) as Array<{ id: string; inDegree: number }>;
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const graph = await indexer.getGraph();
+      const hubs = detectHubs(graph, Number(opts.limit) || 10);
+      if (opts.json) {
+        console.log(JSON.stringify({ hubs }, null, 2));
+        return;
+      }
       console.log(`Top ${hubs.length} hubs`);
       for (const h of hubs) console.log(`  ${h.id}  (in: ${h.inDegree})`);
     });
@@ -183,9 +352,23 @@ export function registerWikiCommand(program: Command): void {
     .command('backlinks <id>')
     .description('Show entries linking TO this id')
     .action(async (id, _opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}/backlinks`);
-      const backlinks = (data.backlinks ?? []) as Array<{ id: string; title: string }>;
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}/backlinks`);
+        const backlinks = (data.backlinks ?? []) as Array<{ id: string; title: string }>;
+        console.log(`Backlinks for ${id}: ${backlinks.length}`);
+        for (const e of backlinks) console.log(`  ${e.id}  ${e.title}`);
+        return;
+      }
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const graph = await indexer.getGraph();
+      const index = await indexer.get();
+      const blIds = graph.backlinks[id] ?? [];
+      const backlinks = blIds.map((blId) => index.byId[blId]).filter(Boolean);
       console.log(`Backlinks for ${id}: ${backlinks.length}`);
       for (const e of backlinks) console.log(`  ${e.id}  ${e.title}`);
     });
@@ -195,9 +378,23 @@ export function registerWikiCommand(program: Command): void {
     .command('forward <id>')
     .description('Show entries this id links TO')
     .action(async (id, _opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}/forward`);
-      const forward = (data.forward ?? []) as Array<{ id: string; title: string }>;
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const data = await apiGet(base, `/api/wiki/${encodeURIComponent(id)}/forward`);
+        const forward = (data.forward ?? []) as Array<{ id: string; title: string }>;
+        console.log(`Forward links from ${id}: ${forward.length}`);
+        for (const e of forward) console.log(`  ${e.id}  ${e.title}`);
+        return;
+      }
+
+      // Offline mode
+      const { indexer } = getOfflineClients();
+      const graph = await indexer.getGraph();
+      const index = await indexer.get();
+      const fwdIds = graph.forwardLinks[id] ?? [];
+      const forward = fwdIds.map((fwdId) => index.byId[fwdId]).filter(Boolean);
       console.log(`Forward links from ${id}: ${forward.length}`);
       for (const e of forward) console.log(`  ${e.id}  ${e.title}`);
     });
@@ -214,28 +411,64 @@ export function registerWikiCommand(program: Command): void {
     .option('--phase-ref <n>', 'Required when type=phase')
     .option('--frontmatter <json>', 'Extra frontmatter as JSON object')
     .action(async (opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
       const body = opts.bodyFile
         ? readFileSync(opts.bodyFile, 'utf-8')
         : (opts.body ?? '');
-      const payload: Record<string, unknown> = {
-        type: opts.type,
-        slug: opts.slug,
-        title: opts.title,
-        body,
-      };
-      if (opts.phaseRef !== undefined) payload.phaseRef = Number(opts.phaseRef);
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const payload: Record<string, unknown> = {
+          type: opts.type,
+          slug: opts.slug,
+          title: opts.title,
+          body,
+        };
+        if (opts.phaseRef !== undefined) payload.phaseRef = Number(opts.phaseRef);
+        if (opts.frontmatter) {
+          try {
+            payload.frontmatter = JSON.parse(opts.frontmatter);
+          } catch {
+            console.error('--frontmatter must be valid JSON');
+            process.exit(1);
+          }
+        }
+        const data = await apiJson(base, 'POST', '/api/wiki', payload);
+        console.log(`Created: ${data.entry?.id ?? '(unknown)'}`);
+        if (data.entry?.source?.path) console.log(`  Path: ${data.entry.source.path}`);
+        return;
+      }
+
+      // Offline mode
+      const { writer } = getOfflineClients();
+      let frontmatter: Record<string, unknown> | undefined;
       if (opts.frontmatter) {
         try {
-          payload.frontmatter = JSON.parse(opts.frontmatter);
+          frontmatter = JSON.parse(opts.frontmatter);
         } catch {
           console.error('--frontmatter must be valid JSON');
           process.exit(1);
         }
       }
-      const data = await apiJson(base, 'POST', '/api/wiki', payload);
-      console.log(`Created: ${data.entry?.id ?? '(unknown)'}`);
-      if (data.entry?.source?.path) console.log(`  Path: ${data.entry.source.path}`);
+      try {
+        const entry = await writer.create({
+          type: opts.type,
+          slug: opts.slug,
+          title: opts.title,
+          body,
+          phaseRef: opts.phaseRef !== undefined ? Number(opts.phaseRef) : undefined,
+          frontmatter,
+        });
+        console.log(`Created: ${entry.id}`);
+        if (entry.source?.path) console.log(`  Path: ${entry.source.path}`);
+      } catch (err) {
+        if (err instanceof WikiWriteError) {
+          console.error(`${err.code}: ${err.message}`);
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   // ── update ────────────────────────────────────────────────────────────
@@ -248,22 +481,54 @@ export function registerWikiCommand(program: Command): void {
     .option('--frontmatter <json>', 'Frontmatter overrides as JSON object')
     .option('--expected-hash <hash>', 'sha256 for optimistic concurrency')
     .action(async (id, opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      const payload: Record<string, unknown> = {};
-      if (opts.title !== undefined) payload.title = opts.title;
-      if (opts.bodyFile) payload.body = readFileSync(opts.bodyFile, 'utf-8');
-      else if (opts.body !== undefined) payload.body = opts.body;
-      if (opts.expectedHash) payload.expectedHash = opts.expectedHash;
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        const payload: Record<string, unknown> = {};
+        if (opts.title !== undefined) payload.title = opts.title;
+        if (opts.bodyFile) payload.body = readFileSync(opts.bodyFile, 'utf-8');
+        else if (opts.body !== undefined) payload.body = opts.body;
+        if (opts.expectedHash) payload.expectedHash = opts.expectedHash;
+        if (opts.frontmatter) {
+          try {
+            payload.frontmatter = JSON.parse(opts.frontmatter);
+          } catch {
+            console.error('--frontmatter must be valid JSON');
+            process.exit(1);
+          }
+        }
+        const data = await apiJson(base, 'PUT', `/api/wiki/${encodeURIComponent(id)}`, payload);
+        console.log(`Updated: ${data.entry?.id ?? id}`);
+        return;
+      }
+
+      // Offline mode
+      const { writer } = getOfflineClients();
+      let frontmatter: Record<string, unknown> | undefined;
       if (opts.frontmatter) {
         try {
-          payload.frontmatter = JSON.parse(opts.frontmatter);
+          frontmatter = JSON.parse(opts.frontmatter);
         } catch {
           console.error('--frontmatter must be valid JSON');
           process.exit(1);
         }
       }
-      const data = await apiJson(base, 'PUT', `/api/wiki/${encodeURIComponent(id)}`, payload);
-      console.log(`Updated: ${data.entry?.id ?? id}`);
+      try {
+        const entry = await writer.update(id, {
+          title: opts.title,
+          body: opts.bodyFile ? readFileSync(opts.bodyFile, 'utf-8') : opts.body,
+          expectedHash: opts.expectedHash,
+          frontmatter,
+        });
+        console.log(`Updated: ${entry.id}`);
+      } catch (err) {
+        if (err instanceof WikiWriteError) {
+          console.error(`${err.code}: ${err.message}`);
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   // ── delete ────────────────────────────────────────────────────────────
@@ -272,13 +537,31 @@ export function registerWikiCommand(program: Command): void {
     .alias('rm')
     .description('Delete a markdown wiki entry')
     .action(async (id, _opts, cmd) => {
-      const base = cmd.parent!.opts().base as string;
-      await apiJson(base, 'DELETE', `/api/wiki/${encodeURIComponent(id)}`, null);
-      console.log(`Deleted: ${id}`);
+      const live = cmd.parent!.opts().live as boolean | undefined;
+
+      if (live) {
+        const base = cmd.parent!.opts().base as string;
+        await apiJson(base, 'DELETE', `/api/wiki/${encodeURIComponent(id)}`, null);
+        console.log(`Deleted: ${id}`);
+        return;
+      }
+
+      // Offline mode
+      const { writer } = getOfflineClients();
+      try {
+        await writer.remove(id);
+        console.log(`Deleted: ${id}`);
+      } catch (err) {
+        if (err instanceof WikiWriteError) {
+          console.error(`${err.code}: ${err.message}`);
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 }
 
-// ── HTTP helpers ────────────────────────────────────────────────────────
+// ── HTTP helpers (used in --live mode) ─────────────────────────────────
 
 async function apiGet(base: string, path: string): Promise<any> {
   const res = await fetchOrExit(`${base}${path}`);

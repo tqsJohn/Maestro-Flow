@@ -41,6 +41,7 @@ Context files resolved from `.workflow/phases/{NN}-{slug}/` (or `--dir` path):
 - index.json (phase metadata)
 - spec-ref from index.json (if set)
 - codebase/doc-index.json (if exists)
+- Wiki prior knowledge via `maestro wiki search` (offline, graceful degradation)
 </context>
 
 <execution>
@@ -55,6 +56,37 @@ If exit code is 1, the command prints warnings about teammates active on the sam
 If exit code is 0, or `maestro team preflight` is unavailable (e.g., team mode not enabled), continue normally.
 
 Follow '~/.maestro/workflows/plan.md' completely.
+
+### Wiki Knowledge Search (P1 addition)
+
+During P1 Context Collection, after loading context files and before parallel exploration (step 5), search the wiki for prior knowledge related to the phase:
+
+```
+// Extract search keywords from phase goal/title in index.json
+phase_keywords = extract key terms from index.json goal + title (2-5 terms)
+
+// Run wiki search (offline mode, no --live flag)
+wiki_result = Bash("maestro wiki search ${phase_keywords} --json 2>/dev/null")
+
+IF wiki_result exit code != 0 OR wiki_result is empty OR parse fails:
+  display "W003: Wiki search unavailable, continuing without prior knowledge"
+  wiki_context = ""
+ELSE:
+  entries = JSON.parse(wiki_result).entries (limit to first 10)
+  IF entries.length == 0:
+    wiki_context = "## Wiki Prior Knowledge\nNo related wiki entries found."
+  ELSE:
+    wiki_context = "## Wiki Prior Knowledge\n"
+    FOR each entry in entries:
+      wiki_context += "- [${entry.type}] ${entry.id}: ${entry.title}"
+      IF entry.summary:
+        wiki_context += " — ${entry.summary}"
+      wiki_context += "\n"
+
+// Inject wiki_context into exploration context alongside other P1 outputs
+```
+
+This step uses offline mode by default (no `--live` flag) so it works without the dashboard running. The structured `## Wiki Prior Knowledge` block is passed to downstream planning stages as additional context.
 
 **Report format on completion:**
 
@@ -83,6 +115,7 @@ Note: If this was a --gaps plan, after execute run Skill({ skill: "maestro-verif
 | E003 | error | --gaps requires verification.json to exist | Check arguments format, re-run with correct input |
 | W001 | warning | Exploration agent returned incomplete results | Retry exploration or proceed with available context |
 | W002 | warning | Plan-checker found minor issues, continuing | Review plan-checker feedback, adjust plan if needed |
+| W003 | warning | Wiki search unavailable or returned no results | Continue without prior knowledge context |
 </error_codes>
 
 <success_criteria>

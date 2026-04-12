@@ -5,7 +5,8 @@
   "type": "module",
   "imports": {
     "#maestro-dashboard/agents/*": "./dashboard/dist-server/dashboard/src/server/agents/*",
-    "#maestro-dashboard/shared/*": "./dashboard/dist-server/dashboard/src/shared/*"
+    "#maestro-dashboard/shared/*": "./dashboard/dist-server/dashboard/src/shared/*",
+    "#maestro-dashboard/wiki/*": "./dashboard/dist-server/dashboard/src/server/wiki/*"
   },
   "bin": {
     "maestro": "bin/maestro.js",

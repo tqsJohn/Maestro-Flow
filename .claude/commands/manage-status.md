@@ -66,4 +66,5 @@ Follow '~/.maestro/workflows/status.md' completely.
 - [ ] Dashboard rendered with progress bars and status table
 - [ ] Active work section shows current phase details
 - [ ] Next steps suggested based on current state analysis
+- [ ] Wiki health score displayed (or graceful unavailable message)
 </success_criteria>

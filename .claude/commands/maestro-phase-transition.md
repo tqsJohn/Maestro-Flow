@@ -52,6 +52,7 @@ Follow '~/.maestro/workflows/phase-transition.md' completely.
 | W002 | UAT test failures exist (quality-test) — review recommended before transition |
 | W003 | Code review verdict is BLOCK — Skill({ skill: "quality-review" }) findings should be fixed first |
 | W004 | Code review not yet run — Skill({ skill: "quality-review" }) recommended before transition |
+| W005 | Orphan specs found in wiki — consider linking or removing before transition |
 </error_codes>
 
 <success_criteria>
@@ -59,6 +60,7 @@ Follow '~/.maestro/workflows/phase-transition.md' completely.
 - [ ] Next phase directory created (if not already existing)
 - [ ] Next phase index.json initialized with status = "pending"
 - [ ] state.json current_phase updated to next phase number
+- [ ] Wiki health score reported — warnings emitted if orphan specs found
 - [ ] Learnings extracted and appended to specs/learnings.md
 - [ ] project.md requirements moved Active → Validated for completed phase
 - [ ] roadmap.md phase marked as ✅ COMPLETED

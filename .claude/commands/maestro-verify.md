@@ -67,12 +67,15 @@ Gaps found → maestro-plan --gaps → maestro-execute → maestro-verify (re-ru
 | E003 | error | No execution results found (missing summaries) | Check arguments format, re-run with correct input |
 | W001 | warning | Test coverage below configured threshold | Review coverage gaps, run quality-test-gen |
 | W002 | warning | Anti-pattern blockers found in modified files | Fix anti-pattern blockers before proceeding |
+| W003 | warning | Wiki health below threshold (score < 80) | Review broken links and orphan specs |
+| W004 | warning | Wiki health check unavailable | Skipped — wiki may not be initialized |
 </error_codes>
 
 <success_criteria>
 - [ ] Must-haves established (from success_criteria, convergence.criteria, or derived)
 - [ ] All truths verified with status and evidence (Layer 1)
 - [ ] All artifacts checked at L1 (exists), L2 (substantive), L3 (wired) (Layer 2)
+- [ ] Wiki health score reported (Layer 2.5) — warnings emitted if score < 80 or orphan specs found
 - [ ] All key links verified with evidence (Layer 3)
 - [ ] Anti-patterns scanned and categorized (unless skipped)
 - [ ] Nyquist test coverage assessed with gap classification (unless skipped)
