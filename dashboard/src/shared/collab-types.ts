@@ -51,3 +51,14 @@ export const COLLAB_STATUS_COLORS: Record<'online' | 'offline' | 'away', string>
   offline: '#9ca3af',
   away: '#eab308',
 } as const;
+
+/** Color per activity action type — shared across components */
+export const COLLAB_ACTION_COLORS: Record<string, string> = {
+  join: '#22c55e',
+  phase_change: '#a78bfa',
+  task_update: '#34d399',
+  message: '#60a5fa',
+  discussion: '#60a5fa',
+  report: '#f59e0b',
+  sync: '#06b6d4',
+} as const;

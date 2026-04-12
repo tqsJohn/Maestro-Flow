@@ -165,6 +165,19 @@ export class StateManager {
       }
       return;
     }
+
+    // collab/members/*.json — member profile updated
+    const collabMemberMatch = rel.match(/^collab\/members\/[^/]+\.json$/);
+    if (collabMemberMatch) {
+      this.eventBus.emit(SSE_EVENT_TYPES.COLLAB_MEMBERS_UPDATED, { at: Date.now(), path: filePath });
+      return;
+    }
+
+    // collab/activity.jsonl — activity log updated
+    if (rel === 'collab/activity.jsonl') {
+      this.eventBus.emit(SSE_EVENT_TYPES.COLLAB_ACTIVITY, { at: Date.now(), path: filePath });
+      return;
+    }
   }
 
   // -------------------------------------------------------------------------

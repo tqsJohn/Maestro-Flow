@@ -1,11 +1,21 @@
 import type { WorkflowHookRegistry } from '../hooks/workflow-hooks.js';
 
+export interface SpecInjectionConfig {
+  /** Override default agent-type → spec categories mapping */
+  mapping?: Record<string, { categories: string[]; extras?: string[] }>;
+  /** Files to always inject regardless of agent type */
+  always?: string[];
+  /** Max chars before truncation kicks in */
+  maxContentLength?: number;
+}
+
 export interface MaestroConfig {
   version: string;
   extensions: ExtensionConfig[];
   mcp: McpConfig;
   workflows: WorkflowConfig;
   hooks?: HooksConfig;
+  specInjection?: SpecInjectionConfig;
 }
 
 export interface ExtensionConfig {

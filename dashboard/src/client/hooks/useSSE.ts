@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useBoardStore } from '@/client/store/board-store.js';
 import { useWikiStore } from '@/client/store/wiki-store.js';
+import { useCollabStore } from '@/client/store/collab-store.js';
 import { SSE_ENDPOINT, SSE_EVENT_TYPES } from '@/shared/constants.js';
 import type { BoardState, PhaseCard } from '@/shared/types.js';
 
@@ -80,6 +81,14 @@ export function useSSE(): void {
       es.addEventListener(SSE_EVENT_TYPES.WIKI_INVALIDATED, () => {
         void useWikiStore.getState().fetchEntries();
         void useWikiStore.getState().fetchHealth();
+      });
+
+      // Collab — members updated or new activity
+      es.addEventListener(SSE_EVENT_TYPES.COLLAB_MEMBERS_UPDATED, () => {
+        void useCollabStore.getState().fetchMembers();
+      });
+      es.addEventListener(SSE_EVENT_TYPES.COLLAB_ACTIVITY, () => {
+        void useCollabStore.getState().fetchActivity();
       });
 
       es.onerror = () => {

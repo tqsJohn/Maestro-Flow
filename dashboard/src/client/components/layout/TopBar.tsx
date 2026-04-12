@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/client/store/settings-store.js';
 import { useI18n } from '@/client/i18n/index.js';
 import { ViewSwitcher } from '@/client/components/common/ViewSwitcher.js';
 import { WorkspaceSwitcher } from '@/client/components/common/WorkspaceSwitcher.js';
+import { OnlineAvatarGroup } from '@/client/components/collab/OnlineAvatarGroup.js';
 
 // ---------------------------------------------------------------------------
 // TopBar — project name, milestone badge, current phase, connection dot
@@ -72,6 +73,8 @@ export function TopBar() {
           <span className="text-text-tertiary">/</span>
           <span className="tabular-nums">{locale === 'en' ? t('language_switcher.zh') : t('language_switcher.en')}</span>
         </button>
+
+        {project && <OnlineAvatarGroup />}
 
         {project && (
           <span className="text-[length:var(--font-size-sm)] text-text-secondary transition-opacity duration-[var(--duration-normal)] ease-[var(--ease-in-out)] hidden sm:inline">

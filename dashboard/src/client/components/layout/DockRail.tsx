@@ -10,6 +10,7 @@ import Library from 'lucide-react/dist/esm/icons/library.js';
 import Users from 'lucide-react/dist/esm/icons/users.js';
 import ListChecks from 'lucide-react/dist/esm/icons/list-checks.js';
 import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import UsersRound from 'lucide-react/dist/esm/icons/users-round.js';
 import PanelLeft from 'lucide-react/dist/esm/icons/panel-left.js';
 import Plus from 'lucide-react/dist/esm/icons/plus.js';
 import { useBoardStore } from '@/client/store/board-store.js';
@@ -30,7 +31,7 @@ interface DockNavItem {
   labelKey: string;
   tooltipKey: string;
   path: string;
-  icon: 'kanban' | 'artifacts' | 'chat' | 'workflow' | 'mcp' | 'specs' | 'wiki' | 'teams' | 'requirement' | 'supervisor';
+  icon: 'kanban' | 'artifacts' | 'chat' | 'workflow' | 'mcp' | 'specs' | 'wiki' | 'teams' | 'requirement' | 'supervisor' | 'collab';
   shortcut?: string;
 }
 
@@ -43,6 +44,7 @@ const NAV_ITEMS: DockNavItem[] = [
   { labelKey: 'nav.specs', tooltipKey: 'dock.specs_tooltip', path: '/specs', icon: 'specs', shortcut: 'S' },
   { labelKey: 'nav.wiki', tooltipKey: 'dock.wiki_tooltip', path: '/wiki', icon: 'wiki', shortcut: 'D' },
   { labelKey: 'nav.teams', tooltipKey: 'dock.teams_tooltip', path: '/teams', icon: 'teams', shortcut: 'T' },
+  { labelKey: 'nav.collab', tooltipKey: 'dock.collab_tooltip', path: '/collab', icon: 'collab', shortcut: 'L' },
   { labelKey: 'nav.requirement', tooltipKey: 'dock.requirement_tooltip', path: '/requirement', icon: 'requirement', shortcut: 'R' },
   { labelKey: 'nav.supervisor', tooltipKey: 'dock.supervisor_tooltip', path: '/supervisor', icon: 'supervisor', shortcut: 'V' },
 ];
@@ -349,6 +351,7 @@ const NAV_ICON_MAP = {
   teams: Users,
   requirement: ListChecks,
   supervisor: Activity,
+  collab: UsersRound,
 } as const;
 
 function NavIcon({ icon }: { icon: DockNavItem['icon'] }) {

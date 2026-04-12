@@ -50,6 +50,10 @@ const SupervisorPage = lazy(() =>
   import('@/client/pages/SupervisorPage.js').then((m) => ({ default: m.SupervisorPage })),
 );
 
+const CollabPage = lazy(() =>
+  import('@/client/pages/CollabPage.js').then((m) => ({ default: m.CollabPage })),
+);
+
 // ---------------------------------------------------------------------------
 // App — root component with React Router v6 layout routes
 // ---------------------------------------------------------------------------
@@ -153,6 +157,14 @@ export function App() {
             element={
               <Suspense fallback={<LazyFallback />}>
                 <SupervisorPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="collab"
+            element={
+              <Suspense fallback={<LazyFallback />}>
+                <CollabPage />
               </Suspense>
             }
           />

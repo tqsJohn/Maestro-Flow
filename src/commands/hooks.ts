@@ -9,6 +9,8 @@ import { evaluatePromptGuard } from '../hooks/guards/prompt-guard.js';
 import { evaluateContext } from '../hooks/context-monitor.js';
 import { evaluateDelegateNotifications } from '../hooks/delegate-monitor.js';
 import { runTeamMonitor } from '../hooks/team-monitor.js';
+import { evaluateSpecInjection } from '../hooks/spec-injector.js';
+import { evaluateSessionContext } from '../hooks/session-context.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +26,7 @@ interface ClaudeSettings {
     PreToolUse?: HookGroup[];
     PostToolUse?: HookGroup[];
     UserPromptSubmit?: HookGroup[];
+    Notification?: HookGroup[];
     [key: string]: unknown;
   };
   statusLine?: { type: string; command: string };
@@ -35,7 +38,7 @@ interface ClaudeSettings {
 // ---------------------------------------------------------------------------
 
 interface HookDef {
-  event: 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit';
+  event: 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Notification';
   matcher?: string;
   /** Minimum level required to install this hook */
   level: HookLevel;
@@ -54,18 +57,19 @@ export const HOOK_LEVELS: readonly HookLevel[] = ['none', 'minimal', 'standard',
 
 export const HOOK_LEVEL_DESCRIPTIONS: Record<HookLevel, string> = {
   none: 'No hooks',
-  minimal: 'Statusline + context monitor',
-  standard: 'Monitoring + delegate/team/telemetry',
-  full: 'All hooks including guards (PreToolUse, UserPromptSubmit)',
+  minimal: 'Statusline + context-monitor + spec-injector',
+  standard: '+ delegate/team/telemetry + session-context',
+  full: '+ workflow-guard (PreToolUse)',
 };
 
 const HOOK_DEFS: Record<string, HookDef> = {
   'context-monitor': { event: 'PostToolUse', level: 'minimal' },
+  'spec-injector': { event: 'PreToolUse', matcher: 'Agent', level: 'minimal' },
   'delegate-monitor': { event: 'PostToolUse', level: 'standard' },
   'team-monitor': { event: 'PostToolUse', level: 'standard' },
   'telemetry': { event: 'PostToolUse', level: 'standard' },
+  'session-context': { event: 'Notification', level: 'standard' },
   'workflow-guard': { event: 'PreToolUse', matcher: 'Bash|Write|Edit', level: 'full' },
-  'prompt-guard': { event: 'UserPromptSubmit', level: 'full' },
 };
 
 /** Numeric ordering for level comparison */
@@ -97,7 +101,7 @@ const HOOK_MARKER = 'maestro';
 
 function removeMaestroHooks(settings: ClaudeSettings): void {
   if (!settings.hooks) return;
-  for (const eventKey of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit'] as const) {
+  for (const eventKey of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification'] as const) {
     const groups = settings.hooks[eventKey] as HookGroup[] | undefined;
     if (!groups) continue;
     for (const group of groups) {
@@ -115,7 +119,7 @@ function removeMaestroHooks(settings: ClaudeSettings): void {
 
 function findHookInSettings(settings: ClaudeSettings, hookName: string): boolean {
   if (!settings.hooks) return false;
-  for (const eventKey of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit'] as const) {
+  for (const eventKey of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification'] as const) {
     const groups = settings.hooks[eventKey] as HookGroup[] | undefined;
     if (!groups) continue;
     if (groups.some((g) => g.hooks.some((h) => h.command.includes(`hooks run ${hookName}`)))) {
@@ -268,6 +272,48 @@ const HOOK_RUNNERS: Record<string, HookRunner> = {
     const raw = await readStdin();
     const data = JSON.parse(raw);
     const result = evaluateDelegateNotifications(data);
+    if (result) {
+      process.stdout.write(JSON.stringify(result));
+    }
+  },
+
+  'spec-injector': async () => {
+    const config = loadHooksConfig();
+    if (config.toggles['specInjector'] === false) return;
+
+    const raw = await readStdin();
+    const data = JSON.parse(raw);
+    const toolInput = data.tool_input ?? {};
+    const agentType: string = toolInput.subagent_type ?? '';
+    if (!agentType) return;
+
+    const cwd = data.cwd ?? process.cwd();
+    const sessionId: string = data.session_id ?? '';
+
+    const result = evaluateSpecInjection(agentType, cwd, sessionId);
+    if (result.inject && result.content) {
+      const originalPrompt: string = toolInput.prompt ?? '';
+      const augmentedPrompt = `${result.content}\n\n---\n\n${originalPrompt}`;
+
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          updatedInput: {
+            ...toolInput,
+            prompt: augmentedPrompt,
+          },
+        },
+      }));
+    }
+  },
+
+  'session-context': async () => {
+    const config = loadHooksConfig();
+    if (config.toggles['sessionContext'] === false) return;
+
+    const raw = await readStdin();
+    const data = raw ? JSON.parse(raw) : {};
+    const result = evaluateSessionContext(data);
     if (result) {
       process.stdout.write(JSON.stringify(result));
     }
@@ -449,6 +495,8 @@ export function registerHooksCommand(program: Command): void {
           : name === 'context-monitor' ? 'contextMonitor'
           : name === 'delegate-monitor' ? 'delegateMonitor'
           : name === 'team-monitor' ? 'teamMonitor'
+          : name === 'spec-injector' ? 'specInjector'
+          : name === 'session-context' ? 'sessionContext'
           : name;
         const enabled = config.toggles[toggleKey] !== false;
         const matcher = def.matcher ? ` [${def.matcher}]` : '';
