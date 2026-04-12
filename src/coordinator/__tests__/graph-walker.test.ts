@@ -136,6 +136,7 @@ function makeState(graphId: string, entry: string, overrides?: Partial<WalkerSta
     updated_at: new Date().toISOString(),
     tool: 'gemini',
     auto_mode: true,
+    step_mode: false,
     intent: 'test',
     ...overrides,
   };
@@ -300,7 +301,7 @@ describe('GraphWalker', () => {
       assert.strictEqual(result.status, 'failed');
     });
 
-    it('pauses at waiting_gate when condition is false and wait=true', async () => {
+    it('pauses at waiting_gate when condition is false and wait=true (manual mode)', async () => {
       const graph = makeGraph('gated', {
         check: {
           type: 'gate',
@@ -313,12 +314,34 @@ describe('GraphWalker', () => {
         fail_term: { type: 'terminal', status: 'failure' },
       });
       const walker = makeWalker(createMockExecutor(), { gated: graph });
-      const state = makeState('gated', 'check');
+      const state = makeState('gated', 'check', { auto_mode: false });
       state.context.var['ready'] = false;
 
       const result = await walker.walkGraph(state, graph);
       assert.strictEqual(result.status, 'waiting_gate');
       assert.strictEqual(result.current_node, 'check');
+    });
+
+    it('auto mode bypasses waiting_gate and routes to on_fail when wait=true', async () => {
+      const graph = makeGraph('gated', {
+        check: {
+          type: 'gate',
+          condition: 'var.ready == true',
+          on_pass: 'ok',
+          on_fail: 'fail_term',
+          wait: true,
+        },
+        ok: { type: 'terminal', status: 'success' },
+        fail_term: { type: 'terminal', status: 'failure' },
+      });
+      const walker = makeWalker(createMockExecutor(), { gated: graph });
+      const state = makeState('gated', 'check', { auto_mode: true });
+      state.context.var['ready'] = false;
+
+      const result = await walker.walkGraph(state, graph);
+      assert.strictEqual(result.status, 'failed');
+      const gateEntry = result.history.find((h) => h.node_id === 'check');
+      assert.strictEqual(gateEntry?.outcome, 'failure');
     });
   });
 
