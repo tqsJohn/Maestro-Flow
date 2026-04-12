@@ -56,62 +56,85 @@ const projectState = {
 
 ### Step 3: Classify Intent & Select Chain
 
-#### 3a: Detect task type
+#### 3a: Exact-match keywords (fast path)
 
 If `forcedChain` is set, validate and jump to **3c**.
 
 ```javascript
-function detectTaskType(text) {
-  const patterns = [
-    ['state_continue',    /^(continue|next|go|继续|下一步)$/i],
-    ['status',            /^(status|状态|dashboard)$/i],
-    ['spec_generate',     /spec.*(generat|creat|build)|PRD|产品.*规格/i],
-    ['brainstorm',        /brainstorm|ideate|头脑风暴|发散/i],
-    ['analyze',           /analy[sz]e|feasib|evaluat|assess|discuss|分析|评估|讨论/i],
-    ['ui_design',         /ui.*design|design.*ui|prototype|设计.*原型|UI.*风格/i],
-    ['init',              /init|setup.*project|初始化|新项目/i],
-    ['plan',              /plan(?!.*gap)|break.*down|规划|分解/i],
-    ['execute',           /execute|implement|build|develop|code|实现|开发/i],
-    ['verify',            /verif[iy]|validate.*result|验证|校验/i],
-    ['review',            /\breview.*code|code.*review|代码.*审查/i],
-    ['retrospective',     /retrospect|retro|复盘|post.?mortem|lessons.*learn|after.?action/i],
-    ['learn',             /^learn\b|capture.*insight|capture.*learning|insight.*log|eureka|学习.*记录|记录.*洞察/i],
-    ['test_gen',          /test.*gen|generat.*test|add.*test|写测试/i],
-    ['test',              /\btest|uat|测试|验收/i],
-    ['debug',             /debug|diagnos|troubleshoot|fix.*bug|调试|排查/i],
-    ['integration_test',  /integrat.*test|e2e|集成测试/i],
-    ['refactor',          /refactor|tech.*debt|重构|技术债/i],
-    ['sync',              /sync.*doc|refresh.*doc|同步/i],
-    ['phase_transition',  /phase.*transit|next.*phase|推进|切换.*阶段/i],
-    ['phase_add',         /phase.*add|add.*phase|添加.*阶段/i],
-    ['milestone_audit',   /milestone.*audit|里程碑.*审计/i],
-    ['milestone_complete',/milestone.*compl|完成.*里程碑/i],
-    ['issue_analyze',     /analyze.*issue|issue.*root.*cause/i],
-    ['issue_plan',        /plan.*issue|issue.*solution/i],
-    ['issue_execute',     /execute.*issue|run.*issue/i],
-    ['issue',             /issue|问题|缺陷|discover.*issue/i],
-    ['codebase_rebuild',  /codebase.*rebuild|重建.*文档/i],
-    ['codebase_refresh',  /codebase.*refresh|刷新.*文档/i],
-    ['spec_setup',        /spec.*setup|规范.*初始化/i],
-    ['spec_add',          /spec.*add|添加.*规范/i],
-    ['spec_load',         /spec.*load|加载.*规范/i],
-    ['spec_map',          /spec.*map|规范.*映射/i],
-    ['memory_capture',    /memory.*captur|save.*memory|compact/i],
-    ['memory',            /memory|manage.*mem|记忆/i],
-    ['team_lifecycle',    /team.*lifecycle|团队.*生命周期/i],
-    ['team_coordinate',   /team.*coordinat|团队.*协调/i],
-    ['team_qa',           /team.*(qa|quality)|团队.*质量/i],
-    ['team_test',         /team.*test|团队.*测试/i],
-    ['team_review',       /team.*review|团队.*评审/i],
-    ['team_tech_debt',    /team.*tech.*debt|团队.*技术债/i],
-    ['quick',             /quick|small.*task|ad.?hoc|简单|快速/i],
-  ];
-  for (const [type, pat] of patterns) { if (pat.test(text)) return type; }
-  return 'quick'; // fallback
+const exactMatch = {
+  'continue': 'state_continue', 'next': 'state_continue', 'go': 'state_continue',
+  '继续': 'state_continue', '下一步': 'state_continue',
+  'status': 'status', '状态': 'status', 'dashboard': 'status',
+};
+const normalized = intent.toLowerCase().trim();
+if (exactMatch[normalized]) {
+  taskType = exactMatch[normalized];
+  // → skip to 3c
 }
 ```
 
-Compute clarity (3=verb+object+scope, 2=verb+object, 1=vague, 0=empty).
+#### 3a-2: Structured intent extraction (LLM-native)
+
+Instead of regex, extract a structured intent tuple using LLM semantic understanding:
+
+```json
+{
+  "action":    "<create|fix|analyze|plan|execute|verify|review|test|debug|refactor|explore|manage|transition|continue|sync|learn|retrospect>",
+  "object":    "<feature|bug|issue|code|test|spec|phase|milestone|doc|performance|security|ui|memory|codebase|team|config>",
+  "scope":     "<module/file/area or null>",
+  "issue_id":  "<ISS-XXXXXXXX-NNN if mentioned, else null>",
+  "phase_ref": "<integer if mentioned, else null>",
+  "urgency":   "<low|normal|high>"
+}
+```
+
+**Key disambiguation**: "问题"/"issue"/"problem" as something broken → `object: "bug"` (routes to debug). As a tracked item (with ISS-ID or management context) → `object: "issue"` (routes to issue management). When ambiguous, prefer `"bug"`.
+
+#### 3a-3: Route via action × object matrix
+
+```javascript
+function routeIntent(intent, projectState) {
+  const { action, object, issue_id } = intent;
+
+  // Hard signal: explicit issue ID → issue pipeline
+  if (issue_id) {
+    const issueRoutes = { 'analyze': 'issue_analyze', 'plan': 'issue_plan', 'fix': 'issue_execute', 'execute': 'issue_execute', 'debug': 'issue_analyze', 'manage': 'issue' };
+    return issueRoutes[action] || 'issue';
+  }
+
+  // Action × Object matrix
+  const matrix = {
+    'fix':       { 'bug': 'debug', 'issue': 'issue', 'code': 'debug', 'performance': 'debug', 'security': 'debug', '_default': 'debug' },
+    'create':    { 'feature': 'quick', 'issue': 'issue', 'test': 'test_gen', 'spec': 'spec_generate', 'ui': 'ui_design', 'config': 'init', 'phase': 'phase_add', '_default': 'quick' },
+    'analyze':   { 'bug': 'analyze', 'issue': 'issue_analyze', 'code': 'analyze', 'codebase': 'spec_map', '_default': 'analyze' },
+    'explore':   { 'issue': 'issue_discover', 'feature': 'brainstorm', 'ui': 'ui_design', '_default': 'brainstorm' },
+    'plan':      { 'issue': 'issue_plan', 'spec': 'spec_generate', '_default': 'plan' },
+    'execute':   { 'issue': 'issue_execute', '_default': 'execute' },
+    'verify':    { '_default': 'verify' },
+    'review':    { '_default': 'review' },
+    'test':      { '_default': 'test' },
+    'debug':     { '_default': 'debug' },
+    'refactor':  { '_default': 'refactor' },
+    'manage':    { 'issue': 'issue', 'milestone': 'milestone_audit', 'phase': 'phase_transition', 'memory': 'memory', 'doc': 'sync', 'codebase': 'codebase_refresh', 'team': 'team_coordinate', '_default': 'status' },
+    'transition':{ 'phase': 'phase_transition', 'milestone': 'milestone_complete', '_default': 'phase_transition' },
+    'continue':  { '_default': 'state_continue' },
+    'sync':      { '_default': 'sync' },
+    'learn':     { '_default': 'learn' },
+    'retrospect':{ '_default': 'retrospective' },
+  };
+
+  // Team skill detection
+  if (object === 'team') {
+    const teamRoutes = { 'review': 'team_review', 'test': 'team_test', 'debug': 'team_qa', 'refactor': 'team_tech_debt', 'execute': 'team_lifecycle', '_default': 'team_coordinate' };
+    return teamRoutes[action] || 'team_coordinate';
+  }
+
+  const actionMap = matrix[action] || matrix['fix'];
+  return actionMap[object] || actionMap['_default'] || 'quick';
+}
+```
+
+Compute clarity (3=action+object+scope, 2=action+object, 1=action only, 0=empty).
 If clarity < 2 and not autoYes: clarify via AskUserQuestion (max 2 rounds).
 
 #### 3b: State-based routing (task_type == `state_continue`)
@@ -195,6 +218,7 @@ const chainMap = {
   'memory_capture':     [{ cmd: 'manage-memory-capture', args: '"{description}"' }],
   'memory':             [{ cmd: 'manage-memory', args: '"{description}"' }],
   'issue':              [{ cmd: 'manage-issue', args: '"{description}"' }],
+  'issue_discover':     [{ cmd: 'manage-issue-discover', args: '"{description}"' }],
   'issue_analyze':      [{ cmd: 'manage-issue-analyze', args: '"{description}"' }],
   'issue_plan':         [{ cmd: 'manage-issue-plan', args: '"{description}"' }],
   'issue_execute':      [{ cmd: 'manage-issue-execute', args: '"{description}"' }],
@@ -217,10 +241,17 @@ const chainMap = {
   'roadmap-driven': [{ cmd: 'maestro-init' }, { cmd: 'maestro-roadmap', args: '"{description}"' }, { cmd: 'maestro-plan', args: '{phase}' }, { cmd: 'maestro-execute', args: '{phase}' }, { cmd: 'maestro-verify', args: '{phase}' }],
   'next-milestone': [{ cmd: 'maestro-roadmap', args: '"{description}"' }, { cmd: 'maestro-plan', args: '{phase}' }, { cmd: 'maestro-execute', args: '{phase}' }, { cmd: 'maestro-verify', args: '{phase}' }],
   'analyze-plan-execute': [{ cmd: 'maestro-analyze', args: '"{description}" -q' }, { cmd: 'maestro-plan', args: '--dir {scratch_dir}' }, { cmd: 'maestro-execute', args: '--dir {scratch_dir}' }],
+  // Issue lifecycle chains (with quality gates)
+  'issue-full': [{ cmd: 'manage-issue-analyze', args: '{issue_id}' }, { cmd: 'manage-issue-plan', args: '{issue_id}' }, { cmd: 'manage-issue-execute', args: '{issue_id}' }, { cmd: 'quality-review', args: '--scope {affected_files}' }, { cmd: 'manage-issue', args: 'close {issue_id} --resolution fixed' }],
+  'issue-quick': [{ cmd: 'manage-issue-plan', args: '{issue_id}' }, { cmd: 'manage-issue-execute', args: '{issue_id}' }, { cmd: 'manage-issue', args: 'close {issue_id} --resolution fixed' }],
 };
 
-// Aliases
-const taskToChain = { 'spec_generate': 'spec-driven', 'brainstorm': 'brainstorm-driven' };
+// Aliases: task type → named multi-step chain
+const taskToChain = {
+  'spec_generate': 'spec-driven',
+  'brainstorm': 'brainstorm-driven',
+  'issue_execute': 'issue-full',    // issue execute always gets review gate
+};
 ```
 
 **Resolution order:**
@@ -229,16 +260,27 @@ const taskToChain = { 'spec_generate': 'spec-driven', 'brainstorm': 'brainstorm-
 3. `taskToChain[taskType]` → named chain
 4. `chainMap[taskType]` → direct lookup
 
-#### 3d: Resolve phase number
+#### 3d: Resolve phase number and issue ID
 
 ```javascript
 function resolvePhase() {
+  // From structured extraction
+  if (intentAnalysis.phase_ref) return intentAnalysis.phase_ref;
+  // Fallback regex
   const m = intent.match(/phase\s*(\d+)|^(\d+)$/);
   if (m) return m[1] || m[2];
   if (projectState.initialized) return projectState.current_phase;
   return null;
 }
+
+function resolveIssueId() {
+  if (intentAnalysis.issue_id) return intentAnalysis.issue_id;
+  const m = intent.match(/ISS-[\w]+-\d+/i);
+  return m ? m[0] : null;
+}
 ```
+
+When executing issue chains, replace `{issue_id}` in step args with the resolved issue ID.
 
 ---
 
@@ -278,7 +320,7 @@ const state = {
 };
 Write(`${sessionDir}/state.json`, JSON.stringify(state, null, 2));
 
-const context = { current_phase: resolvedPhase, user_intent: intent, spec_session_id: null };
+const context = { current_phase: resolvedPhase, user_intent: intent, issue_id: resolvedIssueId, spec_session_id: null };
 ```
 
 ---
@@ -298,6 +340,7 @@ function assembleArgs(step) {
   let a = (step.args || '')
     .replace(/\{phase\}/g, context.current_phase || '')
     .replace(/\{description\}/g, context.user_intent || '')
+    .replace(/\{issue_id\}/g, context.issue_id || '')
     .replace(/\{spec_session_id\}/g, context.spec_session_id || '')
     .replace(/\{scratch_dir\}/g, context.scratch_dir || '');
   if (state.auto_mode) {
@@ -518,13 +561,15 @@ Write(`${sessionDir}/state.json`, JSON.stringify(state, null, 2));
 
 ## Core Rules
 
-1. **STOP after each `maestro cli` call** — background execution, wait for hook callback
-2. **State machine** — advance via `current_step`, no sync loops for async operations
-3. **Template-driven** — all steps use `coordinate-step.txt`, no per-command prompt assembly
-4. **Context propagation** — parse PHASE / spec session ID / scratch_dir from each step output, feed to next step
-5. **Tool fallback** — if `maestro cli` fails: retry with same tool once, then try `gemini` → `qwen`
-6. **Auto-confirm injection** — `{{AUTO_DIRECTIVE}}` in template prevents blocking during background execution
-7. **Resumable** — `-c` reads `state.json`, jumps to first pending step
-8. **Gemini analysis after each step** — evaluate output quality via `maestro cli --tool gemini --mode analysis`, chained via `--resume`. Analysis generates `next_step_hints` injected into next step's prompt as `{{ANALYSIS_HINTS}}`
-9. **Session capture** — after each gemini callback, capture exec_id → `gemini_session_id` for resume chain
-10. **Analysis skip conditions** — skip gemini analysis for: failed/skipped steps, single-step chains
+1. **Semantic routing** — LLM-native structured extraction (`action × object`) replaces regex; disambiguates "问题" by context
+2. **STOP after each `maestro cli` call** — background execution, wait for hook callback
+3. **State machine** — advance via `current_step`, no sync loops for async operations
+4. **Template-driven** — all steps use `coordinate-step.txt`, no per-command prompt assembly
+5. **Context propagation** — parse PHASE / spec session ID / scratch_dir / issue_id from each step output, feed to next step
+6. **Quality gates** — issue chains auto-include review; `issue-full` is default for issue execution
+7. **Tool fallback** — if `maestro cli` fails: retry with same tool once, then try `gemini` → `qwen`
+8. **Auto-confirm injection** — `{{AUTO_DIRECTIVE}}` in template prevents blocking during background execution
+9. **Resumable** — `-c` reads `state.json`, jumps to first pending step
+10. **Gemini analysis after each step** — evaluate output quality via `maestro cli --tool gemini --mode analysis`, chained via `--resume`. Analysis generates `next_step_hints` injected into next step's prompt as `{{ANALYSIS_HINTS}}`
+11. **Session capture** — after each gemini callback, capture exec_id → `gemini_session_id` for resume chain
+12. **Analysis skip conditions** — skip gemini analysis for: failed/skipped steps, single-step chains

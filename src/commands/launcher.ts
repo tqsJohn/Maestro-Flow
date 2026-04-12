@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Command } from 'commander';
-import { join, resolve, dirname, basename } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import {
   existsSync,
@@ -24,7 +24,6 @@ import {
   unlinkSync,
   copyFileSync,
   rmSync,
-  statSync,
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { select, confirm } from '@inquirer/prompts';
@@ -89,19 +88,12 @@ function save(config: LauncherConfig): void {
 }
 
 // ---------------------------------------------------------------------------
-// Display helpers
+// Install check helpers
 // ---------------------------------------------------------------------------
 
-function workflowLabel(wf: WorkflowProfile): string {
-  const parent = dirname(wf.claudeMd);
-  const parentName = basename(parent);
-  if (parentName === '.claude') return basename(dirname(parent));
-  return parentName;
+function resolveCheckPath(p: string): string {
+  return p.replace(/^~[/\\]/, homedir() + '/');
 }
-
-// ---------------------------------------------------------------------------
-// Install check
-// ---------------------------------------------------------------------------
 
 function isBinaryAvailable(bin: string): boolean {
   const cmd = process.platform === 'win32' ? 'where' : 'which';
@@ -109,20 +101,224 @@ function isBinaryAvailable(bin: string): boolean {
   return result.status === 0;
 }
 
-function resolveCheckPath(p: string): string {
-  return p.replace(/^~[/\\]/, homedir() + '/');
+interface NpmPackageInfo {
+  name: string;
+  version: string | null;
+  installed: boolean;
 }
+
+function checkNpmPackage(packageName: string): NpmPackageInfo {
+  try {
+    const output = spawnSync('npm', ['list', '-g', '--depth=0', '--json'], {
+      shell: true,
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+    if (output.stdout) {
+      const data = JSON.parse(output.stdout);
+      const deps = data.dependencies || {};
+      for (const [key, info] of Object.entries(deps) as [string, any][]) {
+        if (key === packageName || info.name === packageName) {
+          return { name: packageName, version: info.version || null, installed: true };
+        }
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return { name: packageName, version: null, installed: false };
+}
+
+// ---------------------------------------------------------------------------
+// Unified manifest reader — reads from both ~/.claude-manifests/ and
+// ~/.maestro/manifests/ to detect installations from either installer.
+// ---------------------------------------------------------------------------
+
+interface UnifiedManifestEntry {
+  path: string;
+}
+
+interface UnifiedManifest {
+  id: string;
+  date: string;
+  entries: UnifiedManifestEntry[];
+}
+
+function loadAllManifests(): UnifiedManifest[] {
+  const results: UnifiedManifest[] = [];
+  const manifestDirs = [
+    join(homedir(), '.claude-manifests'),
+    join(homedir(), '.maestro', 'manifests'),
+  ];
+
+  for (const dir of manifestDirs) {
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
+      try {
+        const raw = readFileSync(join(dir, f), 'utf-8').replace(/^\uFEFF/, '');
+        const data = JSON.parse(raw);
+
+        // Normalize both manifest schemas into unified format
+        const entries: UnifiedManifestEntry[] = [];
+
+        // ccw schema: { files: [{path}], directories: [{path}] }
+        if (Array.isArray(data.files)) {
+          for (const e of data.files) entries.push({ path: e.path || '' });
+        }
+        if (Array.isArray(data.directories)) {
+          for (const e of data.directories) entries.push({ path: e.path || '' });
+        }
+
+        // maestro schema: { entries: [{path, type}] }
+        if (Array.isArray(data.entries)) {
+          for (const e of data.entries) entries.push({ path: e.path || '' });
+        }
+
+        if (entries.length > 0) {
+          results.push({
+            id: data.manifest_id || data.id || f,
+            date: data.installation_date || data.installedAt || '',
+            entries,
+          });
+        }
+      } catch { /* skip invalid */ }
+    }
+  }
+
+  return results;
+}
+
+interface WorkflowInstallStatus {
+  installed: boolean;
+  manifest: UnifiedManifest | null;
+  date: string | null;
+}
+
+function checkWorkflowManifest(name: string, wf: WorkflowProfile): WorkflowInstallStatus {
+  const manifests = loadAllManifests();
+
+  // Strategy 1: match by installCheck path in manifest entries
+  if (wf.installCheck) {
+    const checkPath = resolveCheckPath(wf.installCheck).toLowerCase().replace(/[\\/]/g, '/');
+    for (const m of manifests) {
+      for (const e of m.entries) {
+        const normalized = (e.path || '').toLowerCase().replace(/[\\/]/g, '/');
+        if (normalized.startsWith(checkPath) || checkPath.startsWith(normalized)) {
+          return { installed: true, manifest: m, date: m.date || null };
+        }
+      }
+    }
+  }
+
+  // Strategy 2: match by workflow name pattern in entries
+  const namePatterns = [`.${name}/`, `.${name}\\`];
+  for (const m of manifests) {
+    if (m.entries.some(e => {
+      const lp = (e.path || '').toLowerCase();
+      return namePatterns.some(pat => lp.includes(pat));
+    })) {
+      return { installed: true, manifest: m, date: m.date || null };
+    }
+  }
+
+  // Strategy 3: fallback to installCheck path existence on disk
+  if (wf.installCheck) {
+    const checkPath = resolveCheckPath(wf.installCheck);
+    if (existsSync(checkPath)) {
+      return { installed: true, manifest: null, date: null };
+    }
+  }
+
+  return { installed: false, manifest: null, date: null };
+}
+
+// ---------------------------------------------------------------------------
+// Status dashboard
+// ---------------------------------------------------------------------------
+
+function printStatusDashboard(config: LauncherConfig, currentWf: string | null): void {
+  const wfEntries = Object.entries(config.workflows);
+
+  // Collect unique npm packages
+  const packageNames = new Set<string>();
+  for (const [, wf] of wfEntries) {
+    if (wf.npmPackage) packageNames.add(wf.npmPackage);
+  }
+
+  // Check npm packages
+  const pkgResults: NpmPackageInfo[] = [];
+  packageNames.forEach((pkg) => {
+    pkgResults.push(checkNpmPackage(pkg));
+  });
+
+  // Build lines
+  const lines: string[] = [];
+
+  // NPM packages section
+  if (pkgResults.length > 0) {
+    lines.push('  NPM Packages:');
+    for (const pkg of pkgResults) {
+      const icon = pkg.installed ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+      const ver = pkg.version ? `\x1b[90mv${pkg.version}\x1b[0m` : '\x1b[31mnot installed\x1b[0m';
+      lines.push(`    ${icon} ${pkg.name.padEnd(20)} ${ver}`);
+    }
+    lines.push('');
+  }
+
+  // Workflows section — manifest-based detection
+  lines.push('  Workflows:');
+  for (const [name, wf] of wfEntries) {
+    const isActive = currentWf === name;
+    const isDefault = config.defaults.workflow === name;
+    const installStatus = checkWorkflowManifest(name, wf);
+
+    const icon = installStatus.installed ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+
+    const tags: string[] = [];
+    if (isActive) tags.push('\x1b[36mactive\x1b[0m');
+    if (isDefault) tags.push('\x1b[33m★ default\x1b[0m');
+    if (installStatus.installed) {
+      const dateStr = installStatus.date
+        ? new Date(installStatus.date).toLocaleDateString()
+        : '';
+      tags.push(`\x1b[32minstalled${dateStr ? ' ' + dateStr : ''}\x1b[0m`);
+    } else {
+      tags.push('\x1b[31mnot installed\x1b[0m');
+    }
+
+    const tagStr = tags.length > 0 ? `  [${tags.join(', ')}]` : '';
+    lines.push(`    ${icon} ${name.padEnd(16)}${tagStr}`);
+  }
+
+  // Print box
+  console.error('');
+  console.error('\x1b[36m╭─ Launcher Status ─────────────────────────────────────╮\x1b[0m');
+  for (const line of lines) {
+    console.error(`\x1b[36m│\x1b[0m${line}`);
+  }
+  console.error('\x1b[36m╰───────────────────────────────────────────────────────╯\x1b[0m');
+  console.error('');
+}
+
+// ---------------------------------------------------------------------------
+// Auto-install
+// ---------------------------------------------------------------------------
 
 async function ensureWorkflowReady(name: string, wf: WorkflowProfile): Promise<boolean> {
   if (!wf.installCheck && !wf.npmPackage) return true;
 
+  // Check manifest first, then fallback to installCheck path
+  const manifestStatus = checkWorkflowManifest(name, wf);
+  if (manifestStatus.installed) return true;
+
   if (wf.installCheck) {
     const checkPath = resolveCheckPath(wf.installCheck);
     if (existsSync(checkPath)) return true;
-  } else {
+  } else if (!wf.npmPackage) {
     return true;
   }
 
+  // Resources missing — prompt to install
   console.error('');
   console.error(`  Workflow "${name}" resources not found.`);
   if (wf.installCheck) {
@@ -162,6 +358,7 @@ async function ensureWorkflowReady(name: string, wf: WorkflowProfile): Promise<b
     }
   }
 
+  // Verify after install
   if (wf.installCheck) {
     const checkPath = resolveCheckPath(wf.installCheck);
     if (!existsSync(checkPath)) {
@@ -356,13 +553,20 @@ async function interactiveLaunch(extraArgs: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const wfChoices = wfEntries.map(([name, wf]) => ({
-    name: `${name}${config.defaults.workflow === name ? ' ★' : ''}${currentWf === name ? ' (active)' : ''}  →  ${workflowLabel(wf)}`,
-    value: name,
-  }));
+  // Show status dashboard
+  printStatusDashboard(config, currentWf);
+
+  const wfChoices = wfEntries.map(([name, wf]) => {
+    const tags: string[] = [];
+    if (currentWf === name) tags.push('active');
+    if (config.defaults.workflow === name) tags.push('★');
+    if (wf.npmPackage) tags.push(wf.npmPackage);
+    const suffix = tags.length > 0 ? `  (${tags.join(', ')})` : '';
+    return { name: `${name}${suffix}`, value: name };
+  });
 
   const chosenWf = await select({
-    message: 'Workflow:',
+    message: 'Global Workflow (→ ~/.claude/):',
     choices: wfChoices,
     default: config.defaults.workflow || (currentWf ?? undefined),
   });
@@ -634,16 +838,21 @@ export function registerLauncherCommand(program: Command): void {
         console.log('  (none)');
       } else {
         for (const [name, wf] of wfEntries) {
-          const active = currentWf === name ? ' (active)' : '';
+          const active = currentWf === name ? ' [active]' : '';
           const def = config.defaults.workflow === name ? ' ★' : '';
-          console.log(`  ${name}${def}${active}  →  ${workflowLabel(wf)}`);
+          const installStatus = checkWorkflowManifest(name, wf);
+          const dateLabel = installStatus.date
+            ? ` (${new Date(installStatus.date).toLocaleDateString()})`
+            : '';
+          const statusLabel = installStatus.installed
+            ? `installed${dateLabel}`
+            : 'not installed';
+          console.log(`  ${name}${def}${active}  [${statusLabel}]`);
           console.log(`    CLAUDE.md:  ${wf.claudeMd}`);
           if (wf.cliTools) console.log(`    cli-tools:  ${wf.cliTools}`);
           if (wf.npmPackage) console.log(`    npm:        ${wf.npmPackage}`);
-          if (wf.installCheck) {
-            const checkPath = resolveCheckPath(wf.installCheck);
-            const installed = existsSync(checkPath);
-            console.log(`    resources:  ${installed ? 'installed' : 'not installed'} (${wf.installCheck})`);
+          if (installStatus.manifest) {
+            console.log(`    manifest:   ${installStatus.manifest.id}`);
           }
         }
       }
@@ -681,14 +890,8 @@ export function registerLauncherCommand(program: Command): void {
     .command('status')
     .description('Show current active workflow and settings')
     .action(() => {
+      const config = load();
       const currentWf = detectCurrentWorkflow();
-      console.log('');
-      console.log(`Active workflow: ${currentWf ?? '(unknown/unregistered)'}`);
-      if (existsSync(CLAUDE_MD)) {
-        const firstLine = readFileSync(CLAUDE_MD, 'utf-8').split('\n')[0];
-        console.log(`  CLAUDE.md:    ${firstLine}`);
-      }
-      console.log(`  cli-tools:    ${existsSync(CLI_TOOLS) ? 'present' : 'absent'}`);
-      console.log('');
+      printStatusDashboard(config, currentWf);
     });
 }

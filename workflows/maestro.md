@@ -95,102 +95,255 @@ test -f .workflow/state.json && echo "exists" || echo "missing"
 ### Step 3: Analyze Intent
 
 **If `$FORCED_CHAIN` is set:**
-- Validate against known chains: `full-lifecycle`, `spec-driven`, `brainstorm-driven`, `ui-design-driven`, `analyze-plan-execute`, `execute-verify`, `quality-loop`, `milestone-close`, `next-milestone`, `quick`, `review`
-- If valid: skip pattern matching, jump to **Step 5**
+- Validate against known chains: `full-lifecycle`, `spec-driven`, `brainstorm-driven`, `ui-design-driven`, `analyze-plan-execute`, `execute-verify`, `quality-loop`, `milestone-close`, `next-milestone`, `quick`, `review`, `issue-full`, `issue-quick`
+- If valid: skip intent analysis, jump to **Step 5**
 - If invalid: display valid chains, ask user to choose
 
-**Pattern matching (priority order, first match wins):**
+#### 3a: Exact-match keywords (fast path)
+
+Before LLM extraction, check for exact-match special keywords:
 
 ```javascript
-function detectTaskType(text) {
-  const patterns = [
-    // Priority 1-2: Special keywords
-    ['state_continue', /^(continue|next|go|继续|下一步)$/i],
-    ['status',         /^(status|状态|dashboard)$/i],
-
-    // Priority 3-9: Pre-execution pipeline
-    ['spec_generate',  /spec.*(generat|creat|build|write|produce)|from.*idea.*to.*spec|产品.*规格|PRD/i],
-    ['brainstorm',     /brainstorm|ideate|explore.*idea|头脑风暴|发散|creative.*think/i],
-    ['analyze',        /analy[sz]e|feasib|evaluat|assess|discuss|clarif|decid|gray.*area|分析|评估|讨论|澄清|决策/i],
-    ['ui_design',      /ui.*design|design.*ui|landing.*page|prototype.*style|设计.*原型|UI.*风格|design.*variant|design.*prototype|落地页.*设计/i],
-    ['init',           /init|setup.*project|start.*project|onboard|初始化|新项目/i],
-    ['plan',           /plan(?!.*gap)|design.*plan|break.*down|分解|规划/i],
-
-    // Priority 9-10: Execution pipeline
-    ['execute',        /execute|implement|build|develop|code|实现|开发|编码/i],
-    ['verify',         /verif[iy]|check.*goal|validate.*result|验证|校验/i],
-
-    // Priority 11-17: Quality pipeline
-    ['review',         /\breview.*code|code.*review|代码.*审查|审查.*代码|review.*quality/i],
-    ['retrospective',  /retrospect|retro|复盘|post.?mortem|lessons.*learn|after.?action|事后.*回顾/i],
-    ['learn',          /^learn\b|capture.*insight|capture.*learning|insight.*log|eureka|学习.*记录|记录.*洞察/i],
-    ['test_gen',       /test.*gen|generat.*test|add.*test|补充.*测试|写测试/i],
-    ['test',           /\btest|uat|user.*accept|测试|用户.*验收/i],
-    ['debug',          /debug|diagnos|troubleshoot|fix.*bug|调试|排查/i],
-    ['integration_test', /integrat.*test|e2e.*cycle|集成测试|端到端/i],
-    ['refactor',       /refactor|clean.*up|tech.*debt|重构|技术债/i],
-    ['sync',           /sync.*doc|refresh.*doc|update.*doc|同步/i],
-
-    // Priority 17-20: Phase/milestone lifecycle
-    ['phase_transition', /phase.*transit|next.*phase|advance.*phase|推进|切换.*阶段/i],
-    ['phase_add',        /phase.*add|insert.*phase|new.*phase|add.*phase|添加.*阶段/i],
-    ['milestone_audit',  /milestone.*audit|cross.*phase.*check|里程碑.*审计/i],
-    ['milestone_complete', /milestone.*compl|finish.*milestone|完成.*里程碑/i],
-
-    // Priority 21: Issue management (granular patterns first, then generic)
-    ['issue_analyze',     /analyze.*issue|issue.*analyze|分析.*问题|issue.*root.*cause/i],
-    ['issue_plan',        /plan.*issue|issue.*plan|规划.*问题|issue.*solution/i],
-    ['issue_execute',     /execute.*issue|issue.*execute|执行.*问题|run.*issue/i],
-    ['issue',             /issue|问题|缺陷|gap.*track|issue.*manage|discover.*issue/i],
-
-    // Priority 22-29: Maintenance operations
-    ['codebase_rebuild',  /codebase.*rebuild|full.*rebuild|重建.*文档/i],
-    ['codebase_refresh',  /codebase.*refresh|incr.*refresh|刷新.*文档/i],
-    ['spec_setup',        /spec.*setup|scan.*convention|规范.*初始化/i],
-    ['spec_add',          /spec.*add|add.*(bug|pattern|decision|rule)|添加.*规范/i],
-    ['spec_load',         /spec.*load|load.*spec|加载.*规范/i],
-    ['spec_map',          /spec.*map|map.*codebase|规范.*映射/i],
-    ['memory_capture',    /memory.*captur|save.*memory|compact|记忆.*捕获/i],
-    ['memory',            /memory|manage.*mem|记忆.*管理/i],
-
-    // Priority 29: Team skills
-    ['team_lifecycle',    /team.*lifecycle|team.*session|团队.*生命周期/i],
-    ['team_coordinate',   /team.*coordinat|team.*dynamic.*role|团队.*协调/i],
-    ['team_design',       /team.*design(?!.*ui)|design.*team.*skill|团队.*设计/i],
-    ['team_execute',      /team.*exec(?!ute\b)|resume.*team.*session|团队.*执行/i],
-    ['team_qa',           /team.*(qa|quality.*assur)|团队.*质量/i],
-    ['team_test',         /team.*test|团队.*测试/i],
-    ['team_review',       /team.*review|团队.*评审/i],
-    ['team_tech_debt',    /team.*tech.*debt|team.*debt|团队.*技术债/i],
-
-    // Priority 30: Quick task
-    ['quick',             /quick|small.*task|ad.?hoc|just.*do|简单|快速/i],
-  ];
-
-  for (const [type, pattern] of patterns) {
-    if (pattern.test(text)) return type;
-  }
-  return 'auto_detect';
+const exactMatch = {
+  'continue': 'state_continue', 'next': 'state_continue', 'go': 'state_continue',
+  '继续': 'state_continue', '下一步': 'state_continue',
+  'status': 'status', '状态': 'status', 'dashboard': 'status',
+};
+const normalized = intent.toLowerCase().trim();
+if (exactMatch[normalized]) {
+  taskType = exactMatch[normalized];
+  // → skip to Step 5
 }
 ```
 
-**For `auto_detect` (no pattern matched):**
-- Short intent (< 15 words), no phase reference → `quick`
-- References lifecycle stages or multiple modules → `execute` (with state validation in Step 5)
-- Default fallback → `quick`
+#### 3b: Structured intent extraction (LLM-native)
 
-**Compute clarity_score:**
-- 3: Has verb + object + scope (e.g., "plan phase 2 with gap fixes")
-- 2: Has verb + object (e.g., "run tests on auth module")
-- 1: Vague but interpretable (e.g., "help with quality")
-- 0: Unintelligible or empty
+Instead of regex pattern matching, extract a structured intent tuple from the user's natural language. This leverages the LLM's semantic understanding to disambiguate polysemous words (e.g., "问题" as bug vs. issue-tracker item).
+
+**Extract the following JSON from the user input:**
+
+```json
+{
+  "action":    "<from enum>",
+  "object":    "<from enum>",
+  "scope":     "<module/file/area or null>",
+  "issue_id":  "<ISS-XXXXXXXX-NNN if mentioned, else null>",
+  "phase_ref": "<integer if mentioned, else null>",
+  "urgency":   "<low | normal | high>"
+}
+```
+
+**Action enum** (what the user wants to do):
+
+| action | Triggered by (semantic, not regex) |
+|--------|-----------------------------------|
+| `create` | Build something new — new feature, new component, new spec, new project |
+| `fix` | Repair something broken — fix bug, resolve error, patch, 修复, 修, 解决 |
+| `analyze` | Understand something — analyze, evaluate, assess, investigate, 分析, 评估 |
+| `plan` | Design approach — plan, break down, design, architect, 规划, 分解 |
+| `execute` | Implement planned work — execute, implement, develop, code, 实现, 开发 |
+| `verify` | Check completeness against goals — verify, validate, check goals, 验证 |
+| `review` | Evaluate code quality — review code, code review, 代码审查 |
+| `test` | Run or create tests — test, UAT, acceptance, 测试, 验收 |
+| `debug` | Diagnose failures — debug, diagnose, troubleshoot, 调试, 排查 |
+| `refactor` | Restructure without behavior change — refactor, clean up, tech debt, 重构 |
+| `explore` | Open-ended discovery — brainstorm, ideate, discover, explore, 头脑风暴, 发散 |
+| `manage` | CRUD / lifecycle ops — list, create issue, close, update, track, 管理 |
+| `transition` | Move to next phase/milestone — next phase, advance, complete milestone |
+| `continue` | Resume work — continue, next, go on, 继续 |
+| `sync` | Update docs/state — sync, refresh, update docs, 同步 |
+| `learn` | Capture insights — learn, capture insight, eureka, 记录洞察 |
+| `retrospect` | Post-mortem review — retrospective, retro, 复盘, post-mortem |
+
+**Object enum** (what the action targets):
+
+| object | Meaning |
+|--------|---------|
+| `feature` | New functionality or enhancement |
+| `bug` | Defect, error, broken behavior (includes "问题" when meaning "something is wrong") |
+| `issue` | Issue-tracker item (includes "问题" when meaning "tracked issue for management") |
+| `code` | Source code in general |
+| `test` | Tests, test suite, test coverage |
+| `spec` | Specification, PRD, product requirements |
+| `phase` | Workflow phase |
+| `milestone` | Workflow milestone |
+| `doc` | Documentation |
+| `performance` | Performance characteristics |
+| `security` | Security concerns |
+| `ui` | User interface, design, prototype |
+| `memory` | Memory/knowledge management |
+| `codebase` | Codebase documentation/mapping |
+| `team` | Team-based multi-agent execution |
+| `config` | Configuration, setup, initialization |
+
+**Disambiguation rules for "问题" / "issue" / "problem":**
+- "问题" / "problem" describing **something broken or wrong** → `object: "bug"` (route to debug/fix)
+- "问题" / "issue" referring to **a tracked item** (especially with ISS-ID, or in context of "create/list/manage issue") → `object: "issue"` (route to issue management)
+- When ambiguous, prefer `"bug"` — it routes to the main workflow (debug) which is more actionable
+
+#### 3c: Route via action × object matrix
+
+```javascript
+function routeIntent(intent, projectState) {
+  const { action, object, issue_id, phase_ref } = intent;
+
+  // ── Hard signal: explicit issue ID → issue pipeline ──
+  if (issue_id) {
+    const issueRoutes = {
+      'analyze': 'issue_analyze',
+      'plan':    'issue_plan',
+      'fix':     'issue_execute',
+      'execute': 'issue_execute',
+      'debug':   'issue_analyze',
+      'manage':  'issue',
+    };
+    return { taskType: issueRoutes[action] || 'issue', issueId: issue_id };
+  }
+
+  // ── Action × Object routing matrix ──
+  const matrix = {
+    'fix': {
+      'bug':         'debug',
+      'issue':       'issue',
+      'code':        'debug',
+      'performance': 'debug',
+      'security':    'debug',
+      'test':        'debug',
+      '_default':    'debug',
+    },
+    'create': {
+      'feature':     'quick',           // new feature without lifecycle → quick
+      'issue':       'issue',
+      'test':        'test_gen',
+      'spec':        'spec_generate',
+      'ui':          'ui_design',
+      'config':      'init',
+      'phase':       'phase_add',
+      '_default':    'quick',
+    },
+    'analyze': {
+      'bug':         'analyze',
+      'issue':       'issue_analyze',
+      'code':        'analyze',
+      'performance': 'analyze',
+      'security':    'analyze',
+      'feature':     'analyze',
+      'codebase':    'spec_map',
+      '_default':    'analyze',
+    },
+    'explore': {
+      'issue':       'issue_discover',
+      'feature':     'brainstorm',
+      'ui':          'ui_design',
+      '_default':    'brainstorm',
+    },
+    'plan': {
+      'issue':       'issue_plan',
+      'spec':        'spec_generate',
+      'phase':       'plan',
+      'milestone':   'plan',
+      '_default':    'plan',
+    },
+    'execute': {
+      'issue':       'issue_execute',
+      '_default':    'execute',
+    },
+    'verify':      { '_default': 'verify' },
+    'review':      { '_default': 'review' },
+    'test': {
+      'feature':     'test',
+      'code':        'test',
+      '_default':    'test',
+    },
+    'debug':       { '_default': 'debug' },
+    'refactor':    { '_default': 'refactor' },
+    'manage': {
+      'issue':       'issue',
+      'milestone':   'milestone_audit',
+      'phase':       'phase_transition',
+      'memory':      'memory',
+      'doc':         'sync',
+      'codebase':    'codebase_refresh',
+      'config':      'spec_setup',
+      'team':        'team_coordinate',
+      '_default':    'status',
+    },
+    'transition': {
+      'phase':       'phase_transition',
+      'milestone':   'milestone_complete',
+      '_default':    'phase_transition',
+    },
+    'continue':    { '_default': 'state_continue' },
+    'sync': {
+      'doc':         'sync',
+      'codebase':    'codebase_refresh',
+      '_default':    'sync',
+    },
+    'learn':       { '_default': 'learn' },
+    'retrospect':  { '_default': 'retrospective' },
+  };
+
+  const actionMap = matrix[action];
+  if (!actionMap) return { taskType: 'quick' };
+
+  const taskType = actionMap[object] || actionMap['_default'] || 'quick';
+
+  // ── Team skill detection ──
+  if (object === 'team') {
+    const teamRoutes = {
+      'review':    'team_review',
+      'test':      'team_test',
+      'debug':     'team_qa',
+      'analyze':   'team_qa',
+      'refactor':  'team_tech_debt',
+      'execute':   'team_lifecycle',
+      'plan':      'team_coordinate',
+      '_default':  'team_coordinate',
+    };
+    return { taskType: teamRoutes[action] || 'team_coordinate' };
+  }
+
+  return { taskType };
+}
+```
+
+#### 3d: State-aware chain upgrade
+
+After routing, check if the resolved command should be upgraded to a multi-step chain based on project state:
+
+```javascript
+function upgradeChain(taskType, projectState) {
+  // Issue execute → auto-append review gate
+  if (taskType === 'issue_execute') {
+    return 'issue-full';  // analyze → plan → execute → review
+  }
+
+  // Debug/fix in executing phase → debug + re-execute + verify
+  if (taskType === 'debug' && projectState.initialized && projectState.phase_status === 'executing') {
+    return null;  // keep single-step, but state validation (5b) will prepend/append as needed
+  }
+
+  return null;  // no upgrade, use default chainMap lookup
+}
+```
+
+#### 3e: Compute clarity score
+
+From the extracted intent tuple:
+- 3: `action` + `object` + `scope` all present (e.g., "plan phase 2 with gap fixes")
+- 2: `action` + `object` present (e.g., "run tests on auth module")
+- 1: Only `action` present, or only vague `object` (e.g., "help with quality")
+- 0: Neither `action` nor `object` could be extracted
 
 **Output:**
 ```
   Intent Analysis:
-    Type:       {task_type}
+    Action:     {action}
+    Object:     {object}
+    Scope:      {scope or "none"}
+    Issue ID:   {issue_id or "none"}
+    Task type:  {task_type}
     Clarity:    {clarity_score}/3
-    Complexity: {simple|moderate|complex}
     Phase ref:  {N or "none"}
 ```
 
@@ -370,6 +523,7 @@ const chainMap = {
   'spec_map':           [{ cmd: 'spec-map' }],
   'memory_capture':     [{ cmd: 'manage-memory-capture', args: '"{description}"' }],
   'issue':              [{ cmd: 'manage-issue', args: '"{description}"' }],
+  'issue_discover':     [{ cmd: 'manage-issue-discover', args: '"{description}"' }],
   'issue_analyze':      [{ cmd: 'manage-issue-analyze', args: '"{description}"' }],
   'issue_plan':         [{ cmd: 'manage-issue-plan', args: '"{description}"' }],
   'issue_execute':      [{ cmd: 'manage-issue-execute', args: '"{description}"' }],
@@ -448,13 +602,27 @@ const chainMap = {
     { cmd: 'maestro-plan', args: '{phase}' },
     { cmd: 'maestro-execute', args: '{phase}' },
     { cmd: 'maestro-verify', args: '{phase}' }
+  ],
+  // Issue lifecycle chains (with quality gates)
+  'issue-full': [
+    { cmd: 'manage-issue-analyze', args: '{issue_id}' },
+    { cmd: 'manage-issue-plan', args: '{issue_id}' },
+    { cmd: 'manage-issue-execute', args: '{issue_id}' },
+    { cmd: 'quality-review', args: '--scope {affected_files}' },
+    { cmd: 'manage-issue', args: 'close {issue_id} --resolution fixed' }
+  ],
+  'issue-quick': [
+    { cmd: 'manage-issue-plan', args: '{issue_id}' },
+    { cmd: 'manage-issue-execute', args: '{issue_id}' },
+    { cmd: 'manage-issue', args: 'close {issue_id} --resolution fixed' }
   ]
 };
 
-// Map task_type → chain
+// Map task_type → chain (when task_type should use a multi-step chain instead of single-step)
 const taskToChain = {
   'spec_generate': 'spec-driven',
   'brainstorm': 'brainstorm-driven',
+  'issue_execute': 'issue-full',    // issue execute always gets review gate
 };
 ```
 
@@ -473,33 +641,50 @@ Cross-validate intent against project state:
 
 Display warning but let user override.
 
-#### 5c: Resolve phase number
+#### 5c: Resolve phase number and issue ID
 
 ```javascript
 function resolvePhase(intent_analysis, project_state) {
-  // 1. Explicit phase in intent: "plan phase 3", "verify 2"
+  // 1. From structured extraction
+  if (intent_analysis.phase_ref) return intent_analysis.phase_ref;
+
+  // 2. Fallback: regex on raw intent text
   const phaseMatch = intent.match(/phase\s*(\d+)|^(\d+)$/);
   if (phaseMatch) return phaseMatch[1] || phaseMatch[2];
 
-  // 2. From project state
+  // 3. From project state
   if (project_state.initialized) return project_state.current_phase;
 
-  // 3. Scratch mode chains use {scratch_dir} instead of {phase}
-  // analyze-plan-execute: {scratch_dir} resolved from analyze output dir after step 1 completes
+  // 4. Scratch mode chains use {scratch_dir} instead of {phase}
   if (chainName === 'analyze-plan-execute') return null;
 
-  // 4. Chain doesn't need phase (init, status, memory, etc.)
-  const noPhaseCommands = ['manage-status', 'manage-issue', 'manage-issue-analyze', 'manage-issue-plan', 'manage-issue-execute', 'maestro-init', 'maestro-spec-generate',
+  // 5. Chain doesn't need phase (init, status, memory, issue, etc.)
+  const noPhaseCommands = ['manage-status', 'manage-issue', 'manage-issue-discover',
+    'manage-issue-analyze', 'manage-issue-plan', 'manage-issue-execute',
+    'maestro-init', 'maestro-spec-generate',
     'maestro-roadmap', 'spec-setup', 'spec-map', 'manage-memory', 'manage-memory-capture', 'manage-learn',
     'manage-codebase-rebuild', 'manage-codebase-refresh', 'maestro-milestone-audit',
     'maestro-milestone-complete', 'maestro-phase-transition', 'maestro-phase-add'];
   if (chain.every(s => noPhaseCommands.includes(s.cmd))) return null;
 
-  // 4. Ask user
-  // AskUserQuestion with available phases from roadmap
+  // 6. Ask user
   return askUserForPhase();
 }
+
+// Resolve issue ID for issue chains
+function resolveIssueId(intent_analysis) {
+  // 1. From structured extraction
+  if (intent_analysis.issue_id) return intent_analysis.issue_id;
+
+  // 2. Fallback: regex on raw intent text
+  const issueMatch = intent.match(/ISS-[\w]+-\d+/i);
+  if (issueMatch) return issueMatch[0];
+
+  return null;
+}
 ```
+
+When executing issue chains (`issue-full`, `issue-quick`), replace `{issue_id}` in step args with the resolved issue ID. If no issue ID is found and the chain requires one, prompt the user.
 
 #### 5d: Confirm (skip if autoYes)
 
@@ -584,6 +769,7 @@ mkdir -p "${SESSION_DIR}"
 const context = {
   current_phase: resolvedPhase,
   user_intent: intent,
+  issue_id: resolvedIssueId,
   spec_session_id: null,
   auto_mode: autoYes
 };
@@ -608,6 +794,7 @@ function assembleArgs(step, context) {
   // Template substitution
   args = args.replace(/\{phase\}/g, context.current_phase || '');
   args = args.replace(/\{description\}/g, context.user_intent || '');
+  args = args.replace(/\{issue_id\}/g, context.issue_id || '');
   args = args.replace(/\{spec_session_id\}/g, context.spec_session_id || '');
 
   // Propagate auto flag only to commands that support it
@@ -709,53 +896,55 @@ Display completion report:
 | `quality-loop` | verify → review → test-gen → test → debug → plan --gaps → execute | Fix quality issues |
 | `milestone-close` | milestone-audit → milestone-complete | Close a milestone |
 | `next-milestone` | maestro-roadmap → plan → execute → verify | Start next milestone (auto-loads deferred items) |
+| `issue-full` | analyze → plan → execute → review → close | Issue with quality gate (default for issue execute) |
+| `issue-quick` | plan → execute → close | Issue fast path (use `--chain issue-quick`) |
 | *(single-step)* | Any individual command | Direct invocation |
 
 ---
 
 ## Pipeline Examples
 
-| Input | Type | Chain | Steps |
-|-------|------|-------|-------|
-| `"continue"` | state_continue | (from state) | (detected by state algorithm) |
-| `"status"` | status | status | manage-status |
-| `"Add API endpoint"` | quick | quick | maestro-quick |
-| `"plan phase 2"` | plan | plan | maestro-plan 2 |
-| `"execute"` | execute | execute | maestro-execute {current} |
-| `"run tests"` | test | test | quality-test {current} |
-| `"debug auth crash"` | debug | debug | quality-debug "auth crash" |
-| `"brainstorm notification system"` | brainstorm | brainstorm-driven | brainstorm → plan → execute → verify |
-| `"spec generate user auth"` | spec_generate | spec-driven | init → spec-generate → plan → execute → verify |
-| `"roadmap user auth"` | roadmap | roadmap-driven | init → maestro-roadmap → plan → execute → verify |
-| `"ui design landing page"` | ui_design | ui-design-driven | ui-design → plan → execute → verify |
-| `"design prototypes for dashboard"` | ui_design | ui_design | maestro-ui-design |
-| `"refactor auth module"` | refactor | refactor | quality-refactor |
-| `"retrospective phase 2"` / `"复盘 phase 2"` | retrospective | retrospective | quality-retrospective 2 |
-| `"capture insight: JWT must rotate"` | learn | learn | manage-learn "JWT must rotate" |
-| `"integration test payment"` | integration_test | integration-test | quality-integration-test |
-| `"list critical issues"` | issue | issue | manage-issue "list critical issues" |
-| `"discover issues"` | issue | issue | manage-issue "discover" |
-| `"analyze issue ISS-xxx"` | issue_analyze | issue_analyze | manage-issue-analyze "ISS-xxx" |
-| `"plan issue ISS-xxx"` | issue_plan | issue_plan | manage-issue-plan "ISS-xxx" |
-| `"execute issue ISS-xxx"` | issue_execute | issue_execute | manage-issue-execute "ISS-xxx" |
-| `"team review code"` | team_review | team_review | team-review |
-| `"team qa full scan"` | team_qa | team_qa | team-quality-assurance |
-| `"team test auth module"` | team_test | team_test | team-testing |
-| `"team lifecycle new session"` | team_lifecycle | team_lifecycle | team-lifecycle-v4 |
-| `"team tech debt scan"` | team_tech_debt | team_tech_debt | team-tech-debt |
-| `"next phase"` | phase_transition | phase-transition | maestro-phase-transition |
-| `"milestone audit"` | milestone_audit | milestone-close | milestone-audit → milestone-complete |
-| `-y "implement feature X"` | execute | execute | maestro-execute (auto mode) |
+Shows how structured extraction routes common inputs — especially cases where regex previously misrouted:
+
+| Input | Extraction | Task Type | Chain |
+|-------|-----------|-----------|-------|
+| `"continue"` | *(exact match)* | state_continue | (from state) |
+| `"status"` | *(exact match)* | status | manage-status |
+| `"Add API endpoint"` | `{create, feature}` | quick | maestro-quick |
+| `"plan phase 2"` | `{plan, phase, phase_ref:2}` | plan | maestro-plan 2 |
+| `"execute"` | `{execute, code}` | execute | maestro-execute |
+| `"run tests"` | `{test, test}` | test | quality-test |
+| `"debug auth crash"` | `{debug, bug, scope:"auth"}` | debug | quality-debug |
+| `"修复登录问题"` | `{fix, bug, scope:"登录"}` | debug | quality-debug |
+| `"fix this issue"` | `{fix, bug}` | debug | quality-debug |
+| `"fix issue ISS-abc-001"` | `{fix, issue, ISS-abc-001}` | issue_execute | issue-full (analyze→plan→execute→review→close) |
+| `"解决性能问题"` | `{fix, performance}` | debug | quality-debug |
+| `"这个问题需要看看"` | `{analyze, bug}` | analyze | maestro-analyze |
+| `"创建一个 issue 跟踪"` | `{manage, issue}` | issue | manage-issue |
+| `"discover issues"` | `{explore, issue}` | issue_discover | manage-issue-discover |
+| `"analyze issue ISS-xxx"` | `{analyze, issue, ISS-xxx}` | issue_analyze | manage-issue-analyze |
+| `"plan issue ISS-xxx"` | `{plan, issue, ISS-xxx}` | issue_plan | manage-issue-plan |
+| `"brainstorm notification system"` | `{explore, feature}` | brainstorm | brainstorm-driven |
+| `"spec generate user auth"` | `{create, spec}` | spec_generate | spec-driven |
+| `"ui design landing page"` | `{create, ui}` | ui_design | ui-design-driven |
+| `"refactor auth module"` | `{refactor, code}` | refactor | quality-refactor |
+| `"复盘 phase 2"` | `{retrospect, phase}` | retrospective | quality-retrospective |
+| `"team review code"` | `{review, team}` | team_review | team-review |
+| `"team qa full scan"` | `{analyze, team}` | team_qa | team-quality-assurance |
+| `"next phase"` | `{transition, phase}` | phase_transition | maestro-phase-transition |
+| `"milestone audit"` | `{manage, milestone}` | milestone_audit | maestro-milestone-audit |
+| `-y "implement feature X"` | `{execute, feature}` | execute | maestro-execute (auto mode) |
 
 ---
 
 ## Key Design Principles
 
-1. **State-Aware** — Reads `.workflow/state.json` to understand project context before routing
-2. **Intent-Driven** — Priority regex matching classifies user text into task types
-3. **Skill Composition** — Chains compose independent Skills via sequential Skill() calls
-4. **Phase Propagation** — Auto-detects and passes phase numbers to downstream commands
-5. **Auto Mode** — `-y` flag propagates through entire chain, skipping all confirmations
-6. **Resumable** — Session state in `.workflow/.maestro/` enables resume with `-c`
-7. **Progressive Clarification** — Low clarity triggers user questions (max 2 rounds)
-8. **Error Resilience** — Retry/skip/abort per step, with auto-skip in `-y` mode
+1. **Semantic Routing** — LLM-native structured extraction (`action × object`) replaces regex pattern matching; disambiguates polysemous words like "问题" by semantic context
+2. **State-Aware** — Reads `.workflow/state.json` to understand project context before routing
+3. **Quality Gates** — Issue chains auto-include review steps; `issue-full` is the default for issue execution
+4. **Skill Composition** — Chains compose independent Skills via sequential Skill() calls
+5. **Phase Propagation** — Auto-detects and passes phase numbers to downstream commands
+6. **Auto Mode** — `-y` flag propagates through entire chain, skipping all confirmations
+7. **Resumable** — Session state in `.workflow/.maestro/` enables resume with `-c`
+8. **Progressive Clarification** — Low clarity triggers user questions (max 2 rounds)
+9. **Error Resilience** — Retry/skip/abort per step, with auto-skip in `-y` mode

@@ -59,62 +59,85 @@ if (!projectState.initialized && !intent) throw new Error('E001: No project stat
 
 ## Step 3: Classify Intent & Select Chain
 
-### 3a: Detect task type
+### 3a: Exact-match keywords (fast path)
 
 If `forceChain` is set → validate against chainMap and jump to **3c**.
 
 ```javascript
-function detectTaskType(text) {
-  const patterns = [
-    ['state_continue',    new RegExp('^(continue|next|go|继续|下一步)$', 'i')],
-    ['status',            new RegExp('^(status|状态|dashboard)$', 'i')],
-    ['spec_generate',     new RegExp('spec.*(generat|creat|build)|PRD|产品.*规格', 'i')],
-    ['brainstorm',        new RegExp('brainstorm|ideate|头脑风暴|发散', 'i')],
-    ['analyze',           new RegExp('analy[sz]e|feasib|evaluat|assess|discuss|分析|评估|讨论', 'i')],
-    ['ui_design',         new RegExp('ui.*design|design.*ui|prototype|设计.*原型|UI.*风格', 'i')],
-    ['init',              new RegExp('init|setup.*project|初始化|新项目', 'i')],
-    ['plan',              new RegExp('plan(?!.*gap)|break.*down|规划|分解', 'i')],
-    ['execute',           new RegExp('execute|implement|build|develop|code|实现|开发', 'i')],
-    ['verify',            new RegExp('verif[iy]|validate.*result|验证|校验', 'i')],
-    ['review',            new RegExp('\\breview.*code|code.*review|代码.*审查', 'i')],
-    ['retrospective',     new RegExp('retrospect|retro|复盘|post.?mortem|lessons.*learn|after.?action', 'i')],
-    ['learn',             new RegExp('^learn\\b|capture.*insight|capture.*learning|insight.*log|eureka|学习.*记录|记录.*洞察', 'i')],
-    ['test_gen',          new RegExp('test.*gen|generat.*test|add.*test|写测试', 'i')],
-    ['test',              new RegExp('\\btest|uat|测试|验收', 'i')],
-    ['debug',             new RegExp('debug|diagnos|troubleshoot|fix.*bug|调试|排查', 'i')],
-    ['integration_test',  new RegExp('integrat.*test|e2e|集成测试', 'i')],
-    ['refactor',          new RegExp('refactor|tech.*debt|重构|技术债', 'i')],
-    ['sync',              new RegExp('sync.*doc|refresh.*doc|同步', 'i')],
-    ['phase_transition',  new RegExp('phase.*transit|next.*phase|推进|切换.*阶段', 'i')],
-    ['phase_add',         new RegExp('phase.*add|add.*phase|添加.*阶段', 'i')],
-    ['milestone_audit',   new RegExp('milestone.*audit|里程碑.*审计', 'i')],
-    ['milestone_complete',new RegExp('milestone.*compl|完成.*里程碑', 'i')],
-    ['issue_analyze',     new RegExp('analyze.*issue|issue.*root.*cause', 'i')],
-    ['issue_plan',        new RegExp('plan.*issue|issue.*solution', 'i')],
-    ['issue_execute',     new RegExp('execute.*issue|run.*issue', 'i')],
-    ['issue',             new RegExp('issue|问题|缺陷|discover.*issue', 'i')],
-    ['codebase_rebuild',  new RegExp('codebase.*rebuild|重建.*文档', 'i')],
-    ['codebase_refresh',  new RegExp('codebase.*refresh|刷新.*文档', 'i')],
-    ['spec_setup',        new RegExp('spec.*setup|规范.*初始化', 'i')],
-    ['spec_add',          new RegExp('spec.*add|添加.*规范', 'i')],
-    ['spec_load',         new RegExp('spec.*load|加载.*规范', 'i')],
-    ['spec_map',          new RegExp('spec.*map|规范.*映射', 'i')],
-    ['memory_capture',    new RegExp('memory.*captur|save.*memory|compact', 'i')],
-    ['memory',            new RegExp('memory|manage.*mem|记忆', 'i')],
-    ['team_lifecycle',    new RegExp('team.*lifecycle|团队.*生命周期', 'i')],
-    ['team_coordinate',   new RegExp('team.*coordinat|团队.*协调', 'i')],
-    ['team_qa',           new RegExp('team.*(qa|quality)|团队.*质量', 'i')],
-    ['team_test',         new RegExp('team.*test|团队.*测试', 'i')],
-    ['team_review',       new RegExp('team.*review|团队.*评审', 'i')],
-    ['team_tech_debt',    new RegExp('team.*tech.*debt|团队.*技术债', 'i')],
-    ['quick',             new RegExp('quick|small.*task|ad.?hoc|简单|快速', 'i')],
-  ];
-  for (const [type, pat] of patterns) if (pat.test(text)) return type;
-  return 'quick';
+const exactMatch = {
+  'continue': 'state_continue', 'next': 'state_continue', 'go': 'state_continue',
+  '继续': 'state_continue', '下一步': 'state_continue',
+  'status': 'status', '状态': 'status', 'dashboard': 'status',
+};
+const normalized = intent.toLowerCase().trim();
+if (exactMatch[normalized]) {
+  taskType = exactMatch[normalized];
+  // → skip to 3c
 }
 ```
 
-**Clarity scoring**: 3 = verb+object+scope, 2 = verb+object, 1 = vague, 0 = empty.
+### 3a-2: Structured intent extraction (LLM-native)
+
+Instead of regex, extract a structured intent tuple using LLM semantic understanding:
+
+```json
+{
+  "action":    "<create|fix|analyze|plan|execute|verify|review|test|debug|refactor|explore|manage|transition|continue|sync|learn|retrospect>",
+  "object":    "<feature|bug|issue|code|test|spec|phase|milestone|doc|performance|security|ui|memory|codebase|team|config>",
+  "scope":     "<module/file/area or null>",
+  "issue_id":  "<ISS-XXXXXXXX-NNN if mentioned, else null>",
+  "phase_ref": "<integer if mentioned, else null>",
+  "urgency":   "<low|normal|high>"
+}
+```
+
+**Key disambiguation**: "问题"/"issue"/"problem" as something broken → `object: "bug"` (routes to debug). As a tracked item (with ISS-ID or management context) → `object: "issue"` (routes to issue management). When ambiguous, prefer `"bug"`.
+
+### 3a-3: Route via action × object matrix
+
+```javascript
+function routeIntent(intent, projectState) {
+  const { action, object, issue_id } = intent;
+
+  // Hard signal: explicit issue ID → issue pipeline
+  if (issue_id) {
+    const issueRoutes = { 'analyze': 'issue_analyze', 'plan': 'issue_plan', 'fix': 'issue_execute', 'execute': 'issue_execute', 'debug': 'issue_analyze', 'manage': 'issue' };
+    return issueRoutes[action] || 'issue';
+  }
+
+  // Action × Object matrix
+  const matrix = {
+    'fix':       { 'bug': 'debug', 'issue': 'issue', 'code': 'debug', 'performance': 'debug', 'security': 'debug', '_default': 'debug' },
+    'create':    { 'feature': 'quick', 'issue': 'issue', 'test': 'test_gen', 'spec': 'spec_generate', 'ui': 'ui_design', 'config': 'init', 'phase': 'phase_add', '_default': 'quick' },
+    'analyze':   { 'bug': 'analyze', 'issue': 'issue_analyze', 'code': 'analyze', 'codebase': 'spec_map', '_default': 'analyze' },
+    'explore':   { 'issue': 'issue_discover', 'feature': 'brainstorm', 'ui': 'ui_design', '_default': 'brainstorm' },
+    'plan':      { 'issue': 'issue_plan', 'spec': 'spec_generate', '_default': 'plan' },
+    'execute':   { 'issue': 'issue_execute', '_default': 'execute' },
+    'verify':    { '_default': 'verify' },
+    'review':    { '_default': 'review' },
+    'test':      { '_default': 'test' },
+    'debug':     { '_default': 'debug' },
+    'refactor':  { '_default': 'refactor' },
+    'manage':    { 'issue': 'issue', 'milestone': 'milestone_audit', 'phase': 'phase_transition', 'memory': 'memory', 'doc': 'sync', 'codebase': 'codebase_refresh', 'team': 'team_coordinate', '_default': 'status' },
+    'transition':{ 'phase': 'phase_transition', 'milestone': 'milestone_complete', '_default': 'phase_transition' },
+    'continue':  { '_default': 'state_continue' },
+    'sync':      { '_default': 'sync' },
+    'learn':     { '_default': 'learn' },
+    'retrospect':{ '_default': 'retrospective' },
+  };
+
+  // Team skill detection
+  if (object === 'team') {
+    const teamRoutes = { 'review': 'team_review', 'test': 'team_test', 'debug': 'team_qa', 'refactor': 'team_tech_debt', 'execute': 'team_lifecycle', '_default': 'team_coordinate' };
+    return teamRoutes[action] || 'team_coordinate';
+  }
+
+  const actionMap = matrix[action] || matrix['fix'];
+  return actionMap[object] || actionMap['_default'] || 'quick';
+}
+```
+
+**Clarity scoring**: 3 = action+object+scope, 2 = action+object, 1 = action only, 0 = empty.
 If `clarity < 2` and not `AUTO_YES`: call `functions.request_user_input` with one focused question (max 2 rounds).
 
 ### 3b: State-based routing (when `taskType === 'state_continue'`)
@@ -211,6 +234,7 @@ const chainMap = {
   'memory_capture':     [{ cmd: 'manage-memory-capture',   args: '"{description}"' }],
   'memory':             [{ cmd: 'manage-memory',           args: '"{description}"' }],
   'issue':              [{ cmd: 'manage-issue',            args: '"{description}"' }],
+  'issue_discover':     [{ cmd: 'manage-issue-discover',   args: '"{description}"' }],
   'issue_analyze':      [{ cmd: 'manage-issue-analyze',    args: '"{description}"' }],
   'issue_plan':         [{ cmd: 'manage-issue-plan',       args: '"{description}"' }],
   'issue_execute':      [{ cmd: 'manage-issue-execute',    args: '"{description}"' }],
@@ -300,12 +324,27 @@ const chainMap = {
     { cmd: 'maestro-verify',  args: '{phase}' },
     { cmd: 'maestro-execute', args: '{phase}' }
   ],
+
+  // ── Issue lifecycle chains (with quality gates) ────────────────────────────
+  'issue-full': [
+    { cmd: 'manage-issue-analyze', args: '{issue_id}' },
+    { cmd: 'manage-issue-plan',    args: '{issue_id}' },
+    { cmd: 'manage-issue-execute', args: '{issue_id}' },
+    { cmd: 'quality-review',       args: '--scope {affected_files}' },
+    { cmd: 'manage-issue',         args: 'close {issue_id} --resolution fixed' }
+  ],
+  'issue-quick': [
+    { cmd: 'manage-issue-plan',    args: '{issue_id}' },
+    { cmd: 'manage-issue-execute', args: '{issue_id}' },
+    { cmd: 'manage-issue',         args: 'close {issue_id} --resolution fixed' }
+  ],
 };
 
 // Aliases: task type → named chain
 const taskToChain = {
-  'spec_generate': 'spec-driven',
-  'brainstorm':    'brainstorm-driven'
+  'spec_generate':  'spec-driven',
+  'brainstorm':     'brainstorm-driven',
+  'issue_execute':  'issue-full',    // issue execute always gets review gate
 };
 ```
 
@@ -315,20 +354,31 @@ const taskToChain = {
 3. `taskToChain[taskType]` → named chain
 4. `chainMap[taskType]` → direct lookup
 
-### 3d: Resolve phase and description
+### 3d: Resolve phase, description, and issue ID
 
 ```javascript
 function resolvePhase() {
+  // From structured extraction
+  if (intentAnalysis.phase_ref) return intentAnalysis.phase_ref;
+  // Fallback regex
   const m = intent.match(new RegExp('^(\\d+)$')) ?? intent.match(new RegExp('phase\\s*(\\d+)', 'i'));
   if (m) return m[1] ?? m[2];
   if (projectState.initialized) return projectState.current_phase;
   return null;
 }
 
+function resolveIssueId() {
+  if (intentAnalysis.issue_id) return intentAnalysis.issue_id;
+  const m = intent.match(new RegExp('ISS-[\\w]+-\\d+', 'i'));
+  return m ? m[0] : null;
+}
+
 const resolvedPhase = resolvePhase();
+const resolvedIssueId = resolveIssueId();
 const context = {
   current_phase: resolvedPhase,
   user_intent: intent,
+  issue_id: resolvedIssueId,
   spec_session_id: null,
   scratch_dir: null
 };
@@ -407,6 +457,7 @@ function assembleArgs(step) {
   let a = (step.args ?? '')
     .replaceAll('{phase}',           context.current_phase   ?? '')
     .replaceAll('{description}',     context.user_intent     ?? '')
+    .replaceAll('{issue_id}',        context.issue_id        ?? '')
     .replaceAll('{spec_session_id}', context.spec_session_id ?? '')
     .replaceAll('{scratch_dir}',     context.scratch_dir     ?? '');
 
@@ -690,13 +741,15 @@ Display:
 
 ## Core Rules
 
-1. **Sequential**: Advance `current_step` only after the current step agent is **closed** and state written
-2. **Skill in prompt**: Every step agent's message MUST contain `$skill-name args` — this is the skill invocation
-3. **MANDATORY FIRST STEPS**: Step agents read `universal-executor.md` + the target `SKILL.md`; analysis agents read `cli-explore-agent.md`
-4. **Context propagation**: Parse `phase_detected`, `spec_session_id`, `scratch_dir` from each step's output JSON; feed into next step's `assembleArgs`
-5. **Analysis hints chain**: `step_analyses[N].next_step_hints` → `buildAnalysisHints(N+1)` → injected into step N+1's prompt
-6. **Timeout handling**: One `send_input` urge, then close agent regardless
-7. **Auto-retry**: One silent retry if `AUTO_YES` and step fails; no retry in interactive mode
-8. **State.json is source of truth**: Write after every state change; `--continue` reads it to resume
-9. **Dry-run is read-only**: Display chain and exit — no agents spawned
-10. **Analysis skip conditions**: Single-step chains and failed/skipped steps skip the analysis agent
+1. **Semantic routing**: LLM-native structured extraction (`action × object`) replaces regex; disambiguates "问题" by context
+2. **Sequential**: Advance `current_step` only after the current step agent is **closed** and state written
+3. **Skill in prompt**: Every step agent's message MUST contain `$skill-name args` — this is the skill invocation
+4. **MANDATORY FIRST STEPS**: Step agents read `universal-executor.md` + the target `SKILL.md`; analysis agents read `cli-explore-agent.md`
+5. **Context propagation**: Parse `phase_detected`, `spec_session_id`, `scratch_dir`, `issue_id` from each step's output JSON; feed into next step's `assembleArgs`
+6. **Quality gates**: Issue chains auto-include review; `issue-full` is default for issue execution
+7. **Analysis hints chain**: `step_analyses[N].next_step_hints` → `buildAnalysisHints(N+1)` → injected into step N+1's prompt
+8. **Timeout handling**: One `send_input` urge, then close agent regardless
+9. **Auto-retry**: One silent retry if `AUTO_YES` and step fails; no retry in interactive mode
+10. **State.json is source of truth**: Write after every state change; `--continue` reads it to resume
+11. **Dry-run is read-only**: Display chain and exit — no agents spawned
+12. **Analysis skip conditions**: Single-step chains and failed/skipped steps skip the analysis agent
