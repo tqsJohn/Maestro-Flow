@@ -1,6 +1,6 @@
 {
   "name": "maestro-flow",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Workflow orchestration CLI with MCP endpoint support and extensible architecture",
   "type": "module",
   "imports": {
