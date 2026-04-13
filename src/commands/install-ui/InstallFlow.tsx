@@ -191,13 +191,17 @@ export function InstallFlow({
     <Box flexDirection="column" width="100%">
       {/* Header */}
       <Box flexDirection="column" paddingX={1}>
-        <Box>
+        <Box flexDirection="column">
           <Gradient name="fruit">
-            <BigText text="MAESTRO-FLOW" font="slick" />
+            <BigText text="MAESTRO" font="slick" />
           </Gradient>
-          <Box flexDirection="column" justifyContent="center" marginLeft={1}>
-            <Text dimColor>install</Text>
-            <Text dimColor>v{version}</Text>
+          <Box marginTop={-2}>
+            <Text dimColor>
+              <BigText text="flow" font="slick" />
+            </Text>
+          </Box>
+          <Box marginLeft={2}>
+            <Text dimColor>install  v{version}</Text>
           </Box>
         </Box>
         <Box gap={1}>
