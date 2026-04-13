@@ -62,6 +62,14 @@ TASK: Classify defects by root cause, identify high-density files, analyze cover
 MODE: analysis
 ```
 
+### Tech Profile Scan
+
+After quality analysis, emit context-aware trigger signals (based on detected codebase characteristics):
+
+1. Check defect patterns → signals (`injection_risk`, `auth_detected`, `sql_detected`)
+2. Check coverage data → risk signals (`test_gap`, `perf_sensitive`, `legacy_patterns`)
+3. Include `tech_profile` in Phase 5 state_update data
+
 ## Phase 4: Report Generation & Output
 
 1. Generate quality report markdown with: score, defect patterns, coverage analysis, test effectiveness, quality trend, recommendations

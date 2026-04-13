@@ -80,6 +80,10 @@ Follow the instructions loaded from the role_spec body. This contains the domain
 - Use CLI tools (`maestro cli`) or direct tools (Read, Grep, Glob) for analysis — see @~/.maestro/templates/search-tools.md for tool selection
 - If agent delegation is needed, send a request to the coordinator via SendMessage
 
+### Context-Aware Signal Emission (Optional)
+
+During Phase 2-4 execution, if you detect codebase signals relevant to specialist injection (SQL usage, auth modules, ML imports, performance-sensitive code, etc.), include `tech_profile` in your Phase 5 state_update data. This enables the coordinator to evaluate specialist injection for the pipeline.
+
 ### 6. Publish Results
 
 After execution, publish contributions:
@@ -172,14 +176,14 @@ Determine report variant based on loop state:
 
 **Loop continuation** (inner_loop=true AND more same-prefix tasks pending):
 1. `TaskUpdate` -- mark current task `completed`
-2. Log `state_update` via `team_msg` with task results
+2. Log `state_update` via `team_msg` with task results and optional `tech_profile` (if codebase signals detected in Phase 2-4)
 3. Accumulate summary to in-memory `context_accumulator`
 4. Interrupt check: consensus_blocked HIGH or errors >= 3 -- SendMessage and STOP
 5. Return to step 3 (Task Discovery)
 
 **Final report** (no more same-prefix tasks OR inner_loop=false):
 1. `TaskUpdate` -- mark current task `completed`
-2. Log `state_update` via `team_msg`
+2. Log `state_update` via `team_msg` (include `tech_profile` if codebase signals detected)
 3. Compile and send final report via SendMessage to coordinator:
    - Tasks completed (count + list)
    - Artifacts produced (paths)

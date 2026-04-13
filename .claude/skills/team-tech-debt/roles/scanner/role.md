@@ -74,6 +74,14 @@ Multi-dimension tech debt scanner. Scan codebase across 5 dimensions (code, arch
 | `suggestion` | Fix suggestion |
 | `estimated_effort` | small, medium, large, unknown |
 
+### Tech Profile Scan
+
+After multi-dimension scan, emit context-aware trigger signals (based on detected codebase characteristics):
+
+1. Check debt dimensions → signals (`legacy_patterns`, `test_gap`, `perf_sensitive`)
+2. Check detected patterns → risk signals (`sql_detected`, `auth_detected`, `scaling_concern`, `injection_risk`)
+3. Include `tech_profile` in Phase 5 state_update data
+
 ## Phase 4: Aggregate & Save
 
 1. Deduplicate findings across Fan-out layers (file:line key), merge cross-references

@@ -61,6 +61,14 @@ Build prompt with target file patterns, toolchain dedup summary, and per-dimensi
 
 Execute via `maestro cli --tool gemini --mode analysis --rule analysis-review-code-quality` (fallback: qwen -> codex). Parse JSON array response, validate required fields (dimension, title, location.file), enforce per-dimension limit (max 5 each), filter minimum severity (medium+). Write `<session>/scan/semantic-findings.json`.
 
+### Tech Profile Scan
+
+After scan execution, emit context-aware trigger signals (based on detected codebase characteristics):
+
+1. Check security findings → signals (`injection_risk`, `eval_usage`, `sql_detected`, `auth_detected`)
+2. Check quality findings → risk signals (`legacy_patterns`, `test_gap`, `perf_sensitive`)
+3. Include `tech_profile` in Phase 5 state_update data
+
 ## Phase 4: Aggregate & Output
 
 1. Merge toolchain + semantic findings, deduplicate (same file + line + dimension = duplicate)

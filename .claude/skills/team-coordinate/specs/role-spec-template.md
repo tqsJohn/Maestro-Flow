@@ -122,6 +122,12 @@ Quality thresholds from [specs/quality-gates.md](quality-gates.md):
 - Review 60-79%: report completed with warnings
 - Fail < 60%: retry Phase 3 (max 2)
 
+### Tech Profile Injection
+
+When generating role-specs for analysis or exploration roles, append a Tech Profile Scan instruction after their Phase 3:
+- Instruct the role to scan analysis results for codebase signals relevant to its domain
+- Include `tech_profile` in state_update data for coordinator specialist injection evaluation
+
 ### Error Protocol
 
 - Primary approach fails → try alternative (different CLI tool / different tool)

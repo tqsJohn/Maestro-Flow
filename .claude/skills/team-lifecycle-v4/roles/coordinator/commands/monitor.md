@@ -31,13 +31,62 @@ Worker completed. Process and advance.
 4. Completion -> mark task done
    - Resident agent (supervisor) -> keep in active_workers (stays alive for future checkpoints)
    - Standard worker -> remove from active_workers
+4.5. **evaluateSpecialistInjection** (based on detected codebase characteristics):
+   - If callback from analyst, planner, or executor role:
+     a. `get_state(role=<callback_role>)` → extract `tech_profile.signals`
+     b. Merge with previously collected signals from other roles
+     c. Evaluate against trigger matrix (§4)
+     d. P0 matches → TaskCreate with blockedBy on current stage, blocks downstream
+     e. P1 matches → TaskCreate parallel with REVIEW/TEST stage
+     f. Log: `team_msg(type="specialist_injection", data={ specialist, signals, priority, evidence })`
+     g. Dedup: skip if same specialist already injected this session
 5. Check for checkpoints:
    - CHECKPOINT-* with verdict "block" -> AskUserQuestion: Override / Revise upstream / Abort
    - CHECKPOINT-* with verdict "warn" -> log risks to wisdom, proceed normally
    - CHECKPOINT-* with verdict "pass" -> proceed normally
    - QUALITY-001 -> display quality gate, pause for user commands
-   - PLAN-001 -> read plan.json complexity, create dynamic IMPL tasks per specs/pipelines.md routing
+   - PLAN-001 -> dynamicImplDispatch (see below)
 6. -> handleSpawnNext
+
+### dynamicImplDispatch (PLAN-001 callback)
+
+When PLAN-001 completes, coordinator creates IMPL tasks based on complexity:
+
+1. Read `<session>/plan/plan.json` → extract `complexity`, `tasks[]`
+2. Route by complexity (per specs/pipelines.md §6):
+
+| Complexity | Action |
+|------------|--------|
+| Low (1-2 modules) | Create single IMPL-001, blockedBy: [PLAN-001], InnerLoop: true |
+| Medium (3-4 modules) | Create IMPL-{1..N}, each blockedBy: [PLAN-001] only, InnerLoop: false |
+| High (5+ modules) | Create IMPL-{1..N} with DAG deps from plan.json, InnerLoop per dispatch rules |
+
+3. For each IMPL task: TaskCreate with structured description (dispatch.md template)
+4. Set blockedBy:
+   - **Parallel tasks**: blockedBy: [PLAN-001] (or [CHECKPOINT-003] if supervision enabled)
+   - **Serial chain within DAG**: blockedBy includes upstream IMPL task IDs
+5. Update team-session.json: `pipeline.tasks_total`, `pipeline.impl_topology: "single"|"parallel"|"dag"`
+6. Log via team_msg: `{ type: "state_update", data: { impl_count: N, topology: "..." } }`
+
+### dynamicImplDispatch (PLAN-001 callback)
+
+When PLAN-001 completes, coordinator creates IMPL tasks based on complexity:
+
+1. Read `<session>/plan/plan.json` → extract `complexity`, `tasks[]`
+2. Route by complexity (per specs/pipelines.md §6):
+
+| Complexity | Action |
+|------------|--------|
+| Low (1-2 modules) | Create single IMPL-001, blockedBy: [PLAN-001], InnerLoop: true |
+| Medium (3-4 modules) | Create IMPL-{1..N}, each blockedBy: [PLAN-001] only, InnerLoop: false |
+| High (5+ modules) | Create IMPL-{1..N} with DAG deps from plan.json, InnerLoop per dispatch rules |
+
+3. For each IMPL task: TaskCreate with structured description (dispatch.md template)
+4. Set blockedBy:
+   - **Parallel tasks**: blockedBy: [PLAN-001] (or [CHECKPOINT-003] if supervision enabled)
+   - **Serial chain within DAG**: blockedBy includes upstream IMPL task IDs
+5. Update team-session.json: `pipeline.tasks_total`, `pipeline.impl_topology: "single"|"parallel"|"dag"`
+6. Log via team_msg: `{ type: "state_update", data: { impl_count: N, topology: "..." } }`
 
 ## handleCheck
 
