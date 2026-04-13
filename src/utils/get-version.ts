@@ -14,8 +14,8 @@ let cached: string | null = null;
  */
 export function getPackageVersion(): string {
   if (cached) return cached;
-  // Compiled JS lives at dist/src/utils/get-version.js → 3 levels up to project root
-  const pkgRoot = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
+  // Compiled JS lives at dist/src/utils/get-version.js → 4 levels up to project root
+  const pkgRoot = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
   const pkg = JSON.parse(readFileSync(resolve(pkgRoot, 'package.json'), 'utf-8'));
   cached = (pkg.version as string) ?? '0.0.0';
   return cached;
