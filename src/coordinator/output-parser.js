@@ -92,19 +92,23 @@ export class DefaultOutputParser {
         }
         // Find the LAST COORDINATE RESULT block
         const lastIdx = rawOutput.lastIndexOf(RESULT_MARKER);
-        if (lastIdx === -1) {
-            const result = makeFailureResult('No COORDINATE RESULT block found');
+        if (lastIdx !== -1) {
+            const blockText = rawOutput.slice(lastIdx + RESULT_MARKER.length);
+            const structured = parseResultBlock(blockText);
             if (node.extract) {
-                applyExtractRules(rawOutput, node.extract, result.structured);
+                applyExtractRules(rawOutput, node.extract, structured);
             }
-            return result;
+            return { structured };
         }
-        const blockText = rawOutput.slice(lastIdx + RESULT_MARKER.length);
-        const structured = parseResultBlock(blockText);
+        // No RESULT block — this is the contract the prompt assembler mandates,
+        // so its absence is a protocol failure. Never infer SUCCESS from free-form
+        // output: a silent-success fallback hides real failures and breaks decision
+        // nodes that branch on verification_status / review_verdict.
+        const result = makeFailureResult('No COORDINATE RESULT block found');
         if (node.extract) {
-            applyExtractRules(rawOutput, node.extract, structured);
+            applyExtractRules(rawOutput, node.extract, result.structured);
         }
-        return { structured };
+        return result;
     }
 }
 //# sourceMappingURL=output-parser.js.map

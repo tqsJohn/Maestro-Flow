@@ -43,8 +43,45 @@ function validateGraph(raw, filePath) {
             continue;
         const n = node;
         validateNodeRefs(nodeId, n, nodeIds, filePath);
+        validateNodeOutputContract(nodeId, n, filePath);
     }
     return raw;
+}
+function validateNodeOutputContract(nodeId, node, filePath) {
+    if (node.type !== 'command')
+        return;
+    if (typeof node.cmd !== 'string' || node.cmd.trim().length === 0) {
+        throw new GraphValidationError(`Command node "${nodeId}" has empty "cmd" in ${filePath}`);
+    }
+    const extract = node.extract;
+    if (!extract || typeof extract !== 'object' || Array.isArray(extract))
+        return;
+    for (const [ruleId, rawRule] of Object.entries(extract)) {
+        if (!rawRule || typeof rawRule !== 'object' || Array.isArray(rawRule)) {
+            throw new GraphValidationError(`Command node "${nodeId}" has invalid extract rule "${ruleId}" in ${filePath}`);
+        }
+        const rule = rawRule;
+        if (!rule.target || rule.target.trim().length === 0) {
+            throw new GraphValidationError(`Command node "${nodeId}" extract rule "${ruleId}" has empty target in ${filePath}`);
+        }
+        if (!rule.pattern || rule.pattern.trim().length === 0) {
+            throw new GraphValidationError(`Command node "${nodeId}" extract rule "${ruleId}" has empty pattern in ${filePath}`);
+        }
+        if (rule.strategy === 'json_path') {
+            throw new GraphValidationError(`Command node "${nodeId}" extract rule "${ruleId}" uses unsupported strategy "json_path" in ${filePath}`);
+        }
+        if (rule.strategy === 'regex') {
+            try {
+                new RegExp(rule.pattern);
+            }
+            catch {
+                throw new GraphValidationError(`Command node "${nodeId}" extract rule "${ruleId}" has invalid regex pattern in ${filePath}`);
+            }
+            if (!rule.pattern.includes('(')) {
+                throw new GraphValidationError(`Command node "${nodeId}" extract rule "${ruleId}" regex must include a capture group in ${filePath}`);
+            }
+        }
+    }
 }
 function validateNodeRefs(nodeId, node, nodeIds, filePath) {
     const check = (field, target) => {

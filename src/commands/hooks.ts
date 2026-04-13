@@ -107,7 +107,8 @@ export function loadClaudeSettings(settingsPath: string): ClaudeSettings {
 }
 
 function getMaestroBinDir(): string {
-  return resolve(new URL('../../bin', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'));
+  // From dist/src/commands/ → 3 levels up to package root, then into bin/
+  return resolve(new URL('../../../bin', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'));
 }
 
 const HOOK_MARKER = 'maestro';

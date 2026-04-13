@@ -182,11 +182,13 @@ async function main(): Promise<void> {
   });
   app.route('/', routes);
 
-  // Resolve dashboard root relative to this file (works for both dev and npm install)
-  // In dev: src/server/index.ts → ../../dist
-  // In prod: dist-server/server/index.js → ../../dist
+  // Resolve dashboard root relative to this file
+  // In dev: src/server/index.ts → 2 levels up to dashboard/
+  // In prod: dist-server/dashboard/src/server/index.js → 4 levels up to dashboard/
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  const dashboardRoot = resolve(__dirname, '..', '..');
+  const dashboardRoot = __dirname.includes('dist-server')
+    ? resolve(__dirname, '..', '..', '..', '..')
+    : resolve(__dirname, '..', '..');
   const distDir = resolve(dashboardRoot, 'dist');
 
   // Static files — serve Vite build output for production

@@ -192,6 +192,7 @@ export interface CommandExecutor {
 export interface AssembleRequest {
     node: CommandNode;
     node_id: string;
+    session_id: string;
     context: WalkerContext;
     graph: {
         id: string;
@@ -241,6 +242,18 @@ export interface AnalysisResult {
 }
 export interface StepAnalyzer {
     analyze(node: CommandNode, rawOutput: string, ctx: WalkerContext, prevCmd?: AssembleRequest['previous_command']): Promise<AnalysisResult>;
+}
+export interface LLMDecisionRequest {
+    node_id: string;
+    prompt: string;
+    valid_targets: string[];
+}
+export interface LLMDecisionResult {
+    target: string;
+    reasoning: string;
+}
+export interface LLMDecider {
+    decide(req: LLMDecisionRequest): Promise<LLMDecisionResult | null>;
 }
 export type CoordinateEvent = {
     type: 'walker:started';

@@ -8,6 +8,7 @@
     "specs": "规范管理器",
     "wiki": "知识库",
     "teams": "团队会话",
+    "collab": "协作",
     "requirement": "需求扩展",
     "supervisor": "调度中心",
     "views": "视图"
@@ -26,6 +27,7 @@
     "specs_tooltip": "规范管理器",
     "wiki_tooltip": "项目知识库",
     "teams_tooltip": "团队",
+    "collab_tooltip": "协作",
     "requirement_tooltip": "需求",
     "supervisor_tooltip": "调度管理中心",
     "views_label": "视图",

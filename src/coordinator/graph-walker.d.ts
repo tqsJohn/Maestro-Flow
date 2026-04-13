@@ -1,6 +1,7 @@
-import type { ChainGraph, WalkerState, CommandExecutor, PromptAssembler, ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter } from './graph-types.js';
+import type { ChainGraph, WalkerState, CommandExecutor, PromptAssembler, ExprEvaluator, OutputParser, StepAnalyzer, WalkerEventEmitter, LLMDecider } from './graph-types.js';
 import type { GraphLoader } from './graph-loader.js';
 import type { ParallelCommandExecutor } from './parallel-executor.js';
+import type { WorkflowHookRegistry } from '../hooks/workflow-hooks.js';
 export interface StartOptions {
     tool: string;
     autoMode: boolean;
@@ -19,8 +20,10 @@ export declare class GraphWalker {
     private readonly emitter?;
     private readonly sessionDir?;
     private readonly parallelExecutor?;
+    private readonly llmDecider?;
+    private readonly hooks?;
     private activeState;
-    constructor(loader: GraphLoader, assembler: PromptAssembler, executor: CommandExecutor, analyzer: StepAnalyzer | null, outputParser: OutputParser, evaluator: ExprEvaluator, emitter?: WalkerEventEmitter | undefined, sessionDir?: string | undefined, parallelExecutor?: ParallelCommandExecutor | undefined);
+    constructor(loader: GraphLoader, assembler: PromptAssembler, executor: CommandExecutor, analyzer: StepAnalyzer | null, outputParser: OutputParser, evaluator: ExprEvaluator, emitter?: WalkerEventEmitter | undefined, sessionDir?: string | undefined, parallelExecutor?: ParallelCommandExecutor | undefined, llmDecider?: (LLMDecider | null) | undefined, hooks?: WorkflowHookRegistry | undefined);
     start(graphId: string, intent: string, options: StartOptions): Promise<WalkerState>;
     resume(sessionId?: string): Promise<WalkerState>;
     /** Load session state without executing — for status queries. */
@@ -32,6 +35,9 @@ export declare class GraphWalker {
     private walk;
     private handleCommand;
     private handleDecision;
+    private askLLMDecider;
+    private buildDecisionPrompt;
+    private filterContextByKeys;
     private handleGate;
     private handleEval;
     private handleFork;
@@ -43,8 +49,16 @@ export declare class GraphWalker {
     private setContextValue;
     private resolveTemplate;
     private buildInitialContext;
+    private reportPathFor;
+    private clearNodeReport;
+    private loadNodeResult;
     private save;
     private loadState;
     private dryRunWalk;
     private emit;
+    private ensureRecovery;
+    private resolveRetryPolicy;
+    private executeWithRetry;
+    private shouldAutoContinue;
+    private buildFailureSummary;
 }

@@ -25,7 +25,8 @@ const STARTUP_MAX_WAIT_MS = 15_000;
 // ---------------------------------------------------------------------------
 
 function getDashboardDir(): string {
-  return resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'dashboard');
+  // From dist/src/commands/view.js → 4 levels up to package root
+  return resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'dashboard');
 }
 
 interface HealthResponse {
@@ -109,7 +110,7 @@ export function registerViewCommand(program: Command): void {
         const health = await checkHealth(host, port);
         if (!health) {
           // Spawn server using same logic as production mode
-          const serverEntry = join(dashboardDir, 'dist-server', 'server', 'index.js');
+          const serverEntry = join(dashboardDir, 'dist-server', 'dashboard', 'src', 'server', 'index.js');
           const hasBuild = existsSync(serverEntry)
             && existsSync(join(dashboardDir, 'dist', 'index.html'));
 
@@ -313,7 +314,7 @@ export function registerViewCommand(program: Command): void {
       }
 
       // Spawn dashboard server
-      const serverEntry = join(dashboardDir, 'dist-server', 'server', 'index.js');
+      const serverEntry = join(dashboardDir, 'dist-server', 'dashboard', 'src', 'server', 'index.js');
       const hasBuild = existsSync(serverEntry)
         && existsSync(join(dashboardDir, 'dist', 'index.html'));
 

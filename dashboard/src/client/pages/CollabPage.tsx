@@ -71,17 +71,16 @@ export function CollabPage() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [setActiveTab]);
 
-  // Fetch data on mount
+  // Fetch all data once on mount (including aggregated to avoid delay on Analysis tab)
+  const fetchAggregated = useCollabStore((s) => s.fetchAggregated);
   useEffect(() => {
     void fetchMembers();
     void fetchActivity();
     void fetchPresence();
-  }, [fetchMembers, fetchActivity, fetchPresence]);
-
-  // Cleanup on unmount
-  useEffect(() => {
+    void fetchAggregated();
     return () => clearAll();
-  }, [clearAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable zustand actions, run once on mount
+  }, []);
 
   // Loading state
   if (loading && members.length === 0) {
@@ -114,39 +113,17 @@ export function CollabPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 px-4 border-b border-border shrink-0">
-        {TAB_ITEMS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={[
-              'relative px-3 py-2.5 text-[length:var(--font-size-sm)] font-[var(--font-weight-medium)] transition-colors duration-150',
-              activeTab === tab.key
-                ? 'text-text-primary'
-                : 'text-text-tertiary hover:text-text-secondary',
-            ].join(' ')}
-          >
-            {tab.label}
-            {activeTab === tab.key && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue rounded-t" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
+      {/* Tab content — tab bar is in TopBar via ViewSwitcher */}
       <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           <motion.div
             key={activeTab}
-            className="flex-1 flex flex-col overflow-hidden p-4"
+            className="h-full flex flex-col overflow-hidden p-4"
             variants={tabVariants}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+            transition={{ duration: 0.15 }}
           >
             {activeTab === 'overview' && (
               <div className="flex flex-col md:flex-row gap-4 h-full overflow-hidden">

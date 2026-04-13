@@ -152,7 +152,7 @@ export function MessageArea({ processId }: { processId: string | null }) {
           style={{ height: '100%' }}
           components={showLoadingPlaceholder ? {
             Footer: () => <AgentLoadingPlaceholder agentType={process?.type} />,
-          } : undefined}
+          } : {}}
           itemContent={(index, entry) => {
             // Check if this assistant_message continues a group from the previous assistant_message
             // (skipping non-visual entries like tool_use, error, status_change between them)

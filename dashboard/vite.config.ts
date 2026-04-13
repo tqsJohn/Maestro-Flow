@@ -36,6 +36,7 @@ export default defineConfig({
       '@radix-ui/react-select',
       '@radix-ui/react-slot',
       '@radix-ui/react-tabs',
+      'react-virtuoso',
     ],
   },
   // appType 'spa' (default) provides history API fallback for React Router.

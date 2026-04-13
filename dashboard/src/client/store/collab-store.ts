@@ -103,8 +103,10 @@ export const useCollabStore = create<CollabStoreState>((set, get) => ({
     try {
       const res = await fetch(COLLAB_API_ENDPOINTS.STATUS);
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      const data = (await res.json()) as CollabPresence[];
-      set({ presence: data, loading: false });
+      const data = await res.json();
+      // API returns { online, total, members: CollabPresence[] }
+      const members = Array.isArray(data) ? data : (data.members ?? []);
+      set({ presence: members as CollabPresence[], loading: false });
     } catch (err) {
       set({ loading: false, error: String(err) });
     }

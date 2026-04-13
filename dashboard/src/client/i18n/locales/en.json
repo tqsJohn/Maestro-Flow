@@ -8,6 +8,7 @@
     "specs": "Specs Manager",
     "wiki": "Wiki",
     "teams": "Team Sessions",
+    "collab": "Collaboration",
     "requirement": "Requirement",
     "supervisor": "Supervisor",
     "views": "Views"
@@ -26,6 +27,7 @@
     "specs_tooltip": "Specs Manager",
     "wiki_tooltip": "Project Wiki",
     "teams_tooltip": "Teams",
+    "collab_tooltip": "Collaboration",
     "requirement_tooltip": "Requirement",
     "supervisor_tooltip": "Supervisor management",
     "views_label": "Views",

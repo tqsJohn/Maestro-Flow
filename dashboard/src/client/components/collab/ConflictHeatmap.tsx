@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useCollabStore } from '@/client/store/collab-store.js';
 import type { CollabAggregatedActivity } from '@/shared/collab-types.js';
 import { HeatmapCell } from '@/client/components/collab/HeatmapCell.js';
@@ -30,13 +30,8 @@ function getColorForRisk(risk: string): string {
 export function ConflictHeatmap() {
   const aggregated = useCollabStore((s) => s.aggregated);
   const loading = useCollabStore((s) => s.loading);
-  const fetchAggregated = useCollabStore((s) => s.fetchAggregated);
 
   const [selectedCell, setSelectedCell] = useState<CollabAggregatedActivity | null>(null);
-
-  useEffect(() => {
-    void fetchAggregated();
-  }, [fetchAggregated]);
 
   // Derive unique phases (rows) and tasks (columns)
   const { phases, tasks, cellMap } = useMemo(() => {

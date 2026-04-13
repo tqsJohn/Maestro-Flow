@@ -70,11 +70,19 @@ function mapStatus(job: DelegateJobRecord | null, event: DelegateJobEvent): Agen
   return 'running';
 }
 
+/** Known lifecycle status values that are not real content summaries */
+const LIFECYCLE_STATUSES = new Set([
+  'spawned', 'spawning', 'running', 'completed', 'stopped',
+  'stopping', 'failed', 'cancelled', 'queued', 'success',
+  'pending', 'error', 'paused',
+]);
+
 function extractSummary(event: DelegateJobEvent): string | undefined {
   const payload = event.payload as Record<string, unknown>;
+  // Note: payload.status is excluded — it contains lifecycle state names
+  // (e.g. "spawned", "completed") that are not real content summaries.
   const direct = readString(payload.summary)
     ?? readString(payload.message)
-    ?? readString(payload.status)
     ?? readString(payload.preview);
   if (direct) {
     return direct.replace(/\s+/g, ' ').trim();

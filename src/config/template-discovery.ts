@@ -39,7 +39,8 @@ let cachedIndex: TemplateIndex | null = null;
 function getTemplatesDir(): string {
   const global = resolve(paths.home, 'templates', 'cli');
   if (existsSync(global)) return global;
-  return resolve(import.meta.dirname ?? __dirname, '..', '..', 'templates', 'cli');
+  // From dist/src/config/ → 3 levels up to package root
+  return resolve(import.meta.dirname ?? __dirname, '..', '..', '..', 'templates', 'cli');
 }
 
 export function getPromptsDir(): string {
