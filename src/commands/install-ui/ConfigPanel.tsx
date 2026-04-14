@@ -103,9 +103,11 @@ export function ConfigPanel({
         )}
         {activeTab === 2 && (
           <BackupConfig
-            doBackup={config.doBackup}
-            hasExistingManifest={existingManifest}
-            onToggle={(v) => onConfigChange({ doBackup: v })}
+            backupClaudeMd={config.backupClaudeMd}
+            backupAll={config.backupAll}
+            existingFileCount={0}
+            onClaudeMdChange={(v: boolean) => onConfigChange({ backupClaudeMd: v })}
+            onAllChange={(v: boolean) => onConfigChange({ backupAll: v })}
           />
         )}
       </Box>

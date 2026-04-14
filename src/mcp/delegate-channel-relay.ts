@@ -139,18 +139,13 @@ function buildSignature(event: DelegateJobEvent): string {
 function buildNotificationContent(event: DelegateJobEvent): string {
   const status = buildStatusLabel(event);
   const summary = extractSummary(event);
-  const toolHint = event.type === 'completed'
-    ? 'Use `delegate_output` for the full result, or `delegate_status` / `delegate_tail` for details.'
-    : event.type === 'cancel_requested'
-      ? 'Use `delegate_status` or `delegate_tail` to follow cancellation progress.'
-    : 'Use `delegate_status` or `delegate_tail` for the latest state.';
   const headlineParts = [`[DELEGATE ${status}]`, event.jobId];
 
   if (summary) {
-    headlineParts.push(truncateRaw(summary, 90));
+    headlineParts.push(truncateRaw(summary, 120));
   }
 
-  return truncateRaw(`${headlineParts.join(' ')}\n${toolHint}`, MAX_CHANNEL_TEXT_LENGTH);
+  return truncateRaw(headlineParts.join(' '), MAX_CHANNEL_TEXT_LENGTH);
 }
 
 export class DelegateChannelRelay {

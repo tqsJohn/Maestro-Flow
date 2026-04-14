@@ -450,6 +450,88 @@ export function createBackup(manifest: Manifest): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Granular backup — backup specific targets before overwrite
+// ---------------------------------------------------------------------------
+
+export interface BackupOptions {
+  /** Backup CLAUDE.md files before overwrite (default: true) */
+  backupClaudeMd: boolean;
+  /** Backup ALL files that will be replaced (default: false) */
+  backupAll: boolean;
+}
+
+/**
+ * Backup existing target files before installation overwrites them.
+ * Returns the backup directory path, or null if nothing was backed up.
+ */
+export function createTargetBackup(
+  components: ScannedComponent[],
+  options: BackupOptions,
+): string | null {
+  if (!options.backupClaudeMd && !options.backupAll) return null;
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const backupDir = join(paths.home, 'backups', `pre-install-${timestamp}`);
+  let backedUp = 0;
+
+  const backupFile = (filePath: string, baseDir: string) => {
+    if (!existsSync(filePath)) return;
+    const rel = relative(baseDir, filePath);
+    const dest = join(backupDir, rel);
+    const destDir = dirname(dest);
+    if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+    copyFileSync(filePath, dest);
+    backedUp++;
+  };
+
+  const backupDirRecursive = (dir: string, baseDir: string) => {
+    if (!existsSync(dir)) return;
+    const st = statSync(dir);
+    if (st.isFile()) {
+      backupFile(dir, baseDir);
+      return;
+    }
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        backupDirRecursive(fullPath, baseDir);
+      } else {
+        backupFile(fullPath, baseDir);
+      }
+    }
+  };
+
+  const home = homedir();
+
+  for (const comp of components) {
+    const targetDir = comp.targetDir;
+    if (options.backupAll) {
+      // Backup everything in this target
+      backupDirRecursive(targetDir, home);
+    } else if (options.backupClaudeMd && comp.def.id === 'claude-md') {
+      // Only backup CLAUDE.md
+      backupFile(targetDir, home);
+    }
+  }
+
+  if (backedUp === 0) return null;
+  return backupDir;
+}
+
+/**
+ * Count existing files in target directories that would be overwritten.
+ */
+export function countExistingTargetFiles(components: ScannedComponent[]): number {
+  let count = 0;
+  for (const comp of components) {
+    if (existsSync(comp.targetDir)) {
+      count += countFiles(comp.targetDir);
+    }
+  }
+  return count;
+}
+
+// ---------------------------------------------------------------------------
 // MCP tools list
 // ---------------------------------------------------------------------------
 

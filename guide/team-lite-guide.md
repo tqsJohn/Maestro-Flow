@@ -77,13 +77,19 @@ Active in last 30 min:
 maestro team report --action nightly-import --phase 3 --target etl-jobs
 ```
 
-**`maestro team sync [--dry-run]`** — 一键同步（stash → pull --rebase → pop → push）
+**`maestro team sync [--dry-run] [--with-overlays]`** — 一键同步（fast-path → stash → pull --rebase → pop → push）
 
 ```
 $ maestro team sync
+Fast-path: local and remote are identical. Nothing to do.
+
+$ maestro team sync --with-overlays
 Stashing local changes (maestro-team-sync-auto)...
 Pulling from origin/HEAD (rebase)...
 Pushing...
+Importing team overlays...
+  bob-bundle.json — imported (newer than local)
+  charlie-bundle.json — skipped (already up-to-date)
 Sync complete.
 ```
 
@@ -127,6 +133,131 @@ statusline 刷新时把磁盘 IO 拉满。
 
 **不要用 `--force` 的场景**：拿不准、没人确认过、警告里的 action 是
 `maestro-execute`（意味着对方正在动代码）。
+
+## 增量同步 Fast Path
+
+`team sync` 在执行完整 stash/pull/push 流程前，会先做一次 SHA 比较
+（`git fetch` + `git rev-parse`）。三种快速路径：
+
+| 场景 | 行为 | 耗时 |
+|------|------|------|
+| 本地 == 远端 | 跳过，什么都不做（SKIP） | < 1s |
+| 本地领先远端 | 只 push（PUSH-ONLY） | fetch + push |
+| 本地落后远端 | 只 pull（PULL-ONLY） | fetch + pull |
+| 分叉 | 走完整流程（stash → rebase → push） | 正常耗时 |
+
+Fast path 是透明的——命中时打印原因，未命中时静默回退到完整流程。
+`--dry-run` 模式下会打印 SHA 信息但不执行 git 操作。
+
+## Overlay 团队共享
+
+### 推送 overlay 给队友
+
+```bash
+# 打包你的 overlay 到 .workflow/collab/overlays/{uid}-bundle.json
+maestro overlay push
+
+# 只推送指定 overlay
+maestro overlay push -n my-overlay another-overlay
+```
+
+bundle 文件会标记 `sourceMember` 和 `ts`（时间戳），队友在 `team sync
+--with-overlays` 时自动导入比本地更新的 bundle。
+
+### 同步队友 overlay
+
+```bash
+maestro team sync --with-overlays
+```
+
+同步流程会扫描 `.workflow/collab/overlays/` 下所有 `*-bundle.json`，
+跳过自己的 bundle，对比 `manifest.json` 中记录的上次导入时间，只导入
+更新的 bundle。导入使用已有的 `importBundle()` 机制。
+
+### 目录结构
+
+```
+.workflow/collab/overlays/
+├── alice-bundle.json     # alice 的 overlay 导出
+├── bob-bundle.json       # bob 的 overlay 导出
+└── manifest.json         # 各成员最后导入时间戳
+```
+
+`.gitignore` 通过 negation 规则打开此目录的 git 追踪，使 bundle 文件
+能通过 `git push/pull` 在队友间传递。
+
+## Spec 个人化（三层加载）
+
+spec 加载支持三层目录扫描，内容按层追加（不替换）：
+
+| 层 | 目录 | 用途 |
+|----|------|------|
+| Baseline | `.workflow/specs/` | 项目基线 spec（全员共享） |
+| Team | `.workflow/collab/specs/` | 团队共享 spec |
+| Personal | `.workflow/collab/specs/{uid}/` | 个人 spec 覆盖 |
+
+无 uid（非团队模式）或无对应目录时，行为与原来单目录加载完全一致。
+
+### 管理个人 spec
+
+```bash
+# 列出你的个人 spec 文件
+maestro team spec list
+
+# 创建/编辑个人 spec（自动补 .md 后缀，不存在则用模板创建）
+maestro team spec edit my-rules
+```
+
+个人 spec 会在 agent 的 spec injection 中自动生效，不需要额外配置。
+
+## 命名空间保护
+
+Namespace Guard 防止队友间误写对方的协作文件。v1 为**告警模式**
+（advisory），不会阻止操作，仅在 `team-monitor` hook 中打印警告。
+
+### 可写范围
+
+每个成员只能写入自己的命名空间：
+
+- `.workflow/collab/members/{自己的uid}.json`
+- `.workflow/collab/specs/{自己的uid}/` 下的所有文件
+- `.workflow/collab/overlays/{自己的uid}-bundle.json`
+- **共享路径**：`activity.jsonl`（追加）、`overlays/manifest.json`
+
+写入其他成员的文件时，hook 会输出警告：
+```
+[NamespaceGuard] Blocked: write to bob.json by alice — file belongs to another member's namespace
+```
+
+### 查看边界
+
+```bash
+$ maestro team guard
+Namespace boundaries for alice:
+
+Writable paths (own namespace):
+  .workflow/collab/members/alice.json
+  .workflow/collab/specs/alice/
+  .workflow/collab/overlays/alice-bundle.json
+
+Shared writable paths:
+  .workflow/collab/activity.jsonl
+  .workflow/collab/overlays/manifest.json
+
+Mode: advisory (warnings only, non-blocking)
+```
+
+## 角色权限
+
+`team join` 默认赋予首位成员 `admin` 角色，后续成员为 `member`。
+部分敏感操作需要 `admin` 权限，普通成员调用时会收到提示：
+
+```
+Error: This operation requires admin role. Your role: member
+```
+
+当前需要 admin 权限的操作会在未来版本中逐步明确。所有读操作和
+`team sync`、`team join`、`team status` 等日常命令对所有角色开放。
 
 ## 同步策略
 
@@ -192,10 +323,15 @@ vs `alice@b.com`），join 会给后来者追加数字后缀（`alice-2`）。
 npx tsx --test src/utils/__tests__/jsonl-log.test.ts \
   src/tools/__tests__/team-members.test.ts \
   src/tools/__tests__/team-activity.test.ts \
+  src/tools/__tests__/namespace-guard.test.ts \
+  src/tools/__tests__/spec-loader.test.ts \
   src/hooks/__tests__/team-monitor.test.ts \
   src/commands/__tests__/team-preflight.test.ts \
   src/hooks/__tests__/statusline-team.test.ts
 ```
+
+> **注意**：这些测试必须用 `npx tsx --test` 运行，不要用 vitest。
+> vitest 无法识别 `node:test` API 的测试套件。
 
 端到端冒烟（自动 build + 临时 git 仓库 + 跑完所有子命令）：
 

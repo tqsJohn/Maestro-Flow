@@ -367,11 +367,17 @@ When switching workflows, the launcher automatically:
 
 ### MCP Server
 
-Expose Maestro-Flow tools to Claude Desktop and other MCP clients:
+Expose Maestro-Flow tools to Claude Code and other MCP clients:
 
 ```bash
-npm run mcp  # stdio transport
+# Claude Code — load as development MCP server
+claude --dangerously-load-development-channels server:maestro --dangerously-skip-permissions
+
+# stdio transport (for Claude Desktop, other MCP clients)
+npm run mcp
 ```
+
+With MCP connected, delegate tools (`delegate_message`, `delegate_status`, `delegate_output`, `delegate_tail`, `delegate_cancel`) and other Maestro tools are available programmatically.
 
 ---
 
@@ -418,6 +424,7 @@ maestro/
 ## Documentation
 
 - **[Command Usage Guide](guide/command-usage-guide.md)** — All 36 commands with workflow diagrams, pipeline chaining, Issue closed-loop, and quick channels
+- **[Delegate Async Guide](guide/delegate-async-guide.md)** — Async task delegation: CLI & MCP usage, message injection, chaining, broker lifecycle, delegate vs CLI comparison
 - **[Overlay Guide](guide/overlay-guide.md)** — Non-invasive command extensions: overlay format, section injection, bundle/import, interactive TUI management
 - **[Hooks Guide](guide/hooks-guide.md)** — Hook system architecture, 7 hooks, spec injection, context budget, configuration
 - **[Team Lite — User Guide](guide/team-lite-guide.md)** — Daily workflow for 2-8 person teams: join, sync, activity awareness, conflict preflight

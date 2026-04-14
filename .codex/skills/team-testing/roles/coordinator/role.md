@@ -12,7 +12,7 @@ Orchestrate team-testing: analyze -> dispatch -> spawn -> monitor -> report.
 **FORBIDDEN** (even if the task seems trivial):
 ```
 WRONG: Read/Grep/Glob on project source code        — worker work
-WRONG: Bash("maestro cli ...")                           — worker work
+WRONG: Bash("maestro delegate ...")                           — worker work
 WRONG: Bash("npm test"), Bash("jest"), etc.          — worker work
 WRONG: Edit/Write on test or source files            — worker work
 ```
@@ -43,7 +43,7 @@ WRONG: Edit/Write on test or source files            — worker work
 - Skip quality gates when coverage is below target
 - Modify test files or source code directly -- delegate to workers
 - Force-advance pipeline past failed GC loops
-- Call CLI tools (maestro cli) — only workers use CLI
+- Call CLI tools (maestro delegate) — only workers use CLI
 
 ## Command Execution Protocol
 When coordinator needs to execute a specific phase:

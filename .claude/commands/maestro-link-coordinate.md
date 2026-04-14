@@ -13,7 +13,7 @@ allowed-tools:
 ---
 <purpose>
 Step-mode workflow coordinator using `maestro coordinate` CLI subcommands (start/next/status).
-Walks chain graphs node by node — each command node executed via `maestro cli` internally.
+Walks chain graphs node by node — each command node executed via `maestro delegate` internally.
 Decision/gate/eval nodes auto-resolve between steps. Session persisted for resume.
 </purpose>
 

@@ -89,9 +89,9 @@ describe('DelegateChannelRelay', () => {
 
     assert.equal(notifications.length, 3);
     assert.equal(notifications[0].method, 'notifications/claude/channel');
-    assert.match(notifications[0].params.content, /delegate_status/);
-    assert.match(notifications[1].params.content, /delegate_tail/);
-    assert.match(notifications[2].params.content, /delegate_output/);
+    assert.match(notifications[0].params.content, /RUNNING/);
+    assert.match(notifications[1].params.content, /RUNNING/);
+    assert.match(notifications[2].params.content, /DONE/);
 
     for (const notification of notifications) {
       assert.ok(notification.params.content.length <= 240);
@@ -364,10 +364,10 @@ describe('DelegateChannelRelay', () => {
       assert.ok(n.params.content.length <= 240);
     }
 
-    // Completed notification should reference delegate_output
+    // Completed notification should have DONE label
     const completedNotif = notifications.find((n) => n.params.meta.event_type === 'completed');
     assert.ok(completedNotif);
-    assert.match(completedNotif!.params.content, /delegate_output/);
+    assert.match(completedNotif!.params.content, /DONE/);
 
     // All events should be acked
     const remaining = broker.pollEvents({ sessionId: 'full-cycle-test' });

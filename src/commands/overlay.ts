@@ -15,6 +15,9 @@
 import type { Command } from 'commander';
 import {
   existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
   unlinkSync,
   readdirSync,
 } from 'node:fs';
@@ -33,8 +36,11 @@ import {
   bundleOverlays,
   importBundle,
   type ApplyReport,
+  type OverlayBundle,
 } from '../core/overlay/applier.js';
 import { loadOverlay, OverlayLoadError } from '../core/overlay/loader.js';
+import { getProjectRoot } from '../utils/path-validator.js';
+import { resolveSelf } from '../tools/team-members.js';
 
 // ---------------------------------------------------------------------------
 // Scope discovery
@@ -256,6 +262,49 @@ function runImportBundle(file: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Subcommand: push (team sync — bundle to collab/overlays/)
+// ---------------------------------------------------------------------------
+
+function runOverlayPush(opts: { names?: string[] }): void {
+  const self = resolveSelf();
+  if (!self) {
+    console.error("Team mode not enabled. Run 'maestro team join' first.");
+    process.exit(1);
+    return;
+  }
+
+  const dir = overlayDir();
+  ensureOverlayDir(dir);
+
+  // Bundle overlays into a temporary location first, then enrich with metadata
+  const collabOverlaysDir = join(getProjectRoot(), '.workflow', 'collab', 'overlays');
+  if (!existsSync(collabOverlaysDir)) mkdirSync(collabOverlaysDir, { recursive: true });
+
+  const destPath = join(collabOverlaysDir, `${self.uid}-bundle.json`);
+
+  try {
+    const result = bundleOverlays(dir, destPath, opts.names);
+
+    // Read back the bundle and enrich with team metadata
+    const bundle: OverlayBundle = JSON.parse(readFileSync(destPath, 'utf-8'));
+    bundle.sourceMember = self.uid;
+    bundle.ts = new Date().toISOString();
+    writeFileSync(destPath, JSON.stringify(bundle, null, 2), 'utf-8');
+
+    console.error('');
+    console.error('=== OVERLAY PUSHED ===');
+    console.error(`  Member:   ${self.uid}`);
+    console.error(`  Path:     ${result.dest}`);
+    console.error(`  Overlays: ${result.overlayCount}`);
+    console.error(`  Docs:     ${result.docCount}`);
+    console.error('');
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -307,4 +356,10 @@ export function registerOverlayCommand(program: Command): void {
     .command('import-bundle <file>')
     .description('Import a bundle file, unpacking overlays and docs, then apply')
     .action((file: string) => runImportBundle(file));
+
+  overlay
+    .command('push')
+    .description('Bundle overlays to .workflow/collab/overlays/ for team sharing')
+    .option('-n, --names <names...>', 'Only push specific overlays by name')
+    .action((opts: { names?: string[] }) => runOverlayPush(opts));
 }

@@ -95,9 +95,28 @@ export function InstallHub({ items, onToggle, onEnter, onInstall, onBack }: Inst
 // ---------------------------------------------------------------------------
 
 export function buildHubItems(
-  enabled: { components: boolean; hooks: boolean; mcp: boolean },
-  summaries: { componentCount: number; fileCount: number; hookLevel: HookLevel; mcpToolCount: number; mcpEnabled: boolean },
+  enabled: { components: boolean; hooks: boolean; mcp: boolean; statusline: boolean; backup: boolean },
+  summaries: {
+    componentCount: number; fileCount: number; hookLevel: HookLevel;
+    mcpToolCount: number; mcpEnabled: boolean;
+    statuslineDetected: string | null;
+    backupClaudeMd: boolean; backupAll: boolean;
+  },
 ): HubItem[] {
+  const statuslineSummary = enabled.statusline
+    ? (summaries.statuslineDetected
+      ? t.install.statuslineDetected.replace('{cmd}', summaries.statuslineDetected)
+      : t.install.statuslineWillInstall)
+    : t.install.hubSkipped;
+
+  const backupSummary = enabled.backup
+    ? (summaries.backupAll
+      ? t.install.backupAllLabel
+      : summaries.backupClaudeMd
+        ? t.install.backupClaudeMdLabel
+        : t.install.hubSkipped)
+    : t.install.hubSkipped;
+
   return [
     {
       id: 'components',
@@ -122,6 +141,18 @@ export function buildHubItems(
       summary: enabled.mcp && summaries.mcpEnabled
         ? t.install.hubTools.replace('{count}', String(summaries.mcpToolCount))
         : t.install.hubSkipped,
+    },
+    {
+      id: 'statusline',
+      label: 'Statusline',
+      enabled: enabled.statusline,
+      summary: statuslineSummary,
+    },
+    {
+      id: 'backup',
+      label: 'Backup',
+      enabled: enabled.backup,
+      summary: backupSummary,
     },
   ];
 }

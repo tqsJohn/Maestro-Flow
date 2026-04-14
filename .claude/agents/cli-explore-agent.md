@@ -86,7 +86,7 @@ rg "^import .* from " -n | head -30
 ### CLI Semantic Analysis (deep-scan, dependency-map)
 
 ```bash
-maestro cli -p "
+maestro delegate "
 PURPOSE: {from prompt}
 TASK: {from prompt}
 MODE: analysis

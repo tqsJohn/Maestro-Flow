@@ -150,6 +150,44 @@ export function resolveSelf(): MemberRecord | null {
 }
 
 // ---------------------------------------------------------------------------
+// Guards
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that team mode is active (i.e. the current git user has a member
+ * record). Throws a descriptive error if `resolveSelf()` returns null.
+ *
+ * Returns the resolved `MemberRecord` for convenience so callers can chain:
+ *   const self = requireTeamMode();
+ */
+export function requireTeamMode(): MemberRecord {
+  const self = resolveSelf();
+  if (!self) {
+    throw new Error(
+      "Team mode not enabled. Run 'maestro team join' first.",
+    );
+  }
+  return self;
+}
+
+/**
+ * Assert the current user holds the given role. Calls `resolveSelf()`
+ * internally, so it also fails when team mode is off.
+ *
+ * Throws with a message like:
+ *   "This operation requires admin role. Your role: member"
+ */
+export function requireRole(required: 'admin' | 'member'): MemberRecord {
+  const self = requireTeamMode();
+  if (self.role !== required) {
+    throw new Error(
+      `This operation requires ${required} role. Your role: ${self.role}`,
+    );
+  }
+  return self;
+}
+
+// ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
 

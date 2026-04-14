@@ -36,6 +36,7 @@ import {
   restoreDisabledState,
   applyOverlaysPostInstall,
   copyRecursive,
+  createTargetBackup,
   MCP_TOOLS,
   type CopyStats,
 } from './install-backend.js';
@@ -199,6 +200,12 @@ function forceInstall(
 
   // Scan disabled items
   const disabledItems = scanDisabledItems(targetBase);
+
+  // Backup CLAUDE.md by default before overwrite
+  const backupPath = createTargetBackup(available, { backupClaudeMd: true, backupAll: false });
+  if (backupPath) {
+    console.error(`  Backup: ${backupPath}`);
+  }
 
   // Clean previous
   const existingManifest = findManifest(mode, targetPath);

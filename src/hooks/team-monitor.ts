@@ -24,6 +24,8 @@ import { tmpdir } from 'node:os';
 
 import { resolveSelf } from '../tools/team-members.js';
 import { reportActivity, readWorkflowContext } from '../tools/team-activity.js';
+import { evaluateNamespaceGuard } from '../tools/namespace-guard.js';
+import { getProjectRoot } from '../utils/path-validator.js';
 
 interface HookInput {
   session_id?: string;
@@ -101,6 +103,30 @@ export function runTeamMonitor(input: HookInput): void {
       typeof input.tool_name === 'string' && input.tool_name.length > 0
         ? input.tool_name
         : 'unknown';
+
+    // Namespace guard: check file write operations stay within boundaries.
+    // V1 is advisory — log warning but never block.
+    if (input.tool_input && (action === 'Write' || action === 'Edit')) {
+      const filePath =
+        typeof input.tool_input.file_path === 'string'
+          ? input.tool_input.file_path
+          : typeof input.tool_input.path === 'string'
+            ? input.tool_input.path
+            : undefined;
+
+      if (filePath) {
+        const guardResult = evaluateNamespaceGuard(
+          filePath,
+          self.uid,
+          getProjectRoot(),
+        );
+        if (!guardResult.allowed) {
+          console.error(
+            `[TeamMonitor] WARNING: namespace violation (advisory): ${guardResult.reason}`,
+          );
+        }
+      }
+    }
 
     const ctx = readWorkflowContext();
 

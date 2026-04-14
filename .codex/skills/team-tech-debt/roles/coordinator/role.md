@@ -12,7 +12,7 @@
 **FORBIDDEN** (even if the task seems trivial):
 ```
 WRONG: Read/Grep/Glob on project source code        — worker work
-WRONG: Bash("maestro cli ...")                           — worker work
+WRONG: Bash("maestro delegate ...")                           — worker work
 WRONG: Edit/Write on project source files            — worker work
 ```
 

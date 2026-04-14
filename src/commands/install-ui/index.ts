@@ -18,7 +18,7 @@ export async function runInstallWizard(
 }
 
 export interface InstallFlowOptions {
-  initialStep?: 'mode' | 'hub' | 'components_config' | 'hooks_config' | 'mcp_config' | 'confirm';
+  initialStep?: 'mode' | 'hub' | 'components_config' | 'hooks_config' | 'mcp_config' | 'statusline_config' | 'backup_config' | 'confirm';
   initialMode?: 'global' | 'project';
   initialStepIds?: string[];
 }

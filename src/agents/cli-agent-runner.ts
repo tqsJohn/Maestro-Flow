@@ -418,16 +418,11 @@ export class CliAgentRunner {
       if (!server) return;
 
       const label = status === 'completed'
-        ? 'DELEGATE COMPLETED'
+        ? 'DONE'
         : status === 'cancelled'
-          ? 'DELEGATE CANCELLED'
-          : 'DELEGATE FAILED';
-      const result = status === 'completed'
-        ? 'done'
-        : status === 'cancelled'
-          ? 'cancelled'
-          : `exit:${exitCode}`;
-      const content = `[${label}] ${execId} (${tool}/${mode}) ${result}\nUse \`maestro delegate output ${execId}\` for full result.`;
+          ? 'CANCELLED'
+          : 'FAILED';
+      const content = `[DELEGATE ${label}] ${execId} ${tool}/${mode} ${status === 'failed' ? `exit:${exitCode}` : status}`;
 
       // Fire-and-forget notification via MCP protocol
       server.notification({
@@ -546,7 +541,7 @@ export class CliAgentRunner {
       }
     };
 
-    publishEvent('status_update', 'running', `Delegate started for ${options.tool}/${options.mode}`);
+    publishEvent('status_update', 'running', `${options.tool}/${options.mode} started`);
 
     // Safety net: if the process exits without a stopped event (e.g. Windows
     // shell process tree doesn't fire exit/close reliably), write meta.json
@@ -583,11 +578,7 @@ export class CliAgentRunner {
       publishEvent(
         status,
         status,
-        status === 'completed'
-          ? `Delegate completed: ${execId}`
-          : status === 'cancelled'
-            ? `Delegate cancelled: ${execId}`
-            : `Delegate failed: ${execId}`,
+        `${options.tool}/${options.mode} ${status}`,
         {
           exitCode,
           completedAt,

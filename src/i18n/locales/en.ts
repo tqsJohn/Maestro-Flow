@@ -11,10 +11,12 @@ export const en: LocaleStrings = {
 
     // Footer hints
     footerMode: '[G]lobal  [P]roject  [Enter] Next  [Esc] Exit',
-    footerHub: '[Space/1-3] Toggle  [Enter] Configure/Install  [Esc] Back',
+    footerHub: '[Space/1-5] Toggle  [Enter] Configure/Install  [Esc] Back',
     footerComponents: '[Space] Toggle  [1-9] Quick  [A]ll  [N]one  [Enter] Done  [Esc] Back',
     footerHooks: '[1-4] Select level  [Enter] Done  [Esc] Back',
     footerMcp: '[y/n] Enable  [1-6] Toggle tool  [Enter] Done  [Esc] Back',
+    footerStatusline: '[y/n] Toggle  [Enter] Done  [Esc] Back',
+    footerBackup: '[Space/1-2] Toggle  [Enter] Done  [Esc] Back',
     footerConfirm: '[Enter] Install  [Esc] Back',
 
     // Mode step
@@ -61,6 +63,25 @@ export const en: LocaleStrings = {
     mcpProjectRootDefault: '(default)',
     mcpEditRoot: 'Press [r] to edit',
 
+    // Statusline
+    statuslineTitle: 'Statusline Configuration',
+    statuslineCurrentLabel: 'Detected existing statusline:',
+    statuslineInstallPrompt: 'Install maestro statusline?',
+    statuslineDesc: 'Statusline shows maestro context info in Claude Code. Installed separately from hooks.',
+    statuslineOverwriteWarn: 'Warning: This will overwrite the existing statusline configuration.',
+    statuslineDetected: 'detected: {cmd}',
+    statuslineWillInstall: 'maestro-statusline',
+    statuslineEnabled: 'maestro-statusline',
+
+    // Backup
+    backupTitle: 'Backup Configuration',
+    backupOptClaudeMd: 'CLAUDE.md',
+    backupOptClaudeMdDesc: 'Backup CLAUDE.md before overwrite',
+    backupOptAll: 'All replaced files',
+    backupOptAllDesc: 'Backup all {count} files that will be overwritten',
+    backupClaudeMdLabel: 'CLAUDE.md only',
+    backupAllLabel: 'All replaced files',
+
     // Confirm
     confirmTitle: 'Installation Summary',
     confirmLabelMode: 'Mode:',
@@ -68,15 +89,19 @@ export const en: LocaleStrings = {
     confirmLabelComponents: 'Components:',
     confirmLabelHooks: 'Hooks:',
     confirmLabelMcp: 'MCP Server:',
+    confirmLabelStatusline: 'Statusline:',
+    confirmLabelBackup: 'Backup:',
     confirmSkipped: 'skipped',
 
     // Execution
     execPreparing: 'Preparing...',
     execScanning: 'Scanning disabled items...',
+    execBackingUp: 'Backing up existing files...',
     execCleaning: 'Cleaning previous installation...',
     execInstalling: 'Installing {name}...',
     execWritingVersion: 'Writing version marker...',
     execInstallingHooks: 'Installing {level} hooks...',
+    execInstallingStatusline: 'Installing statusline...',
     execRegisteringMcp: 'Registering MCP server...',
     execComplete: 'Complete',
     execDone: '  Done',
@@ -90,6 +115,7 @@ export const en: LocaleStrings = {
     resultPreserved: '{count} settings files',
     resultHooks: '{count} installed',
     resultManifest: 'Manifest:',
+    resultStatuslineInstalled: 'installed',
     resultExit: 'Restart Claude Code to pick up changes. Press Enter to exit.',
 
     // Force install

@@ -12,6 +12,9 @@ Thumbs.db
 .ace-tool/
 .ccw/
 .workflow/
+!.workflow/collab/
+.workflow/collab/*
+!.workflow/collab/overlays/
 claude-code-skills-guide.md
 docs/
 

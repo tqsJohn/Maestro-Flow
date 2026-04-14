@@ -51,7 +51,7 @@ CONSTRAINTS: Only modify listed files | Follow existing patterns
 
 CLI call:
 ```
-Bash(`maestro cli -p "<prompt>" --tool <tool> --mode write --rule development-implement-feature`)
+Bash(`maestro delegate "<prompt>" --to <tool> --mode write --rule development-implement-feature`)
 ```
 
 Resume strategy:

@@ -12,7 +12,7 @@ Orchestrate team-review: parse target -> detect mode -> dispatch task chain -> m
 **FORBIDDEN** (even if the task seems trivial):
 ```
 WRONG: Read/Grep/Glob on project source code        — worker work
-WRONG: Bash("maestro cli ...")                           — worker work
+WRONG: Bash("maestro delegate ...")                           — worker work
 WRONG: Bash("semgrep/eslint/tsc ...")                — worker work
 WRONG: Edit/Write on project source files            — worker work
 ```
@@ -45,7 +45,7 @@ WRONG: Edit/Write on project source files            — worker work
 - Perform code review or scanning directly
 - Bypass worker roles
 - Spawn workers with general-purpose agent (MUST use team_worker)
-- Call CLI tools (maestro cli) — only workers use CLI
+- Call CLI tools (maestro delegate) — only workers use CLI
 
 ## Command Execution Protocol
 When coordinator needs to execute a specific phase:

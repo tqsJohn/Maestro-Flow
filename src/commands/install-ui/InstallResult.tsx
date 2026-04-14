@@ -45,10 +45,21 @@ export function InstallResult({ result }: InstallResultProps) {
           <Row label="Hooks:" value={t.install.resultHooks.replace('{count}', String(result.hooksInstalled))} />
         )}
         <Row
+          label="Statusline:"
+          value={result.statuslineInstalled ? t.install.resultStatuslineInstalled : t.install.confirmSkipped}
+          valueColor={result.statuslineInstalled ? 'green' : 'gray'}
+        />
+        <Row
           label="MCP:"
           value={result.mcpRegistered ? 'maestro-tools registered' : t.install.confirmSkipped}
           valueColor={result.mcpRegistered ? 'green' : 'gray'}
         />
+        {result.backupPath && (
+          <Box>
+            <Text color="cyan">{'Backup:'.padEnd(13)}</Text>
+            <Text dimColor>{result.backupPath}</Text>
+          </Box>
+        )}
         {result.manifestPath && (
           <Box>
             <Text color="cyan">{t.install.resultManifest.padEnd(13)}</Text>

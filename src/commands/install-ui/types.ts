@@ -22,6 +22,12 @@ export interface InstallConfig {
   mcpProjectRoot: string;
   hookLevel: 'none' | 'minimal' | 'standard' | 'full';
   doBackup: boolean;
+  /** Install statusline separately (default: false) */
+  installStatusline: boolean;
+  /** Backup CLAUDE.md before overwrite (default: true) */
+  backupClaudeMd: boolean;
+  /** Backup all replaced files (default: false) */
+  backupAll: boolean;
 }
 
 export const DEFAULT_INSTALL_CONFIG: InstallConfig = {
@@ -33,6 +39,9 @@ export const DEFAULT_INSTALL_CONFIG: InstallConfig = {
   mcpProjectRoot: '',
   hookLevel: 'none',
   doBackup: false,
+  installStatusline: false,
+  backupClaudeMd: true,
+  backupAll: false,
 };
 
 // ---------------------------------------------------------------------------

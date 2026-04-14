@@ -5,6 +5,7 @@
 import type { MaestroPlugin } from '../../types/index.js';
 import type { WorkflowHookRegistry } from '../workflow-hooks.js';
 import { loadSpecs, type SpecCategory } from '../../tools/spec-loader.js';
+import { resolveSelf } from '../../tools/team-members.js';
 
 /**
  * In-process plugin for `maestro coordinate` — injects relevant specs
@@ -22,12 +23,28 @@ export class SpecInjectionPlugin implements MaestroPlugin {
     registry.transformPrompt.tap(this.name, (prompt: string) => {
       // Infer category from prompt content heuristics
       const category = inferCategory(prompt);
-      const result = loadSpecs(this.projectPath, category);
+
+      // Best-effort uid resolution for personal spec layer
+      const uid = resolveUidSafe();
+      const result = loadSpecs(this.projectPath, category, uid);
 
       if (!result.content) return prompt;
 
       return `${prompt}\n\n---\n\n${result.content}`;
     });
+  }
+}
+
+/**
+ * Best-effort uid resolution — returns undefined on any failure so spec
+ * injection never throws due to team-mode issues.
+ */
+function resolveUidSafe(): string | undefined {
+  try {
+    const self = resolveSelf();
+    return self?.uid ?? undefined;
+  } catch {
+    return undefined;
   }
 }
 

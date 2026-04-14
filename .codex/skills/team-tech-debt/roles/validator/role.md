@@ -58,7 +58,7 @@ Execute 4-layer validation (all commands in worktree):
 **Auto-fix attempt** (when total_regressions <= 3):
 - Use CLI tool to fix regressions in worktree:
   ```
-  Bash(`cd "${worktreePath}" && maestro cli -p "PURPOSE: Fix regressions found in validation
+  Bash(`cd "${worktreePath}" && maestro delegate "PURPOSE: Fix regressions found in validation
   TASK: ${regressionDetails}
   MODE: write
   CONTEXT: @${modifiedFiles.join(' @')}

@@ -243,4 +243,78 @@ describe('team-members', () => {
       }
     });
   });
+
+  describe('requireTeamMode', () => {
+    beforeEach(() => {
+      setup();
+      cdTmp();
+    });
+    afterEach(() => {
+      cdBack();
+      teardown();
+    });
+
+    it('returns MemberRecord when team mode is active', async () => {
+      const { joinTeam, requireTeamMode } = await loadModule();
+      joinTeam();
+      const self = requireTeamMode();
+      assert.strictEqual(self.uid, 'alice');
+      assert.strictEqual(self.role, 'admin');
+    });
+
+    it('throws when team mode is not active', async () => {
+      const { requireTeamMode } = await loadModule();
+      assert.throws(() => requireTeamMode(), /Team mode not enabled/);
+    });
+  });
+
+  describe('requireRole', () => {
+    beforeEach(() => {
+      setup();
+      cdTmp();
+    });
+    afterEach(() => {
+      cdBack();
+      teardown();
+    });
+
+    it('returns MemberRecord when role matches (admin)', async () => {
+      const { joinTeam, requireRole } = await loadModule();
+      joinTeam({ role: 'admin' });
+      const self = requireRole('admin');
+      assert.strictEqual(self.uid, 'alice');
+      assert.strictEqual(self.role, 'admin');
+    });
+
+    it('returns MemberRecord when role matches (member)', async () => {
+      const { joinTeam, requireRole } = await loadModule();
+      joinTeam({ role: 'member' });
+      const self = requireRole('member');
+      assert.strictEqual(self.uid, 'alice');
+      assert.strictEqual(self.role, 'member');
+    });
+
+    it('throws descriptive error when member tries admin operation', async () => {
+      const { joinTeam, requireRole } = await loadModule();
+      joinTeam({ role: 'member' });
+      assert.throws(
+        () => requireRole('admin'),
+        /This operation requires admin role\. Your role: member/,
+      );
+    });
+
+    it('throws descriptive error when admin tries member-only operation', async () => {
+      const { joinTeam, requireRole } = await loadModule();
+      joinTeam({ role: 'admin' });
+      assert.throws(
+        () => requireRole('member'),
+        /This operation requires member role\. Your role: admin/,
+      );
+    });
+
+    it('throws when team mode is not active', async () => {
+      const { requireRole } = await loadModule();
+      assert.throws(() => requireRole('admin'), /Team mode not enabled/);
+    });
+  });
 });

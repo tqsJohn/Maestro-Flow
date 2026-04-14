@@ -65,7 +65,7 @@ export function evaluateDelegateNotifications(data: MonitorInput): HookOutput | 
   const lines = unread.map(e => {
     const status = e.exitCode === 0 ? 'done' : `exit:${e.exitCode}`;
     const preview = e.prompt.length > 80 ? e.prompt.slice(0, 77) + '...' : e.prompt;
-    return `[DELEGATE ${status}] ${e.execId} (${e.tool}/${e.mode})\n  Prompt: "${preview}"\n  Use \`maestro delegate output ${e.execId}\` for full result.`;
+    return `[DELEGATE ${status}] ${e.execId} ${e.tool}/${e.mode} — "${preview}"`;
   });
 
   return {

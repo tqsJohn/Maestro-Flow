@@ -55,7 +55,7 @@ Parse `$ARGUMENTS`:
 
 - **Session prefix**: `TLV4`
 - **Session path**: `.workflow/.team/TLV4-<slug>-<date>/`
-- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
+- **CLI tools**: `maestro delegate --mode analysis` (read-only), `maestro delegate --mode write` (modifications)
 - **Message bus**: `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)`
 
 ## Worker Spawn Template

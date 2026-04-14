@@ -154,13 +154,40 @@ export interface InstallHooksResult {
 }
 
 /**
+ * Detect whether a statusline is already configured in Claude Code settings.
+ * Returns the current command string if found, or null.
+ */
+export function detectStatusline(opts: { project?: boolean } = {}): string | null {
+  const settingsPath = opts.project
+    ? join(process.cwd(), '.claude', 'settings.json')
+    : getClaudeSettingsPath();
+  const settings = loadClaudeSettings(settingsPath);
+  return settings.statusLine?.command ?? null;
+}
+
+/**
+ * Install only the statusline into Claude Code settings.json.
+ */
+export function installStatusline(opts: { project?: boolean; settingsPath?: string } = {}): string {
+  const settingsPath = opts.settingsPath
+    ?? (opts.project
+      ? join(process.cwd(), '.claude', 'settings.json')
+      : getClaudeSettingsPath());
+  const settings = loadClaudeSettings(settingsPath);
+  settings.statusLine = { type: 'command', command: 'maestro-statusline' };
+  paths.ensure(join(settingsPath, '..'));
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  return settingsPath;
+}
+
+/**
  * Install hooks at the given level into Claude Code settings.json.
  * @param level  Hook level to install
  * @param opts   `project` to use project-scoped settings, otherwise global
  */
 export function installHooksByLevel(
   level: HookLevel,
-  opts: { project?: boolean; settingsPath?: string } = {},
+  opts: { project?: boolean; settingsPath?: string; skipStatusline?: boolean } = {},
 ): InstallHooksResult {
   if (level === 'none') {
     return { settingsPath: '', installedHooks: [], level };
@@ -173,8 +200,10 @@ export function installHooksByLevel(
 
   const settings = loadClaudeSettings(settingsPath);
 
-  // --- Statusline (always with any hook level) ---
-  settings.statusLine = { type: 'command', command: 'maestro-statusline' };
+  // --- Statusline (skip if managed separately) ---
+  if (!opts.skipStatusline) {
+    settings.statusLine = { type: 'command', command: 'maestro-statusline' };
+  }
 
   // --- Remove existing maestro hooks to avoid duplicates ---
   removeMaestroHooks(settings);

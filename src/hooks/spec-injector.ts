@@ -11,6 +11,7 @@
 
 import { loadSpecs, type SpecCategory } from '../tools/spec-loader.js';
 import { evaluateContextBudget } from './context-budget.js';
+import { resolveSelf } from '../tools/team-members.js';
 import type { SpecInjectionConfig } from '../types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,14 @@ const DEFAULT_AGENT_SPEC_MAP: Record<string, SpecInjectionRule> = {
  * @param projectPath Working directory (for spec file resolution)
  * @param sessionId   Session ID (for context budget bridge metrics)
  * @param config      Optional user config overrides
+ * @param uid         Optional team member uid for personal spec layer
  */
 export function evaluateSpecInjection(
   agentType: string,
   projectPath: string,
   sessionId?: string,
   config?: SpecInjectionConfig,
+  uid?: string,
 ): SpecInjectionResult {
   // Merge user config mapping with defaults
   const mapping = buildMapping(config);
@@ -83,13 +86,16 @@ export function evaluateSpecInjection(
 
   if (!rule) return { inject: false };
 
+  // Resolve uid from team membership if not explicitly provided
+  const resolvedUid = uid ?? resolveUidSafe();
+
   // Load specs for each category
   const sections: string[] = [];
   const allCategories: string[] = [];
   let totalCount = 0;
 
   for (const category of rule.categories) {
-    const result = loadSpecs(projectPath, category as SpecCategory);
+    const result = loadSpecs(projectPath, category as SpecCategory, resolvedUid);
     if (result.content) {
       sections.push(result.content);
       allCategories.push(category);
@@ -120,6 +126,19 @@ export function evaluateSpecInjection(
 // ---------------------------------------------------------------------------
 // Internal
 // ---------------------------------------------------------------------------
+
+/**
+ * Best-effort uid resolution — returns null on any failure so spec injection
+ * never throws due to team-mode issues.
+ */
+function resolveUidSafe(): string | undefined {
+  try {
+    const self = resolveSelf();
+    return self?.uid ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function buildMapping(config?: SpecInjectionConfig): Record<string, SpecInjectionRule> {
   if (!config?.mapping) return DEFAULT_AGENT_SPEC_MAP;

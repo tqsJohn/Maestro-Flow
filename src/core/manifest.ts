@@ -142,6 +142,60 @@ export function deleteManifest(manifest: Manifest): void {
 /** Files to preserve even during cleanup. */
 const PRESERVE = new Set(['settings.json', 'settings.local.json']);
 
+/** Files that should have maestro content removed instead of being deleted entirely. */
+const CONTENT_MANAGED = new Set(['CLAUDE.md']);
+
+/** Maestro-specific line patterns in CLAUDE.md */
+const MAESTRO_LINE_PATTERNS = [
+  /^#\s*Maestro\s*$/i,
+  /maestro/i,
+  /~\/\.maestro\//,
+  /mcp__ide__getDiagnostics/,
+  /cli-tools\.json/,
+];
+
+/**
+ * Remove maestro-added content from CLAUDE.md instead of deleting the file.
+ *
+ * Strategy:
+ * - Read source CLAUDE.md content that was installed by maestro
+ * - Compare with existing file to determine if it's maestro-only or mixed
+ * - If file matches maestro source content → safe to delete
+ * - If file has user additions → remove only maestro-originated lines
+ */
+function cleanClaudeMd(filePath: string): boolean {
+  if (!existsSync(filePath)) return false;
+
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+
+  // Filter out lines that are maestro-specific
+  const filteredLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) return true; // keep blank lines
+    return !MAESTRO_LINE_PATTERNS.some(p => p.test(trimmed));
+  });
+
+  // Check if remaining content is empty (only whitespace/blank lines)
+  const meaningful = filteredLines.filter(l => l.trim().length > 0);
+  if (meaningful.length === 0) {
+    // File only had maestro content — safe to delete
+    unlinkSync(filePath);
+    return true;
+  }
+
+  // If nothing was actually removed, leave as-is
+  if (filteredLines.length === lines.length) return false;
+
+  // Has user content — write back without maestro lines
+  const cleaned = filteredLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd() + '\n';
+  writeFileSync(filePath, cleaned, 'utf-8');
+  return true;
+}
+
 export function cleanManifestFiles(manifest: Manifest): { removed: number; skipped: number } {
   let removed = 0;
   let skipped = 0;
@@ -154,6 +208,15 @@ export function cleanManifestFiles(manifest: Manifest): { removed: number; skipp
   for (const entry of files) {
     const name = entry.path.split(/[\\/]/).pop() ?? '';
     if (PRESERVE.has(name)) { skipped++; continue; }
+
+    // Content-managed files: remove added content instead of deleting
+    if (CONTENT_MANAGED.has(name)) {
+      try {
+        if (cleanClaudeMd(entry.path)) removed++;
+      } catch { /* skip */ }
+      continue;
+    }
+
     try {
       if (existsSync(entry.path)) {
         unlinkSync(entry.path);

@@ -15,10 +15,14 @@
 
 import type { Command } from 'commander';
 import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   joinTeam,
   resolveSelf,
+  requireRole,
+  requireTeamMode,
   type MemberRecord,
 } from '../tools/team-members.js';
 import {
@@ -27,6 +31,14 @@ import {
   rotateIfNeeded,
   type ActivityEvent,
 } from '../tools/team-activity.js';
+import {
+  importBundle,
+  type OverlayBundle,
+} from '../core/overlay/applier.js';
+import { paths } from '../config/paths.js';
+import { getProjectRoot } from '../utils/path-validator.js';
+import { CATEGORY_MAP, TEAM_SPECS_DIR } from '../tools/spec-loader.js';
+import { getNamespaceBoundaries } from '../tools/namespace-guard.js';
 
 // ---------------------------------------------------------------------------
 // join
@@ -182,6 +194,223 @@ function pad(s: string, width: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// overlay sync — import team bundles from .workflow/collab/overlays/
+// ---------------------------------------------------------------------------
+
+/** Manifest tracking last-imported bundle timestamps per member. */
+interface OverlaySyncManifest {
+  /** Map of member uid to last imported ISO timestamp. */
+  imported: Record<string, string>;
+}
+
+/**
+ * Scan `.workflow/collab/overlays/` for bundle files from other team members,
+ * import bundles that are newer than previously imported, and update manifest.
+ *
+ * Returns counts of imported and skipped bundles.
+ */
+export function syncOverlays(
+  projectRoot: string,
+  selfUid: string,
+): { imported: number; skipped: number } {
+  const collabOverlaysDir = join(projectRoot, '.workflow', 'collab', 'overlays');
+  if (!existsSync(collabOverlaysDir)) {
+    return { imported: 0, skipped: 0 };
+  }
+
+  // Load sync manifest
+  const manifestPath = join(collabOverlaysDir, 'manifest.json');
+  let manifest: OverlaySyncManifest = { imported: {} };
+  if (existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as OverlaySyncManifest;
+    } catch {
+      // Corrupted manifest — start fresh
+      manifest = { imported: {} };
+    }
+  }
+
+  const overlayDir = join(paths.home, 'overlays');
+  let imported = 0;
+  let skipped = 0;
+
+  // Scan for bundle files
+  let entries: string[];
+  try {
+    entries = readdirSync(collabOverlaysDir);
+  } catch {
+    return { imported: 0, skipped: 0 };
+  }
+
+  for (const entry of entries) {
+    if (!entry.endsWith('-bundle.json')) continue;
+
+    const bundlePath = join(collabOverlaysDir, entry);
+    let bundle: OverlayBundle;
+    try {
+      bundle = JSON.parse(readFileSync(bundlePath, 'utf-8')) as OverlayBundle;
+    } catch {
+      skipped++;
+      continue;
+    }
+
+    // Skip own bundles
+    if (bundle.sourceMember === selfUid) {
+      skipped++;
+      continue;
+    }
+
+    // Skip bundles without team metadata
+    if (!bundle.sourceMember || !bundle.ts) {
+      skipped++;
+      continue;
+    }
+
+    // Check if we already imported this version
+    const lastImported = manifest.imported[bundle.sourceMember];
+    if (lastImported && lastImported >= bundle.ts) {
+      skipped++;
+      continue;
+    }
+
+    // Import the bundle
+    try {
+      importBundle(bundlePath, overlayDir);
+      manifest.imported[bundle.sourceMember] = bundle.ts;
+      imported++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  Warning: failed to import bundle from ${bundle.sourceMember}: ${msg}`);
+      skipped++;
+    }
+  }
+
+  // Save updated manifest
+  if (imported > 0) {
+    if (!existsSync(collabOverlaysDir)) mkdirSync(collabOverlaysDir, { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  }
+
+  return { imported, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// sync -- fast-path detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Attempt SHA-based fast-path detection. Runs git fetch origin, then
+ * compares local HEAD with upstream tracking ref to decide if the full
+ * stash/pull/push cycle can be shortened.
+ *
+ * Returns:
+ *   'skip'      -- local and remote are identical; nothing to do.
+ *   'push-only' -- remote is ancestor of local; only push needed.
+ *   'pull-only' -- local is ancestor of remote; skip push step.
+ *   null        -- cannot determine; fall through to full sync.
+ *
+ * Any error falls through to full sync (returns null) so this never
+ * introduces new failure modes.
+ */
+function tryFastPath(
+  dry: boolean,
+  say: (s: string) => void,
+  self: MemberRecord,
+  dirty: boolean,
+): 'skip' | 'push-only' | 'pull-only' | null {
+  try {
+    say('Fetching from origin...');
+    if (!dry) {
+      execSync('git fetch origin', { stdio: 'inherit' });
+    }
+
+    // Read local and upstream SHAs.
+    const localSha = execSync('git rev-parse HEAD', {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+
+    let remoteSha: string;
+    try {
+      remoteSha = execSync('git rev-parse @{u}', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    } catch {
+      // No upstream tracking ref configured -- cannot fast-path.
+      say('No upstream tracking ref; falling through to full sync.');
+      return null;
+    }
+
+    // SKIP: identical SHAs.
+    if (localSha === remoteSha) {
+      if (dirty) {
+        say('Already up to date (working tree has uncommitted changes, nothing to sync).');
+      } else {
+        say('Already up to date.');
+      }
+      reportActivity({
+        user: self.uid,
+        host: self.host,
+        action: 'sync-skip',
+      });
+      return 'skip';
+    }
+
+    if (dry) {
+      // In dry-run we cannot reliably run merge-base checks after a
+      // skipped fetch, but we can still show the SHA mismatch.
+      say(`Local HEAD ${localSha.slice(0, 8)} differs from upstream ${remoteSha.slice(0, 8)}.`);
+      // Fall through so the full dry-run plan is printed.
+      return null;
+    }
+
+    // PULL-ONLY: local is ancestor of remote (remote has new commits, local doesn't).
+    try {
+      execSync('git merge-base --is-ancestor HEAD @{u}', {
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      // Local is ancestor of remote -- only need to pull.
+      say('Local is behind upstream; skipping push.');
+      reportActivity({
+        user: self.uid,
+        host: self.host,
+        action: 'sync-pull-only',
+      });
+      return 'pull-only';
+    } catch {
+      // Not an ancestor -- check the other direction.
+    }
+
+    // PUSH-ONLY: remote is ancestor of local (local has new commits, remote doesn't).
+    try {
+      execSync('git merge-base --is-ancestor @{u} HEAD', {
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      // Remote is ancestor of local -- only need to push.
+      say('Upstream is behind local; skipping pull.');
+      reportActivity({
+        user: self.uid,
+        host: self.host,
+        action: 'sync-push-only',
+      });
+      return 'push-only';
+    } catch {
+      // Diverged -- need full sync.
+    }
+
+    // Diverged history -- full sync needed.
+    say('Local and upstream have diverged; running full sync.');
+    return null;
+  } catch (err) {
+    // Any unexpected error: log and fall through to full sync.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Warning: fast-path detection failed (${msg}); running full sync.`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // sync
 // ---------------------------------------------------------------------------
 
@@ -197,10 +426,13 @@ function pad(s: string, width: number): string {
  *   4 — stash pop conflict (left in conflict state for user to resolve)
  *   5 — detached HEAD
  */
-function runSync(opts: { dryRun?: boolean }): void {
-  const self = resolveSelf();
-  if (!self) {
-    console.error("Team mode not enabled. Run 'maestro team join' first.");
+function runSync(opts: { dryRun?: boolean; withOverlays?: boolean }): void {
+  let self: MemberRecord;
+  try {
+    self = requireTeamMode();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Error: ${msg}`);
     process.exit(1);
     return;
   }
@@ -236,6 +468,51 @@ function runSync(opts: { dryRun?: boolean }): void {
     process.exit(2);
     return;
   }
+
+  // Fast path: fetch + SHA comparison to skip unnecessary steps.
+  const fastPath = tryFastPath(dry, say, self, dirty);
+  if (fastPath === 'skip') {
+    return;
+  }
+  if (fastPath === 'push-only') {
+    // Skip stash/pull, jump straight to push.
+    say('Pushing...');
+    if (!dry) {
+      const tryPush = (): boolean => {
+        try {
+          execSync('git push', { stdio: 'inherit' });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      if (!tryPush()) {
+        console.error('Push rejected. Falling through to full sync...');
+        // Fall through below to full sync cycle.
+      } else {
+        // Rotation check.
+        const archivePath = rotateIfNeeded(10 * 1024 * 1024);
+        if (archivePath) {
+          console.log(`Rotated activity.jsonl -> ${archivePath}`);
+        }
+        console.log('Sync complete (push-only fast path).');
+        return;
+      }
+    } else {
+      say('Would check activity.jsonl rotation (10 MB threshold).');
+      console.log('[dry-run] Sync plan complete (push-only fast path).');
+      return;
+    }
+  }
+  if (fastPath === 'pull-only') {
+    // No local-only commits; skip push after pull.
+    // Still need stash/pull/pop, but can skip push.
+    // Fall through to full sync but mark that push can be skipped.
+  }
+
+  // Track whether push should be skipped (pull-only fast path).
+  const skipPush = fastPath === 'pull-only';
 
   let stashed = false;
 
@@ -279,44 +556,49 @@ function runSync(opts: { dryRun?: boolean }): void {
   }
 
   // Step 3: push (with one retry on non-fast-forward).
-  say('Pushing...');
-  if (!dry) {
-    const tryPush = (): boolean => {
-      try {
-        execSync('git push', { stdio: 'inherit' });
-        return true;
-      } catch {
-        return false;
-      }
-    };
+  // Skipped when pull-only fast path detected (local has no unique commits).
+  if (skipPush) {
+    say('Push skipped (pull-only fast path -- no local-only commits).');
+  } else {
+    say('Pushing...');
+    if (!dry) {
+      const tryPush = (): boolean => {
+        try {
+          execSync('git push', { stdio: 'inherit' });
+          return true;
+        } catch {
+          return false;
+        }
+      };
 
-    if (!tryPush()) {
-      console.error('Push rejected. Retrying pull --rebase + push once...');
-      try {
-        execSync('git pull --rebase origin HEAD', { stdio: 'inherit' });
-      } catch {
-        console.error('Error: retry rebase failed.');
-        if (stashed) {
-          try {
-            execSync('git stash pop', { stdio: 'inherit' });
-          } catch {
-            // Best-effort.
-          }
-        }
-        process.exit(3);
-        return;
-      }
       if (!tryPush()) {
-        console.error('Error: push still rejected after retry.');
-        if (stashed) {
-          try {
-            execSync('git stash pop', { stdio: 'inherit' });
-          } catch {
-            // Best-effort.
+        console.error('Push rejected. Retrying pull --rebase + push once...');
+        try {
+          execSync('git pull --rebase origin HEAD', { stdio: 'inherit' });
+        } catch {
+          console.error('Error: retry rebase failed.');
+          if (stashed) {
+            try {
+              execSync('git stash pop', { stdio: 'inherit' });
+            } catch {
+              // Best-effort.
+            }
           }
+          process.exit(3);
+          return;
         }
-        process.exit(3);
-        return;
+        if (!tryPush()) {
+          console.error('Error: push still rejected after retry.');
+          if (stashed) {
+            try {
+              execSync('git stash pop', { stdio: 'inherit' });
+            } catch {
+              // Best-effort.
+            }
+          }
+          process.exit(3);
+          return;
+        }
       }
     }
   }
@@ -344,13 +626,33 @@ function runSync(opts: { dryRun?: boolean }): void {
   if (!dry) {
     const archivePath = rotateIfNeeded(10 * 1024 * 1024);
     if (archivePath) {
-      console.log(`Rotated activity.jsonl → ${archivePath}`);
+      console.log(`Rotated activity.jsonl -> ${archivePath}`);
     }
   } else {
     say('Would check activity.jsonl rotation (10 MB threshold).');
   }
 
-  console.log(dry ? '[dry-run] Sync plan complete.' : 'Sync complete.');
+  // Step 6: post-sync overlay import (when --with-overlays is set).
+  if (opts.withOverlays) {
+    say('Importing team overlay bundles...');
+    if (!dry) {
+      const result = syncOverlays(getProjectRoot(), self.uid);
+      if (result.imported > 0) {
+        console.log(`Imported ${result.imported} overlay bundle(s) from teammates.`);
+      }
+      if (result.skipped > 0) {
+        console.log(`Skipped ${result.skipped} overlay bundle(s) (own/unchanged/invalid).`);
+      }
+      if (result.imported === 0 && result.skipped === 0) {
+        console.log('No team overlay bundles found.');
+      }
+    } else {
+      say('Would scan .workflow/collab/overlays/ for team bundles.');
+    }
+  }
+
+  const suffix = skipPush ? ' (pull-only fast path)' : '';
+  console.log(dry ? `[dry-run] Sync plan complete${suffix}.` : `Sync complete${suffix}.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +845,8 @@ export function registerTeamCommand(program: Command): void {
     .command('sync')
     .description('Sync with remote: git stash/pull --rebase/pop/push + log rotation')
     .option('--dry-run', 'Print the plan without executing any git command')
-    .action((opts: { dryRun?: boolean }) => runSync(opts));
+    .option('--with-overlays', 'Import team overlay bundles after sync')
+    .action((opts: { dryRun?: boolean; withOverlays?: boolean }) => runSync(opts));
 
   team
     .command('preflight')
@@ -554,4 +857,147 @@ export function registerTeamCommand(program: Command): void {
     .action((opts: { phase?: string; force?: boolean; json?: boolean }) =>
       runPreflightCli(opts),
     );
+
+  team
+    .command('guard')
+    .description('Show namespace boundaries for the current team member')
+    .action(() => runGuard());
+
+  // spec subcommand group
+  const spec = team
+    .command('spec')
+    .description('Manage personal spec overrides');
+
+  spec
+    .command('list')
+    .description('List personal spec files')
+    .action(() => runSpecList());
+
+  spec
+    .command('edit')
+    .description('Create or edit a personal spec file')
+    .argument('<filename>', 'Spec filename (e.g. coding-conventions or coding-conventions.md)')
+    .action((filename: string) => runSpecEdit(filename));
+}
+
+// ---------------------------------------------------------------------------
+// guard
+// ---------------------------------------------------------------------------
+
+function runGuard(): void {
+  const self = resolveSelf();
+  if (!self) {
+    console.error("Team mode not enabled. Run 'maestro team join' first.");
+    process.exit(1);
+    return;
+  }
+
+  const root = getProjectRoot();
+  const boundaries = getNamespaceBoundaries(self.uid, root);
+
+  console.log(`Namespace boundaries for ${self.uid}:`);
+  console.log('');
+  console.log('Writable paths (own namespace):');
+  for (const b of boundaries.filter(
+    (p) => !p.includes('activity.jsonl') && !p.endsWith('manifest.json'),
+  )) {
+    console.log(`  ${b}`);
+  }
+  console.log('');
+  console.log('Shared writable paths:');
+  for (const b of boundaries.filter(
+    (p) => p.includes('activity.jsonl') || p.endsWith('manifest.json'),
+  )) {
+    console.log(`  ${b}`);
+  }
+  console.log('');
+  console.log('Mode: advisory (warnings only, non-blocking)');
+}
+
+// ---------------------------------------------------------------------------
+// spec list / spec edit
+// ---------------------------------------------------------------------------
+
+function runSpecList(): void {
+  const self = resolveSelf();
+  if (!self) {
+    console.error("Team mode not enabled. Run 'maestro team join' first.");
+    process.exit(1);
+    return;
+  }
+
+  const root = getProjectRoot();
+  const personalDir = join(root, TEAM_SPECS_DIR, self.uid);
+
+  if (!existsSync(personalDir)) {
+    console.log(`No personal specs found for ${self.uid}.`);
+    console.log(`Directory: ${personalDir}`);
+    console.log(`Run 'maestro team spec edit <filename>' to create one.`);
+    return;
+  }
+
+  let files: string[];
+  try {
+    files = readdirSync(personalDir).filter(f => f.endsWith('.md'));
+  } catch {
+    console.error(`Error: could not read ${personalDir}`);
+    process.exit(1);
+    return;
+  }
+
+  if (files.length === 0) {
+    console.log(`No personal spec files in ${personalDir}`);
+    return;
+  }
+
+  console.log(`Personal specs for ${self.uid} (${files.length} files):`);
+  console.log('');
+  for (const file of files.sort()) {
+    const cats = CATEGORY_MAP[file];
+    const catLabel = cats ? cats.join(', ') : 'general';
+    console.log(`  ${file}  (${catLabel})`);
+  }
+}
+
+function runSpecEdit(filename: string): void {
+  const self = resolveSelf();
+  if (!self) {
+    console.error("Team mode not enabled. Run 'maestro team join' first.");
+    process.exit(1);
+    return;
+  }
+
+  // Ensure .md extension
+  const specFile = filename.endsWith('.md') ? filename : `${filename}.md`;
+
+  const root = getProjectRoot();
+  const personalDir = join(root, TEAM_SPECS_DIR, self.uid);
+  const filePath = join(personalDir, specFile);
+
+  // Create directory if needed
+  if (!existsSync(personalDir)) {
+    mkdirSync(personalDir, { recursive: true });
+  }
+
+  // Create file with template if it does not exist
+  if (!existsSync(filePath)) {
+    const cats = CATEGORY_MAP[specFile];
+    const catComment = cats ? cats.join(', ') : 'general';
+    writeFileSync(filePath, `# ${specFile.replace('.md', '')}\n\n<!-- categories: ${catComment} -->\n\n`, 'utf-8');
+    console.log(`Created: ${filePath}`);
+  } else {
+    console.log(`Exists: ${filePath}`);
+  }
+
+  // Try to open with $EDITOR
+  const editor = process.env.EDITOR || process.env.VISUAL;
+  if (editor) {
+    try {
+      execSync(`${editor} "${filePath}"`, { stdio: 'inherit' });
+    } catch {
+      console.log(`Open with your editor: ${filePath}`);
+    }
+  } else {
+    console.log(`No $EDITOR set. Edit manually: ${filePath}`);
+  }
 }

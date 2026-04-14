@@ -12,7 +12,8 @@ import type { ExecutionMeta } from '../agents/cli-history-store.js';
 import { generateCliExecId } from '../agents/cli-agent-runner.js';
 import { loadCliToolsConfig, selectTool } from '../config/cli-tools-config.js';
 import { paths } from '../config/paths.js';
-import { DelegateBrokerClient, type JsonObject, type DelegateJobEvent, type DelegateJobRecord } from '../async/index.js';
+import { DelegateBrokerClient, type JsonObject, type DelegateJobEvent, type DelegateJobRecord, type DelegateQueuedMessage } from '../async/index.js';
+import { handleDelegateMessage } from '../async/delegate-control.js';
 import {
   deriveExecutionStatus,
   deriveDelegateStatus,
@@ -183,7 +184,7 @@ export function launchDetachedDelegateWorker(
         jobId: request.execId,
         type: 'queued',
         status: 'queued',
-        payload: { summary: `Delegate queued for ${request.tool}/${request.mode}` },
+        payload: { summary: `${request.tool}/${request.mode} queued` },
         jobMetadata: buildJobMetadata(request, child.pid),
         now: startedAt,
       });
@@ -512,5 +513,90 @@ export function registerDelegateCommand(program: Command): void {
       console.log(`Cancellation requested for ${id}.`);
       console.log(`Current status: ${deriveDelegateStatus(meta, updated)}`);
       console.log('Use `maestro delegate status <id>` or `maestro delegate tail <id>` to follow progress.');
+    });
+
+  // ---- message subcommand --------------------------------------------------
+
+  delegate
+    .command('message <id> <text>')
+    .description('Send a follow-up message to a running or completed delegate')
+    .option('--delivery <mode>', 'Delivery mode: inject or after_complete', 'inject')
+    .action((id: string, text: string, opts: { delivery?: string }) => {
+      const delivery = opts.delivery ?? 'inject';
+      if (delivery !== 'inject' && delivery !== 'after_complete') {
+        console.error(`Invalid delivery mode: ${delivery}. Use "inject" or "after_complete".`);
+        process.exit(1);
+      }
+
+      let result;
+      try {
+        result = handleDelegateMessage({
+          execId: id,
+          message: text,
+          delivery: delivery as 'inject' | 'after_complete',
+          requestedBy: 'cli:delegate:message',
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`Failed: ${message}`);
+        process.exit(1);
+      }
+
+      console.log(`Message accepted for ${result.execId}`);
+      console.log(`Delivery:  ${result.delivery}`);
+      console.log(`Status:    ${result.status}`);
+      if (result.immediateDispatch) {
+        console.log(`Dispatch:  immediate (previous status: ${result.previousStatus})`);
+      } else {
+        console.log(`Queue:     ${result.queueDepth} message(s) pending`);
+      }
+    });
+
+  // ---- messages subcommand -------------------------------------------------
+
+  delegate
+    .command('messages <id>')
+    .description('List queued and dispatched follow-up messages for a delegate')
+    .action((id: string) => {
+      const store = new CliHistoryStore();
+      const broker = new DelegateBrokerClient();
+      const meta = store.loadMeta(id);
+      const job = broker.getJob(id);
+
+      if (!meta && !job) {
+        console.error(`Execution not found: ${id}`);
+        process.exit(1);
+      }
+
+      const messages = broker.listMessages(id);
+      if (messages.length === 0) {
+        console.log(`No messages for ${id}.`);
+        return;
+      }
+
+      const colId = 12;
+      const colDelivery = 16;
+      const colStatus = 12;
+      const colMessage = 60;
+
+      const header = [
+        padRight('MessageID', colId),
+        padRight('Delivery', colDelivery),
+        padRight('Status', colStatus),
+        padRight('Message', colMessage),
+      ].join('  ');
+
+      console.log(header);
+      console.log('-'.repeat(header.length));
+
+      for (const msg of messages) {
+        const row = [
+          padRight(msg.messageId.slice(0, colId), colId),
+          padRight(msg.delivery, colDelivery),
+          padRight(msg.status, colStatus),
+          padRight(truncate(msg.message, colMessage), colMessage),
+        ].join('  ');
+        console.log(row);
+      }
     });
 }

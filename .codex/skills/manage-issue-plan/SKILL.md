@@ -1,6 +1,6 @@
 ---
 name: maestro-issue-plan
-description: Solution planning for a specific issue. Auto-detects analysis context, runs maestro cli planning, and attaches a structured solution record with ordered steps and verification criteria to the issue in issues.jsonl.
+description: Solution planning for a specific issue. Auto-detects analysis context, runs maestro delegate planning, and attaches a structured solution record with ordered steps and verification criteria to the issue in issues.jsonl.
 argument-hint: "<ISS-ID> [--tool gemini|qwen] [--from-analysis]"
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
@@ -82,7 +82,7 @@ CONSTRAINTS: Concrete steps only | File:line references required | No speculativ
 // Write prompt to temp file to avoid shell injection
 Write(`/tmp/iss-plan-${issueId}.txt`, prompt)
 functions.exec_command({
-  cmd: `maestro cli -p "$(cat /tmp/iss-plan-${issueId}.txt)" --tool ${tool} --mode analysis`,
+  cmd: `maestro delegate "$(cat /tmp/iss-plan-${issueId}.txt)" --to ${tool} --mode analysis`,
   workdir: "."
 })
 ```

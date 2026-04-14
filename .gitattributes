@@ -1,0 +1,6 @@
+# Team collaboration — per-member JSON files use union merge to prevent
+# conflicts when two members join or update concurrently.
+.workflow/collab/members/*.json merge=union
+
+# Activity log is append-only; union merge preserves lines from both sides.
+.workflow/collab/activity.jsonl merge=union

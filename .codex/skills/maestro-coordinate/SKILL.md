@@ -307,4 +307,4 @@ Resume: $maestro-coordinate --continue
 6. **Close before spawn**: Always `close_agent` the current step agent before spawning the next
 7. **Dry-run is read-only**: Stop after displaying the chain plan — never spawn agents
 8. **Timeout handling**: One urge via `send_message`; if still timed out → mark `failed`
-9. **No CLI fallback**: All execution is agent-native — no `exec_command("maestro cli ...")`
+9. **No CLI fallback**: All execution is agent-native — no `exec_command("maestro delegate ...")`

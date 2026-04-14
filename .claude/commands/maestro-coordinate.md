@@ -1,6 +1,6 @@
 ---
 name: maestro-coordinate
-description: CLI-based coordinator - analyze intent → select command chain → execute sequentially via maestro cli with auto-confirm
+description: CLI-based coordinator - analyze intent → select command chain → execute sequentially via maestro delegate with auto-confirm
 argument-hint: "\"intent text\" [-y] [-c] [--dry-run] [--chain <name>] [--tool <tool>]"
 allowed-tools:
   - Read
@@ -13,9 +13,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 <purpose>
-Orchestrate maestro commands via external CLI (`maestro cli`) with async state machine.
+Orchestrate maestro commands via external CLI (`maestro delegate`) with async state machine.
 Classifies intent, reads project state, selects command chain, then executes each step
-through `maestro cli --tool <tool> --mode write` with a universal prompt template.
+through `maestro delegate --to <tool> --mode write` with a universal prompt template.
 Auto-confirm injection ensures non-blocking background execution. Structured return
 format enables context propagation between steps.
 </purpose>
@@ -55,9 +55,9 @@ Follow '~/.maestro/workflows/maestro-coordinate.md' completely.
 
 <success_criteria>
 - [ ] Intent classified and chain selected via detectTaskType + chainMap
-- [ ] Each step executed via `maestro cli` with coordinate-step template
+- [ ] Each step executed via `maestro delegate` with coordinate-step template
 - [ ] Auto-confirm injected, structured return parsed
-- [ ] Each completed step analyzed via `maestro cli --tool gemini --mode analysis`
+- [ ] Each completed step analyzed via `maestro delegate --to gemini --mode analysis`
 - [ ] Analysis hints injected into next step prompt via `{{ANALYSIS_HINTS}}`
 - [ ] Gemini sessions chained via `--resume` for accumulated context
 - [ ] Session state at .workflow/.maestro-coordinate/{session_id}/

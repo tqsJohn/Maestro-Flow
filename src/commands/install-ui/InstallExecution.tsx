@@ -12,6 +12,7 @@ import {
   applyOverlaysPostInstall,
   addMcpServer,
   copyRecursive,
+  createTargetBackup,
   type CopyStats,
 } from '../install-backend.js';
 import {
@@ -21,7 +22,7 @@ import {
   findManifest,
   cleanManifestFiles,
 } from '../../core/manifest.js';
-import { installHooksByLevel, type HookLevel } from '../hooks.js';
+import { installHooksByLevel, installStatusline as installStatuslineFn, type HookLevel } from '../hooks.js';
 import type { InstallFlowConfig } from './InstallConfirm.js';
 import { t } from '../../i18n/index.js';
 
@@ -36,6 +37,8 @@ export interface InstallFlowResult {
   hooksInstalled: number;
   mcpRegistered: boolean;
   manifestPath: string;
+  statuslineInstalled: boolean;
+  backupPath: string | null;
 }
 
 interface InstallExecutionProps {
@@ -69,12 +72,26 @@ export function InstallExecution({ config, pkgRoot, version, onComplete }: Insta
         let filesSkipped = 0;
         let hooksInstalled = 0;
         let mcpRegistered = false;
+        let statuslineInstalled = false;
+        let backupPath: string | null = null;
 
         // Components
         if (config.installComponents) {
           if (cancelled) return;
           setStatus(t.install.execScanning);
           const disabledItems = scanDisabledItems(targetBase);
+
+          // Backup before clean
+          if (config.backupClaudeMd || config.backupAll) {
+            if (cancelled) return;
+            setStatus(t.install.execBackingUp);
+            const components = scanComponents(pkgRoot, config.mode, config.projectPath)
+              .filter((c) => c.available && config.selectedComponentIds.includes(c.def.id));
+            backupPath = createTargetBackup(components, {
+              backupClaudeMd: config.backupClaudeMd,
+              backupAll: config.backupAll,
+            });
+          }
 
           if (cancelled) return;
           setStatus(t.install.execCleaning);
@@ -112,12 +129,23 @@ export function InstallExecution({ config, pkgRoot, version, onComplete }: Insta
           filesSkipped = stats.skipped;
         }
 
-        // Hooks
+        // Hooks (skip statusline if managed separately)
         if (config.installHooks) {
           if (cancelled) return;
           setStatus(t.install.execInstallingHooks.replace('{level}', config.hookLevel));
-          const result = installHooksByLevel(config.hookLevel, { project: config.mode === 'project' });
+          const result = installHooksByLevel(config.hookLevel, {
+            project: config.mode === 'project',
+            skipStatusline: config.installStatusline,
+          });
           hooksInstalled = result.installedHooks.length;
+        }
+
+        // Statusline (separate install)
+        if (config.installStatusline) {
+          if (cancelled) return;
+          setStatus(t.install.execInstallingStatusline);
+          installStatuslineFn({ project: config.mode === 'project' });
+          statuslineInstalled = true;
         }
 
         // MCP
@@ -129,7 +157,7 @@ export function InstallExecution({ config, pkgRoot, version, onComplete }: Insta
 
         setDone(true);
         setStatus(t.install.execComplete);
-        onComplete({ filesInstalled, dirsCreated, filesSkipped, hooksInstalled, mcpRegistered, manifestPath });
+        onComplete({ filesInstalled, dirsCreated, filesSkipped, hooksInstalled, mcpRegistered, manifestPath, statuslineInstalled, backupPath });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }

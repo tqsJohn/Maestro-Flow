@@ -374,6 +374,10 @@ export interface OverlayBundle {
   overlays: OverlayMeta[];
   /** Relative path → file content for docs referenced by overlays. */
   docs: Record<string, string>;
+  /** UID of the team member who created this bundle (team sync). */
+  sourceMember?: string;
+  /** ISO 8601 timestamp of bundle creation (team sync). */
+  ts?: string;
 }
 
 export interface BundleResult {

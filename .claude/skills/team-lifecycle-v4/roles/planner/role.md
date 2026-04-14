@@ -33,7 +33,7 @@ Codebase-informed implementation planning with complexity assessment.
 2. Check <session>/explorations/cache-index.json for cached explorations
 3. Explore codebase (cache-aware):
    ```
-   Bash({ command: `maestro cli -p "PURPOSE: Explore codebase to inform planning
+   Bash({ command: `maestro delegate "PURPOSE: Explore codebase to inform planning
    TASK: • Search for relevant patterns • Identify files to modify • Document integration points
    MODE: analysis
    CONTEXT: @**/*
@@ -54,7 +54,7 @@ After exploration, supplement upstream tech_profile with planning-phase signals 
 
 Generate plan.json + .task/TASK-*.json:
 ```
-Bash({ command: `maestro cli -p "PURPOSE: Generate implementation plan from exploration results
+Bash({ command: `maestro delegate "PURPOSE: Generate implementation plan from exploration results
 TASK: • Create plan.json overview • Generate TASK-*.json files (2-7 tasks) • Define dependencies • Set convergence criteria
 MODE: write
 CONTEXT: @<session>/explorations/*.json

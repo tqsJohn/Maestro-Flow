@@ -63,7 +63,7 @@ Before calling ANY tool, apply this check:
 | `Read` on `roles/`, `commands/`, `specs/` | ALLOWED | Loading own instructions |
 | `Read/Grep/Glob` on project source code | BLOCKED | Delegate to worker |
 | `Edit` on any file outside `.workflow/` | BLOCKED | Delegate to worker |
-| `Bash("maestro cli ...")` | BLOCKED | Only workers call CLI |
+| `Bash("maestro delegate ...")` | BLOCKED | Only workers call CLI |
 | `Bash` running build/test/lint commands | BLOCKED | Delegate to worker |
 
 **If a tool call is BLOCKED**: STOP. Create a task, spawn a worker.
@@ -77,7 +77,7 @@ Before calling ANY tool, apply this check:
 - **Session prefix**: `QA`
 - **Session path**: `.workflow/.team/QA-<slug>-<date>/`
 - **Team name**: `quality-assurance`
-- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
+- **CLI tools**: `maestro delegate --mode analysis` (read-only), `maestro delegate --mode write` (modifications)
 - **Message bus**: `mcp__maestro-tools__team_msg(session_id=<session-id>, ...)`
 
 ## Worker Spawn Template

@@ -1,6 +1,6 @@
 ---
 name: maestro-issue-execute
-description: Execute a planned solution for an issue via dual-mode dispatch. Auto-detects server UP (POST to /api/execution/dispatch) or DOWN (direct maestro cli). Updates issue status on completion with next-step routing to close, debug, or verify.
+description: Execute a planned solution for an issue via dual-mode dispatch. Auto-detects server UP (POST to /api/execution/dispatch) or DOWN (direct maestro delegate). Updates issue status on completion with next-step routing to close, debug, or verify.
 argument-hint: "<ISS-ID> [--executor claude-code|codex|gemini] [--dry-run]"
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
@@ -27,7 +27,7 @@ $maestro-issue-execute "ISS-20260401-001 --executor gemini"
 
 ## Overview
 
-Sequential 4-step pipeline with conditional dispatch: load issue → dry-run check → detect mode → execute + update. Server-UP path posts to the orchestration API; Server-DOWN path invokes `maestro cli` directly. This is the third step in the issue resolution workflow: **analyze → plan → execute**.
+Sequential 4-step pipeline with conditional dispatch: load issue → dry-run check → detect mode → execute + update. Server-UP path posts to the orchestration API; Server-DOWN path invokes `maestro delegate` directly. This is the third step in the issue resolution workflow: **analyze → plan → execute**.
 
 ```
 Load Issue  →  [dry-run?]  →  Detect Mode  →  Dispatch  →  Update Status
@@ -79,7 +79,7 @@ const serverUp = healthCheck.stdout.trim() === "200"
 | Mode | Condition | Action |
 |------|-----------|--------|
 | Server UP | HTTP 200 from /health | POST to `/api/execution/dispatch` |
-| Server DOWN | Any other result | Direct `maestro cli` execution |
+| Server DOWN | Any other result | Direct `maestro delegate` execution |
 
 ```javascript
 functions.update_plan({
@@ -124,7 +124,7 @@ functions.exec_command({
 // Write prompt to temp file to avoid shell injection
 Write(`/tmp/iss-exec-${issue.id}.txt`, execPrompt)
 functions.exec_command({
-  cmd: `maestro cli -p "$(cat /tmp/iss-exec-${issue.id}.txt)" --tool ${executor === 'codex' ? 'codex' : 'claude'} --mode write`,
+  cmd: `maestro delegate "$(cat /tmp/iss-exec-${issue.id}.txt)" --to ${executor === 'codex' ? 'codex' : 'claude'} --mode write`,
   workdir: "."
 })
 ```

@@ -51,7 +51,7 @@ Parse `$ARGUMENTS`:
 
 - **Session prefix**: `TD`
 - **Session path**: `.workflow/.team/TD-<slug>-<date>/`
-- **CLI tools**: `maestro cli --mode analysis` (read-only), `maestro cli --mode write` (modifications)
+- **CLI tools**: `maestro delegate --mode analysis` (read-only), `maestro delegate --mode write` (modifications)
 - **Message bus**: `mcp__ccw-tools__team_msg(session_id=<session-id>, ...)`
 - **Max GC rounds**: 3
 

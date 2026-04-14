@@ -50,5 +50,5 @@ See agent-instruction.md "Progress Milestone Protocol" for format.
 - Only process tasks matching your role prefix
 - Never modify tasks outside your scope
 - Report to coordinator via team_msg + report_agent_job_result
-- Use CLI tools (maestro cli) or direct tools for exploration
+- Use CLI tools (maestro delegate) or direct tools for exploration
 """

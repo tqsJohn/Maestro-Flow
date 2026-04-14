@@ -27,7 +27,7 @@ This instruction is loaded by team-worker agents when spawned with roles: `analy
 
 2. **Explore domain** (use CLI analysis tools):
    ```bash
-   maestro cli -p "PURPOSE: Research domain for {requirement}
+   maestro delegate "PURPOSE: Research domain for {requirement}
    TASK: • Identify problem statement • Define target users • Extract constraints • Map integration points
    CONTEXT: @**/* | Memory: {requirement}
    EXPECTED: Structured research context with problem/users/domain/constraints
@@ -294,7 +294,7 @@ This instruction is loaded by team-worker agents when spawned with roles: `analy
 
 2. **Explore codebase** (use CLI analysis tools):
    ```bash
-   maestro cli -p "PURPOSE: Explore codebase for {requirement}
+   maestro delegate "PURPOSE: Explore codebase for {requirement}
    TASK: • Identify relevant files • Find existing patterns • Locate integration points
    CONTEXT: @**/* | Memory: {requirement}
    EXPECTED: Exploration findings with file paths and patterns

@@ -25,7 +25,7 @@ export interface SpecLoadResult {
 // Filename → Category mapping (single source of truth)
 // ============================================================================
 
-const CATEGORY_MAP: Record<string, SpecCategory[]> = {
+export const CATEGORY_MAP: Record<string, SpecCategory[]> = {
   'coding-conventions.md':      ['execution'],
   'architecture-constraints.md': ['execution', 'planning'],
   'quality-rules.md':           ['execution'],
@@ -40,23 +40,103 @@ const CATEGORY_MAP: Record<string, SpecCategory[]> = {
 const ALWAYS_INCLUDE = 'learnings.md';
 
 const SPECS_DIR = '.workflow/specs';
+export const TEAM_SPECS_DIR = '.workflow/collab/specs';
+
+/** Layer labels used as section headers when multi-directory scanning is active. */
+const LAYER_LABELS: Record<string, string> = {
+  baseline: '# Baseline Specs',
+  team: '# Team Specs',
+  // personal label is dynamic — includes uid
+};
 
 // ============================================================================
 // Public API
 // ============================================================================
 
-export function loadSpecs(projectPath: string, category?: SpecCategory): SpecLoadResult {
-  const specsDir = join(projectPath, SPECS_DIR);
+/**
+ * Load spec files from one or more directories.
+ *
+ * When `uid` is provided, scans three directories in order:
+ *   1. .workflow/specs/              (baseline)
+ *   2. .workflow/collab/specs/       (team shared)
+ *   3. .workflow/collab/specs/{uid}/ (personal)
+ *
+ * Content from later layers is appended (never replaces earlier content).
+ * Each layer's content is prefixed with a header for clarity.
+ *
+ * When `uid` is absent, only the baseline directory is scanned — identical
+ * to the original single-directory behavior.
+ */
+export function loadSpecs(projectPath: string, category?: SpecCategory, uid?: string): SpecLoadResult {
+  // Build ordered list of (directory, label) pairs to scan
+  const layers = buildLayers(projectPath, uid);
 
-  if (!existsSync(specsDir)) {
-    return { content: '', matchedSpecs: [], totalLoaded: 0 };
+  const allSections: string[] = [];
+  const allMatched: string[] = [];
+  let totalCount = 0;
+
+  for (const { dir, label } of layers) {
+    const { sections, matched } = loadFromDir(dir, category);
+    if (sections.length === 0) continue;
+
+    // Only add layer headers when multi-layer mode is active (uid provided)
+    if (uid) {
+      allSections.push(`${label}\n\n${sections.join('\n\n---\n\n')}`);
+    } else {
+      allSections.push(...sections);
+    }
+    allMatched.push(...matched);
+    totalCount += matched.length;
   }
+
+  return {
+    content: allSections.length > 0
+      ? `# Project Specs (${totalCount} loaded)\n\n${allSections.join('\n\n---\n\n')}`
+      : '',
+    matchedSpecs: allMatched,
+    totalLoaded: totalCount,
+  };
+}
+
+// ============================================================================
+// Internal — multi-directory helpers
+// ============================================================================
+
+interface LayerDef {
+  dir: string;
+  label: string;
+}
+
+function buildLayers(projectPath: string, uid?: string): LayerDef[] {
+  const baseline: LayerDef = {
+    dir: join(projectPath, SPECS_DIR),
+    label: LAYER_LABELS.baseline,
+  };
+
+  if (!uid) return [baseline];
+
+  return [
+    baseline,
+    { dir: join(projectPath, TEAM_SPECS_DIR), label: LAYER_LABELS.team },
+    { dir: join(projectPath, TEAM_SPECS_DIR, uid), label: `# Personal Specs (${uid})` },
+  ];
+}
+
+/**
+ * Load spec files from a single directory. Returns empty arrays if the
+ * directory does not exist or is unreadable.
+ */
+function loadFromDir(
+  specsDir: string,
+  category?: SpecCategory,
+): { sections: string[]; matched: string[] } {
+  if (!existsSync(specsDir)) return { sections: [], matched: [] };
 
   let files: string[];
   try {
     files = readdirSync(specsDir).filter(f => f.endsWith('.md'));
   } catch {
-    return { content: '', matchedSpecs: [], totalLoaded: 0 };
+    return { sections: [], matched: [] };
   }
 
   const sections: string[] = [];
@@ -80,13 +160,7 @@ export function loadSpecs(projectPath: string, category?: SpecCategory): SpecLoa
     matched.push(file);
   }
 
-  return {
-    content: sections.length > 0
-      ? `# Project Specs (${matched.length} loaded)\n\n${sections.join('\n\n---\n\n')}`
-      : '',
-    matchedSpecs: matched,
-    totalLoaded: matched.length,
-  };
+  return { sections, matched };
 }
 
 // ============================================================================

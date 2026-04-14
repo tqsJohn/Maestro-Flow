@@ -12,7 +12,7 @@ Orchestrate team-quality-assurance: analyze -> dispatch -> spawn -> monitor -> r
 **FORBIDDEN** (even if the task seems trivial):
 ```
 WRONG: Read/Grep/Glob on project source code        — worker work
-WRONG: Bash("maestro cli ...")                           — worker work
+WRONG: Bash("maestro delegate ...")                           — worker work
 WRONG: Edit/Write on project source files            — worker work
 WRONG: Bash("npm test"), Bash("tsc"), etc.           — worker work
 ```
@@ -45,7 +45,7 @@ WRONG: Bash("npm test"), Bash("tsc"), etc.           — worker work
 - Modify test files or source code
 - Spawn workers with general-purpose agent (MUST use team-worker)
 - Generate more than 6 worker roles
-- Call CLI tools (maestro cli) — only workers use CLI
+- Call CLI tools (maestro delegate) — only workers use CLI
 
 ## Command Execution Protocol
 When coordinator needs to execute a specific phase:

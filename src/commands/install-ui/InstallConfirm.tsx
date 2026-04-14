@@ -13,6 +13,7 @@ export interface InstallFlowConfig {
   installComponents: boolean;
   installHooks: boolean;
   installMcp: boolean;
+  installStatusline: boolean;
   hookLevel: HookLevel;
   componentCount: number;
   fileCount: number;
@@ -20,6 +21,8 @@ export interface InstallFlowConfig {
   selectedComponentIds: string[];
   mcpTools: string[];
   mcpProjectRoot: string;
+  backupClaudeMd: boolean;
+  backupAll: boolean;
 }
 
 interface InstallConfirmProps {
@@ -84,6 +87,24 @@ export function InstallConfirm({ config, onConfirm, onBack }: InstallConfirmProp
         ) : (
           <Row label={t.install.confirmLabelMcp} value={t.install.confirmSkipped} valueColor="gray" />
         )}
+
+        <Row
+          label={t.install.confirmLabelStatusline}
+          value={config.installStatusline ? t.install.statuslineEnabled : t.install.confirmSkipped}
+          valueColor={config.installStatusline ? 'green' : 'gray'}
+        />
+
+        <Row
+          label={t.install.confirmLabelBackup}
+          value={
+            config.backupAll
+              ? t.install.backupAllLabel
+              : config.backupClaudeMd
+                ? t.install.backupClaudeMdLabel
+                : t.install.confirmSkipped
+          }
+          valueColor={config.backupClaudeMd || config.backupAll ? 'green' : 'gray'}
+        />
       </Box>
 
       <Box marginTop={1}>

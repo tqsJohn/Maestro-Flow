@@ -18,6 +18,8 @@ export interface LocaleStrings {
     footerComponents: string;
     footerHooks: string;
     footerMcp: string;
+    footerStatusline: string;
+    footerBackup: string;
     footerConfirm: string;
 
     // Mode step
@@ -59,6 +61,25 @@ export interface LocaleStrings {
     mcpProjectRootDefault: string;
     mcpEditRoot: string;
 
+    // Statusline
+    statuslineTitle: string;
+    statuslineCurrentLabel: string;
+    statuslineInstallPrompt: string;
+    statuslineDesc: string;
+    statuslineOverwriteWarn: string;
+    statuslineDetected: string;
+    statuslineWillInstall: string;
+    statuslineEnabled: string;
+
+    // Backup
+    backupTitle: string;
+    backupOptClaudeMd: string;
+    backupOptClaudeMdDesc: string;
+    backupOptAll: string;
+    backupOptAllDesc: string;
+    backupClaudeMdLabel: string;
+    backupAllLabel: string;
+
     // Confirm
     confirmTitle: string;
     confirmLabelMode: string;
@@ -66,15 +87,19 @@ export interface LocaleStrings {
     confirmLabelComponents: string;
     confirmLabelHooks: string;
     confirmLabelMcp: string;
+    confirmLabelStatusline: string;
+    confirmLabelBackup: string;
     confirmSkipped: string;
 
     // Execution
     execPreparing: string;
     execScanning: string;
+    execBackingUp: string;
     execCleaning: string;
     execInstalling: string; // "Installing {name}..."
     execWritingVersion: string;
     execInstallingHooks: string; // "Installing {level} hooks..."
+    execInstallingStatusline: string;
     execRegisteringMcp: string;
     execComplete: string;
     execDone: string;
@@ -88,6 +113,7 @@ export interface LocaleStrings {
     resultPreserved: string; // "{count} settings files"
     resultHooks: string; // "{count} installed"
     resultManifest: string;
+    resultStatuslineInstalled: string;
     resultExit: string;
 
     // force install (console output)

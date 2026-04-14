@@ -1,6 +1,6 @@
 ---
 name: maestro-issue-analyze
-description: Root cause analysis for a specific issue via CLI exploration. Gathers codebase context (grep or semantic deep search), runs maestro cli gemini analysis, and attaches a structured analysis record to the issue in issues.jsonl.
+description: Root cause analysis for a specific issue via CLI exploration. Gathers codebase context (grep or semantic deep search), runs maestro delegate gemini analysis, and attaches a structured analysis record to the issue in issues.jsonl.
 argument-hint: "<ISS-ID> [--tool gemini|qwen] [--depth standard|deep]"
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
@@ -26,7 +26,7 @@ $maestro-issue-analyze "ISS-20260401-001 --tool qwen --depth standard"
 
 ## Overview
 
-Sequential 4-step pipeline: load issue → gather codebase context → run CLI analysis → attach analysis record. The CLI analysis step invokes `maestro cli --tool gemini --mode analysis` to produce a structured root-cause record written back into issues.jsonl. This is the first step in the issue resolution workflow: **analyze → plan → execute**.
+Sequential 4-step pipeline: load issue → gather codebase context → run CLI analysis → attach analysis record. The CLI analysis step invokes `maestro delegate --to gemini --mode analysis` to produce a structured root-cause record written back into issues.jsonl. This is the first step in the issue resolution workflow: **analyze → plan → execute**.
 
 ```
 Load Issue  →  Gather Context  →  CLI Analysis  →  Attach Record
@@ -119,7 +119,7 @@ CONSTRAINTS: Evidence required — file:line for each claim`
 
 Write(`/tmp/iss-analyze-${issue.id}.txt`, promptContent)
 functions.exec_command({
-  cmd: `maestro cli -p "$(cat /tmp/iss-analyze-${issue.id}.txt)" --tool ${tool} --mode analysis`,
+  cmd: `maestro delegate "$(cat /tmp/iss-analyze-${issue.id}.txt)" --to ${tool} --mode analysis`,
   workdir: "."
 })
 ```
